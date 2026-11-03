@@ -1,6 +1,6 @@
 """Build private Minecraft resources from the source export. No retail assets are tracked."""
 from pathlib import Path
-import gzip,hashlib,json,shutil,struct
+import gzip,hashlib,json,math,shutil,struct
 
 ROOT=Path(__file__).resolve().parents[1]
 SOURCE=ROOT/'.local/content'
@@ -100,6 +100,9 @@ def decorations(catalog):
     models=DEST/'assets/jak/models/item'
     # The anchor is the supported base cell, including the actual palm trunk.
     assemblies={88:[0,0,0],93:[3,0,2]}
+    roots=json.loads((SOURCE/'wall-roots.json').read_text(encoding='utf-8'))
+    for id,root in roots.items():
+        assemblies[int(id)]=[math.floor(value+1e-6) for value in root]
     (catalog/'assemblies.json').write_text(json.dumps(assemblies),encoding='utf-8')
     rows=[]
     for id in (*supported,*assemblies):

@@ -98,7 +98,7 @@ public final class PropModels {
             String texture=row.get("texture").getAsString();
             var material=Identifier.fromNamespaceAndPath("jak","block/"+texture);
             tris.add(new Triangle(points,material,blend));
-            if(texture.equals("waspala-palmplant-leaf-02"))
+            if(texture.equals("waspala-palmplant-leaf-02")||texture.startsWith("city-slum-shrub-overhang"))
                 tris.add(new Triangle(new Point[]{points[2],points[1],points[0]},material,blend));
         }
         return new Geometry(List.copyOf(tris));

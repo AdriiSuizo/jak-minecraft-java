@@ -61,6 +61,7 @@ public final class JakAssemblies {
         final String path;
         final BlockPos anchorOffset;
         final int extent;
+        final boolean wallMounted;
         final List<Part> parts=new ArrayList<>();
         final List<PartModel> models=new ArrayList<>();
         Part anchor;
@@ -72,13 +73,14 @@ public final class JakAssemblies {
             var size=position(source.getAsJsonArray("size"));
             this.extent=Math.max(size.getY(),Math.max(size.getX(),size.getZ()));
             boolean palm=source.get("group").getAsString().equals("palmera");
+            wallMounted=source.get("soft").getAsBoolean();
             var loot=ResourceKey.create(Registries.LOOT_TABLE,Identifier.fromNamespaceAndPath("jak","blocks/"+path));
             for(var row:source.getAsJsonArray("cells")){
                 var cell=row.getAsJsonObject();
                 var offset=position(cell.getAsJsonArray("cell"));
                 var name=offset.equals(anchorOffset)?path:path+"/part_"+offset.getX()+"_"+offset.getY()+"_"+offset.getZ();
                 var key=ResourceKey.create(Registries.BLOCK,Identifier.fromNamespaceAndPath("jak",name));
-                var properties=BlockBehaviour.Properties.ofLegacyCopy(palm?Blocks.OAK_PLANKS:Blocks.TERRACOTTA)
+                var properties=BlockBehaviour.Properties.ofLegacyCopy(palm||wallMounted?Blocks.OAK_PLANKS:Blocks.TERRACOTTA)
                     .noOcclusion().setId(key).overrideLootTable(Optional.of(loot)).pushReaction(PushReaction.IMMOVEABLE);
                 var part=new Part(properties,cell,this,offset,palm);
                 Registry.register(BuiltInRegistries.BLOCK,key,part);
@@ -114,19 +116,27 @@ public final class JakAssemblies {
             trunk=palm?gridShapes(trunkBoxes(cell)):null;
         }
 
+        @Override public BlockState getStateForPlacement(BlockPlaceContext context){
+            if(!assembly.wallMounted)return super.getStateForPlacement(context);
+            var face=context.getClickedFace();
+            return face.getAxis().isHorizontal()?defaultBlockState().setValue(FACING,face.getOpposite()):null;
+        }
+
         @Override public Item asItem(){
             return assembly==null||assembly.item==null?super.asItem():assembly.item;
         }
 
         @Override protected VoxelShape getCollisionShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){
+            if(assembly!=null&&assembly.wallMounted)return net.minecraft.world.phys.shapes.Shapes.empty();
             return trunk==null?super.getCollisionShape(state,level,at,context):trunk[JakProps.turns(state.getValue(BlockStateProperties.HORIZONTAL_FACING))];
         }
 
         @Override protected BlockState updateShape(BlockState state,net.minecraft.world.level.LevelReader level,
             net.minecraft.world.level.ScheduledTickAccess ticks,BlockPos at,Direction changed,BlockPos neighbor,
             BlockState neighborState,net.minecraft.util.RandomSource random){
-            if(relative.equals(BlockPos.ZERO)&&changed==Direction.DOWN
-                &&!neighborState.isFaceSturdy(level,neighbor,Direction.UP))return Blocks.AIR.defaultBlockState();
+            Direction support=assembly.wallMounted?state.getValue(FACING):Direction.DOWN;
+            if(relative.equals(BlockPos.ZERO)&&changed==support
+                &&!neighborState.isFaceSturdy(level,neighbor,support.getOpposite()))return Blocks.AIR.defaultBlockState();
             return state;
         }
 
@@ -190,9 +200,10 @@ public final class JakAssemblies {
             var level=context.getLevel();
             var player=context.getPlayer();
             var origin=context.getClickedPos();
-            var support=origin.below();
-            if(!level.getBlockState(support).isFaceSturdy(level,support,Direction.UP))return Map.of();
             Direction direction=state.getValue(BlockStateProperties.HORIZONTAL_FACING);
+            Direction attachedTo=assembly.wallMounted?direction:Direction.DOWN;
+            var support=origin.relative(attachedTo);
+            if(!level.getBlockState(support).isFaceSturdy(level,support,attachedTo.getOpposite()))return Map.of();
             var planned=new LinkedHashMap<BlockPos,BlockState>();
             for(var part:assembly.parts){
                 BlockPos at=origin.offset(rotatedOffset(part.relative,direction));

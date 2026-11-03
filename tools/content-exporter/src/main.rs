@@ -16,7 +16,19 @@ fn look(b:jak_items::BlockLook)->serde_json::Value {use jak_items::BlockLook::*;
  Layers{full,..}=>json!({"kind":"layers","full":full}),
  Cross(_)|Plant{..}=>json!({"kind":"plant"}),Leaves(_)=>json!({"kind":"leaves"}),
  Column{..}=>json!({"kind":"pillar"}),Vine(_)=>json!({"kind":"vine"}),LilyPad(_)=>json!({"kind":"lily_pad"}),_=>json!({"kind":"cube"})}}
+fn save_wall_roots(root:&Path){
+ let mut roots=serde_json::Map::new();
+ for (id,kind) in minecraft_terrain::jak_objects::OBJECTS.iter().enumerate(){
+  if !kind.versioned_foliage(){continue;}
+  let shape=minecraft_terrain::jak_objects::shape(id).expect("source facade foliage geometry");
+  let anchor=shape.wall_root.expect("source facade foliage wall root");
+  roots.insert(id.to_string(),json!(anchor));
+ }
+ std::fs::write(root.join("wall-roots.json"),json!(roots).to_string()).unwrap();
+}
 fn main(){let args:Vec<_>=std::env::args().collect();let root=Path::new(&args[1]);std::fs::create_dir_all(root).unwrap();
+ save_wall_roots(root);
+ if args.get(2).is_some_and(|s|s=="--wall-roots-only"){return;}
  jak_items::set_block_texture_source(texture);
  jak_items::write_pack(&root.join("source-pack")).unwrap();
  let layout=jak_barrio::natural_layout(8048,(0,0),64,0,&Flat).expect("Haven source plan");

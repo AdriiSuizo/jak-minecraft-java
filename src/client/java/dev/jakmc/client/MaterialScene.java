@@ -24,7 +24,9 @@ final class MaterialScene {
     private static int captureTicks;
     private static volatile JsonObject result;
     private static volatile Vec3 subject;
-    private static Vec3 assemblySubject;
+    private static Vec3 assemblySubject,foliageSubject;
+    private static Runnable removeWallSupport;
+    private static volatile boolean wallChecked;
     private static Runnable cleanup;
     private static Runnable hitProjector;
     private static volatile boolean thirdHitChecked;
@@ -42,8 +44,13 @@ final class MaterialScene {
             if(captureTicks==68||captureTicks==76||captureTicks==84)
                 client.getSingleplayerServer().execute(hitProjector);
             if(captureTicks==95)subject=assemblySubject;
-            if(captureTicks<110||!thirdHitChecked)return;
-            Screenshot.grab(client.gameDirectory,"jak-assemblies.png",client.gameRenderer.mainRenderTarget(),1,_->{});
+            if(captureTicks==110)
+                Screenshot.grab(client.gameDirectory,"jak-assemblies.png",client.gameRenderer.mainRenderTarget(),1,_->{});
+            if(captureTicks==118)subject=foliageSubject;
+            if(captureTicks==134)
+                Screenshot.grab(client.gameDirectory,"jak-facade.png",client.gameRenderer.mainRenderTarget(),1,_->{});
+            if(captureTicks==141)client.getSingleplayerServer().execute(removeWallSupport);
+            if(captureTicks<158||!thirdHitChecked||!wallChecked)return;
             result.getAsJsonObject("actions").addProperty("projector_break_effect",burstDrawn&&JakEffects.drawnProjectorVertices==0);
             result.getAsJsonObject("actions").addProperty("original_fire_vertices",JakEffects.drawnBarrelVertices>0);
             boolean complete=result.getAsJsonObject("actions").entrySet().stream().allMatch(e->e.getValue().getAsBoolean());
@@ -62,7 +69,8 @@ final class MaterialScene {
 
     static InputScene.CameraView camera(){
         if(result==null||subject==null)return null;
-        Vec3 pos=captureTicks>=95?subject.add(4.2,2.7,-6):subject.add(2.7,2.2,-3.6);
+        Vec3 pos=captureTicks>=118?subject.add(4,2,8):
+            captureTicks>=95?subject.add(4.2,2.7,-6):subject.add(2.7,2.2,-3.6);
         Vec3 look=subject.subtract(pos);
         return new InputScene.CameraView(pos,(float)Math.toDegrees(Math.atan2(-look.x,look.z)),
             (float)-Math.toDegrees(Math.atan2(look.y,look.horizontalDistance())));
@@ -72,6 +80,7 @@ final class MaterialScene {
         if(client.getSingleplayerServer()==null||client.player==null)throw new IllegalStateException("Open the development world");
         captureTicks=0;
         thirdHitChecked=false;
+        wallChecked=false;
         burstDrawn=false;
         var server=client.getSingleplayerServer();
         var uuid=client.player.getUUID();
@@ -105,9 +114,14 @@ final class MaterialScene {
             var initialProjector=level.getBlockState(projectorPos);
             var urnPos=base.west(3);
             var palmPos=base.offset(0,0,8);
+            var vines=base.offset(-9,6,1);
             var assemblySnapshot=new java.util.LinkedHashMap<BlockPos,net.minecraft.world.level.block.state.BlockState>();
             for(int x=-5;x<=5;x++)for(int z=3;z<=13;z++)for(int y=-1;y<=5;y++){
                 var cell=base.offset(x,y,z);
+                assemblySnapshot.put(cell,level.getBlockState(cell));
+            }
+            for(int x=-4;x<=4;x++)for(int y=-6;y<=0;y++)for(int z=-1;z<=2;z++){
+                var cell=vines.offset(x,y,z);
                 assemblySnapshot.put(cell,level.getBlockState(cell));
             }
             for(int y=-1;y<=1;y++)assemblySnapshot.put(urnPos.above(y),level.getBlockState(urnPos.above(y)));
@@ -210,8 +224,34 @@ final class MaterialScene {
                 tests.addProperty("palm_complete",palmPlaced&&palmCells==73&&p.getItemInHand(hand).getCount()==1);
                 tests.addProperty("palm_soft_leaf_solid_trunk",softCells>0
                     &&!level.getBlockState(palmPos).getCollisionShape(level,palmPos).isEmpty());
+                var foliage=JakBlocks.BLOCKS.get("objeto_haven_colgante_1");
+                var wall=JakBlocks.BLOCKS.get("barrio_losa").defaultBlockState();
+                for(int x=-4;x<=4;x++)for(int y=-6;y<=0;y++)for(int z=-1;z<=2;z++)
+                    level.setBlockAndUpdate(vines.offset(x,y,z),z==-1?wall:Blocks.AIR.defaultBlockState());
+                p.setItemInHand(hand,new ItemStack(foliage,2));
+                boolean hung=use(p,vines.north(),Direction.SOUTH,Vec3.atCenterOf(vines.north()).add(0,0,.5));
+                var roots=level.getBlockState(vines);
+                long vineCells=assemblySnapshot.keySet().stream()
+                    .filter(at->level.getBlockState(at).getBlock().asItem()==foliage.asItem()).count();
+                tests.addProperty("wall_foliage_native",hung&&roots.is(foliage)&&vineCells==61
+                    &&roots.getValue(BlockStateProperties.HORIZONTAL_FACING)==Direction.NORTH
+                    &&roots.getCollisionShape(level,vines).isEmpty()&&p.getItemInHand(hand).getCount()==1);
+                removeWallSupport=()->{
+                    level.setBlockAndUpdate(vines.north(),Blocks.AIR.defaultBlockState());
+                    boolean cleared=assemblySnapshot.keySet().stream()
+                        .noneMatch(at->level.getBlockState(at).getBlock().asItem()==foliage.asItem());
+                    var drops=level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+                        new net.minecraft.world.phys.AABB(vines).inflate(2),item->item.getItem().is(foliage.asItem()));
+                    int count=drops.stream().mapToInt(item->item.getItem().getCount()).sum();
+                    drops.forEach(net.minecraft.world.entity.Entity::discard);
+                    client.execute(()->{
+                        tests.addProperty("wall_foliage_loses_support",cleared&&count==1);
+                        wallChecked=true;
+                    });
+                };
                 p.setItemInHand(hand,new ItemStack(tray));
                 assemblySubject=Vec3.atBottomCenterOf(palmPos).add(0,2,0);
+                foliageSubject=Vec3.atCenterOf(vines).add(0,-2.7,0);
 
                 int[] hitCount={0};
                 hitProjector=()->{
@@ -244,7 +284,11 @@ final class MaterialScene {
 
     private static boolean use(ServerPlayer player,BlockPos clicked,double height){
         var location=new Vec3(clicked.getX()+.5,clicked.getY()+height,clicked.getZ()+.5);
-        var hit=new BlockHitResult(location,Direction.UP,clicked,false);
+        return use(player,clicked,Direction.UP,location);
+    }
+
+    private static boolean use(ServerPlayer player,BlockPos clicked,Direction direction,Vec3 location){
+        var hit=new BlockHitResult(location,direction,clicked,false);
         return player.getItemInHand(InteractionHand.MAIN_HAND).getItem()
             .useOn(new UseOnContext(player,InteractionHand.MAIN_HAND,hit)).consumesAction();
     }
