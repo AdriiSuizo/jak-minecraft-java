@@ -1,0 +1,64 @@
+{
+  "route": "Original guest material/kinematics through native Minecraft ItemEntity lifecycle; no second collectible or render-owned inventory",
+  "source_files": [
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\assets\\src\\jak_model.rs",
+      "sha256": "898110b68ba22366fc4ee8181ae552de19c0262c2590e2671f693ca0e1661970"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak_skull_gems.rs",
+      "sha256": "4381e68d99ce676960188fbc868a7f67f82a902973b5c9ab55f656a65fc7994c"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak.rs",
+      "sha256": "5df4a2f29a58aefac36d1da4778a2d055e49760216dd7c43f071ceb0af19b39a"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak_enemies.rs",
+      "sha256": "d993c49d043fe479e23c3ac242f52e002ae1fca0222874c31435ea7d9b74c410"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\third_party\\minecraftoss\\core\\src\\mashup_skull_gem.rs",
+      "sha256": "ae9736898c2cab764e59d98b7659f33cce2926dbe9da1de95f3eff1aab2f7cc2"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Documents\\Jak OpenGOAL\\active\\jak3\\data\\goal_src\\jak3\\engine\\common-obs\\collectables.gc",
+      "sha256": "e899661ffddde13b46eb21a2bfb87693ad43a35e7e8f77533fd80909b936fb73"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Documents\\Jak OpenGOAL\\active\\jak3\\data\\goal_src\\jak3\\engine\\common-obs\\collectables-part.gc",
+      "sha256": "1cb859ad3c13009d3b145c158bd90e402904218d6941e83570c8e04aecffac4e"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Documents\\Jak OpenGOAL\\active\\jak3\\data\\goal_src\\jak3\\engine\\gfx\\texture\\texture-anim-tables.gc",
+      "sha256": "f1e59c289ecc0bc68f594d51456c0389c6e39684b705293a383194392cf33f87"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Documents\\Jak OpenGOAL\\active\\jak3\\data\\goal_src\\jak3\\engine\\game\\fact-h.gc",
+      "sha256": "287128da64f29860c0a5dc9f65777268433a4bb2d766530767f50e1da0416fd5"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Documents\\Jak OpenGOAL\\active\\jak3\\data\\goal_src\\jak3\\engine\\game\\game-info.gc",
+      "sha256": "42d5122d56da77a8d82e940e0b56d46d2ba039b140a3408b9b08a447b2be9bee"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Documents\\Jak OpenGOAL\\active\\jak3\\data\\decompiler_out\\jak3\\textures\\level-default-tfrag\\skull-gem-alpha-00.png",
+      "sha256": "78f89041ce7f6ef4123d71b78aaf38064fc8736f304afce29e826c87c2007238"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Documents\\Jak OpenGOAL\\active\\jak3\\data\\decompiler_out\\jak3\\textures\\level-default-tfrag\\skull-gem-alpha-01.png",
+      "sha256": "84c7066c6647ff2fbfb484bb43e3e8e2d677df90285d0405b1ebeea53b5b2f48"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Documents\\Jak OpenGOAL\\active\\jak3\\data\\decompiler_out\\jak3\\textures\\level-default-tfrag\\skull-gem-alpha-02.png",
+      "sha256": "fc2cf3bc5442da67eeeef73e26239a3db2dde3f963a7a8e1ebf93fb019cf9ab8"
+    }
+  ],
+  "material_oracle": {
+    "frames": 60,
+    "pixels_per_frame": 4096,
+    "max_channel_error": 1,
+    "channels_differing": 4
+  },
+  "host": "Exact installed Minecraft 26.3 source jars: ItemEntity, ItemEntityRenderer, ClientPacketListener, EntityDataSerializers and native lightmap/fog shader interface; no renderer/physics code copied from other projects"
+}
