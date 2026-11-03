@@ -23,8 +23,8 @@ public final class GltfItemRenderer implements SpecialModelRenderer<Void> {
     public static void initialize(){SpecialModelRenderers.ID_MAPPER.put(JakData.id("gltf"),Unbaked.CODEC);}
     @Override public Void extractArgument(ItemStack item){return null;}
     private GltfModel model(){return MODELS.computeIfAbsent(file,name->{
-            if(!name.matches("[a-z0-9_+.-]+\\.glb"))throw new IllegalArgumentException("Invalid original model name");
-            try{return new GltfModel(RuntimeConfig.assets.resolve("levels/common").resolve(name),"item_"+name.replace(".glb",""));}
+            if(!name.matches("(?:[a-z0-9_-]+/)?[a-z0-9_+.-]+\\.glb"))throw new IllegalArgumentException("Invalid original model name");
+            try{var path=name.contains("/")?name:"common/"+name;return new GltfModel(RuntimeConfig.assets.resolve("levels").resolve(path),"item_"+name.replace('/','_').replace(".glb",""));}
             catch(java.io.IOException e){throw new IllegalStateException("Original item model missing: "+name,e);}
         });}
     private GltfModel.Posed pose(GltfModel model){if(fixedPose==null){fixedPose=clip.isEmpty()?model.pose("",0):model.poseAtTime(clip,Float.MAX_VALUE);model.prepare(fixedPose);}return fixedPose;}

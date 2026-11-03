@@ -113,3 +113,7 @@ Native Minecraft creature and desert spawn, original mounted physics, Jak/Daxter
 ## 2026-11-03 — Jak 1 Flut Flut
 
 Added the native wild creature, taming, saddle, plumage, laying and incubation, plus the original bare and saddled meshes, retargeted rider animation and original eye layers. Verified the mount and hatch paths in the real game. Exact acceptance and limitations in docs/CURRENT-PORT-HANDOFF.md.
+
+## 2026-11-03 — blue KG HellCat
+
+Persistent native hull, analog source flight and weapon solver, original rider clips, mesh-derived deck, authored damage panels, lamps, flames and audio. Triangle dismount retains the hovering engine and lamps until a real hit. Evidence and known gaps in docs/CURRENT-PORT-HANDOFF.md.

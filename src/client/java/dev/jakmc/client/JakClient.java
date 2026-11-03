@@ -29,6 +29,7 @@ public final class JakClient implements ClientModInitializer {
   dev.jakmc.client.model.JakShotRenderer.initialize();
   dev.jakmc.client.model.JakEnemyRenderer.initialize();
   dev.jakmc.client.model.JakLeaperRenderer.initialize();
+  dev.jakmc.client.model.HellcatRenderer.initialize();
   net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(
       dev.jakmc.entity.JakFlutEgg.TYPE,dev.jakmc.client.model.JakFlutEggRenderer::new);
   net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(dev.jakmc.network.JakPackets.Pose.TYPE,(p,c)->JakPoses.receive(p));

@@ -57,8 +57,14 @@ public final class MinecraftCollision {
             if(shape==net.minecraft.world.phys.shapes.Shapes.block()){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z);}
             else if(!shape.isEmpty())shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->boxes.add(x0+x-origin.x,y0+y-origin.y,z0+z-origin.z,x1+x-origin.x,y1+y-origin.y,z1+z-origin.z));
         }
-        int bytes=Math.multiplyExact(boxes.used/6,480);ByteBuffer data=arena==null?NativeJak.buffer(bytes):arena.acquire(bytes);
-        for(int i=0;i<boxes.used;i+=6)box(data,boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);return data;
+        var decks=level.getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,region.inflate(4),
+            deck->deck!=actor&&!deck.wrecked()&&(actor==null||deck.pilotId()!=actor.getId()));
+        int bytes=Math.multiplyExact(boxes.used/6,480);
+        int capacity=decks.isEmpty()?bytes:Math.addExact(bytes,Math.multiplyExact(decks.size(),dev.jakmc.entity.JakHellcat.deckCapacity()));
+        ByteBuffer data=arena==null?NativeJak.buffer(capacity):arena.acquire(capacity);
+        for(int i=0;i<boxes.used;i+=6)box(data,boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);
+        for(var deck:decks)deck.appendDeck(origin,region,data);
+        return data.slice(0,data.position()).order(java.nio.ByteOrder.LITTLE_ENDIAN);
     }
     private static void box(ByteBuffer b,float x,float y,float z,float X,float Y,float Z){
         face(b,0,x,Y,z,x,Y,Z,X,Y,Z,X,Y,z);
@@ -72,7 +78,10 @@ public final class MinecraftCollision {
     private static void triangle(ByteBuffer b,int flags,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz){b.putFloat(ax).putFloat(ay).putFloat(az).putFloat(bx).putFloat(by).putFloat(bz).putFloat(cx).putFloat(cy).putFloat(cz).putInt(flags);}
     public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region){return actors(level,owner,origin,region,null);}
     public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region,DirectBufferArena arena) {
-        var entities=level.getEntities(owner,region,e->e.isAlive()&&e.isPickable()&&(!(e instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()!=owner.getId()));
+        return actors(level,owner,origin,region,arena,e->true);
+    }
+    public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region,DirectBufferArena arena,java.util.function.Predicate<Entity> extra) {
+        var entities=level.getEntities(owner,region,e->e.isAlive()&&e.isPickable()&&extra.test(e)&&(!(e instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()!=owner.getId()));
         ByteBuffer data=arena==null?NativeJak.buffer(entities.size()*32):arena.acquire(entities.size()*32);
         for(Entity e:entities){AABB b=e.getBoundingBox().move(-origin.x,-origin.y,-origin.z);data.putLong(e.getId());
             data.putFloat((float)b.minX).putFloat((float)b.minY).putFloat((float)b.minZ);

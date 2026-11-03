@@ -20,11 +20,13 @@ abstract class JakAimCrosshairMixin {
         var client=Minecraft.getInstance();
         var player=client.player;
         if(player==null||player.isSpectator()||!dev.jakmc.player.JakPlayers.active(player)||
-            !(client.hitResult instanceof EntityHitResult hit)||
-            !(hit.getEntity() instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()>=0||!mount.readyToMount()||
-            player.distanceToSqr(mount)>16)return;
+            !(client.hitResult instanceof EntityHitResult hit))return;
         var pose=dev.jakmc.client.JakPoses.get(player.getId());
-        if(pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject)return;
+        if(pose!=null&&(pose.raw().get("ride") instanceof com.google.gson.JsonObject||pose.raw().has("hellcat")))return;
+        boolean ready=hit.getEntity() instanceof dev.jakmc.entity.JakLeaper mount&&mount.riderId()<0&&
+            mount.readyToMount()&&player.distanceToSqr(mount)<=16;
+        if(hit.getEntity() instanceof dev.jakmc.entity.JakHellcat cat)ready=cat.canBoard(player,hit.getLocation());
+        if(!ready)return;
         var label=Component.translatable(JakInput.controller().id()!=0?"hint.jakmc.leaper_pad":"hint.jakmc.leaper_mouse");
         graphics.nextStratum();
         graphics.text(client.font,label,(graphics.guiWidth()-client.font.width(label))/2,

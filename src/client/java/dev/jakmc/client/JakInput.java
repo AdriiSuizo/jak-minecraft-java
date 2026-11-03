@@ -28,7 +28,7 @@ public final class JakInput {
     private enum Trigger { BOARD, FIRE, USE, PLACE, MINE, RESERVED }
     private static long lastFrame;
     private static int controllerId;
-    private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower;
+    private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower,vehicleUseLock;
     private static Trigger trigger;
     private static final dev.jakmc.client.input.SdlGamepad GAMEPAD=new dev.jakmc.client.input.SdlGamepad();
     private static dev.jakmc.client.input.SdlGamepad.State pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
@@ -110,6 +110,20 @@ public final class JakInput {
             int held=next.held()&~suppressed;
             int edges=held&~physicalHeld;
             var pose=JakPoses.get(c.player.getId());
+            boolean flying=pose!=null&&pose.raw().has("hellcat");
+            if((held&TRIANGLE)==0)vehicleUseLock=false;
+            if(flying){
+                vehicleUseLock|=(held&TRIANGLE)!=0;
+                useHeld=attackHeld=aiming=false;
+                useClicked=attackClicked=false;
+                trigger=null;
+                pressedPad|=edges;
+                pad=new dev.jakmc.client.input.SdlGamepad.State(next.id(),next.name(),held,next.system(),
+                    next.leftX(),next.leftY(),next.rightX(),next.rightY(),next.brake(),next.throttle());
+                physicalHeld=next.held();
+                physicalSystem=next.system();
+                return;
+            }
             boolean board=pose!=null&&pose.board();
             boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
             boolean powers=(held&R3)!=0||DARK.isDown()||LIGHT.isDown();
@@ -125,7 +139,7 @@ public final class JakInput {
             else if(trigger!=wanted)trigger=Trigger.RESERVED;
             boolean useTrigger=trigger==Trigger.USE||trigger==Trigger.PLACE&&aiming;
             boolean mineTrigger=trigger==Trigger.MINE;
-            boolean triangle=(held&TRIANGLE)!=0&&!powers&&(!mounted||useWhileMounted(c));
+            boolean triangle=(held&TRIANGLE)!=0&&!vehicleUseLock&&!powers&&(!mounted||useWhileMounted(c));
             useHeld=triangle||useTrigger;
             attackHeld=mineTrigger;
             useClicked|=triangle&&(edges&TRIANGLE)!=0||useTrigger&&(edges&R2)!=0;
@@ -179,7 +193,15 @@ public final class JakInput {
             int viewFlags=client.options.getCameraType().isFirstPerson()?JakPackets.FIRST_PERSON:0;
             if(blocked||cancelPower)viewFlags|=JakPackets.CANCEL_POWER;
             cancelPower=false;
-            if(ClientPlayNetworking.canSend(JakPackets.Input.TYPE))ClientPlayNetworking.send(new JakPackets.Input(++sequence,held|viewFlags,pressed,strafe,forward,pad.rightX(),pad.rightY(),client.player.getYRot(),client.player.getXRot(),blocked?0:pad.brake(),blocked?0:pad.throttle()));
+            var pose=JakPoses.get(client.player.getId());
+            boolean flying=pose!=null&&pose.raw().has("hellcat");
+            float brake=blocked?0:pad.brake(),throttle=blocked?0:pad.throttle();
+            if(flying&&!blocked&&pad.id()==0){
+                brake=client.options.keyDown.isDown()?1:0;
+                throttle=client.options.keyUp.isDown()?1:0;
+                forward=0;
+            }
+            if(ClientPlayNetworking.canSend(JakPackets.Input.TYPE))ClientPlayNetworking.send(new JakPackets.Input(++sequence,held|viewFlags,pressed,strafe,forward,pad.rightX(),pad.rightY(),client.player.getYRot(),client.player.getXRot(),brake,throttle));
         });
     }
     static int held(Minecraft client){

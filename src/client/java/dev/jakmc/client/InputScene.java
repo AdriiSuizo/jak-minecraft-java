@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Replay through real SDL → normal client input → packets → server Jak; no probeInput. */
 public final class InputScene {
- private static boolean running,interactions,powers,leaper;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
+ private static boolean running,interactions,powers,leaper,hellcat;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
  private static long deviceDeadline;private static Vec3 start,ecoCenter;private static double peak,walk;private static float yawStart,yawAfter;
  private static final Set<String> STATES=new TreeSet<>();private static final Set<UUID> ITEMS=new HashSet<>();
  public record CameraView(Vec3 position,float yaw,float pitch){}
@@ -26,7 +26,7 @@ public final class InputScene {
  private static void start(Minecraft c,boolean outdoor){
   if(running||c.player==null||c.getSingleplayerServer()==null)throw new IllegalStateException("Open the isolated dev world");
   output=c.gameDirectory.toPath().resolve("jakmc/evidence/input");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
-  interactions=powers=leaper=false;ACTIONS.entrySet().clear();VIEWS.clear();
+  interactions=powers=leaper=hellcat=false;ACTIONS.entrySet().clear();VIEWS.clear();
   start=c.player.position().add(7,0,0);tick=0;peak=0;walk=0;STATES.clear();ITEMS.clear();view=null;ecoCenter=null;
   c.gui.setScreen(null);c.options.setCameraType(CameraType.THIRD_PERSON_BACK);c.player.setYRot(0);c.player.setXRot(10);yawStart=0;yawAfter=0;
   pad=new SdlVirtualPad();deviceDeadline=System.nanoTime()+5_000_000_000L;running=true;var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{
@@ -49,6 +49,137 @@ public final class InputScene {
   });
  }
  public static void startInteractions(Minecraft c){start(c);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
+ private static volatile int hellcatId;
+ private static int hellcatBoardPress,hellcatMountedAt,hellcatEntryImage,hellcatOffAt;
+ private static boolean hellcatBoarding,hellcatNight,hellcatLeftPowered,hellcatKickedOff,hellcatShot;
+ private static volatile boolean hellcatPlaced,hellcatSaved;
+ private static Vec3 hellcatStart;
+ private static double hellcatClimb,hellcatHalfThrottle,hellcatFullThrottle;
+ public static void startHellcat(Minecraft c){
+  start(c,true);
+  hellcat=true;
+  hellcatId=-1;
+  hellcatBoardPress=hellcatMountedAt=hellcatEntryImage=hellcatOffAt=0;
+  hellcatBoarding=hellcatNight=hellcatLeftPowered=hellcatKickedOff=hellcatShot=false;
+  hellcatPlaced=hellcatSaved=false;
+  hellcatStart=null;
+  hellcatClimb=hellcatHalfThrottle=hellcatFullThrottle=0;
+  pauseOnLostFocus=c.options.pauseOnLostFocus;c.options.pauseOnLostFocus=false;
+  output=c.gameDirectory.toPath().resolve("jakmc/evidence/hellcat");
+  try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
+  onServer(c,p->{
+   var server=p.level().getServer();
+   server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"time set midnight");
+   var hand=net.minecraft.world.InteractionHand.MAIN_HAND;
+   var floor=net.minecraft.core.BlockPos.containing(start).offset(0,-1,4);
+   var at=Vec3.atBottomCenterOf(floor.above());
+   var hit=new net.minecraft.world.phys.BlockHitResult(at,net.minecraft.core.Direction.UP,floor,false);
+   p.setItemInHand(hand,new ItemStack(dev.jakmc.entity.JakHellcat.ITEM));
+   var context=new net.minecraft.world.item.context.UseOnContext(p,hand,hit);
+   hellcatPlaced=dev.jakmc.entity.JakHellcat.ITEM.useOn(context).consumesAction();
+   p.setItemInHand(hand,ItemStack.EMPTY);
+   for(var craft:p.level().getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,
+       new net.minecraft.world.phys.AABB(at,at).inflate(2),e->true)){
+    ITEMS.add(craft.getUUID());hellcatId=craft.getId();
+   }
+  });
+ }
+ private static void hellcatActions(Minecraft c){
+  int t=++tick;
+  var e=c.level.getEntity(hellcatId);
+  if(!(e instanceof dev.jakmc.entity.JakHellcat cat)){
+   if(t>=220)finish(c,"HellCat entity missing");
+   return;
+  }
+  view=null;
+  var pose=JakPoses.get(c.player.getId());
+  var channel=pose!=null&&pose.raw().get("hellcat") instanceof JsonObject flight?flight:null;
+  if(t==14)c.gui.hud.getChat().clearMessages(false);
+  if(t==16)capture(c,"hellcat-idle.png");
+  if(t>=20&&channel==null&&hellcatMountedAt==0){
+   aimAt(c,cat.position().add(0,.55,0));
+   if((hellcatBoardPress==0||t>hellcatBoardPress+10)&&t<90
+    &&c.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit&&hit.getEntity()==cat)hellcatBoardPress=t+1;
+  }
+  if(channel!=null){
+   if(channel.get("boarding").getAsFloat()>=0){
+    if(!hellcatBoarding)hellcatEntryImage=t+4;
+    hellcatBoarding=true;
+   }else if(hellcatMountedAt==0){
+    hellcatMountedAt=t;
+    hellcatStart=cat.position();
+   }
+  }
+  int ride=hellcatMountedAt==0?-1:t-hellcatMountedAt;
+  if(ride>=65&&channel==null&&hellcatOffAt==0)hellcatOffAt=t;
+  int off=hellcatOffAt==0?-1:t-hellcatOffAt;
+  if(t==hellcatEntryImage)capture(c,"hellcat-entry.png");
+  pad.axis(5,ride>=10&&ride<27?0:ride>=27&&ride<65?1:-1);
+  pad.axis(1,ride>=28&&ride<40?.75f:0);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,ride>=51&&ride<55);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,ride>=58&&ride<63);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,(hellcatBoardPress>0&&t>=hellcatBoardPress&&t<hellcatBoardPress+3&&ride<0)
+   ||channel!=null&&ride>=69&&ride<105&&(ride-69)%12<5);
+  if(channel!=null){
+   hellcatNight|=cat.lamps()>.95;
+   if(ride>=0){
+    walk=Math.max(walk,cat.position().subtract(hellcatStart).horizontalDistance());
+    hellcatClimb=Math.max(hellcatClimb,cat.getY()-hellcatStart.y);
+    double throttle=channel.get("throttle").getAsDouble();
+    if(ride>=13&&ride<26)hellcatHalfThrottle=Math.max(hellcatHalfThrottle,throttle);
+    if(ride>=39&&ride<62)hellcatFullThrottle=Math.max(hellcatFullThrottle,throttle);
+   }
+  }
+  if(ride>=32&&ride<=36){
+   var at=cat.position();
+   look(at.add(6,3,4),at.add(0,.7,0));
+   if(ride==36)capture(c,"hellcat-flight.png");
+  }
+  if(off>=3&&off<=15&&channel==null){
+   hellcatLeftPowered|=cat.lamps()>.95&&cat.thrust()>0;
+   var at=cat.position();
+   look(at.add(5,2.7,-4),at);
+   if(off==8)capture(c,"hellcat-left-powered.png");
+  }
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,off>=17&&off<22||off>=32&&off<37);
+  if(off>=16&&off<=45&&channel==null){
+   aimAt(c,cat.position().subtract(Vec3.directionFromRotation(0,cat.getYRot()).scale(.65)));
+   var at=cat.position();
+   look(at.add(5,2.7,-4),at);
+   hellcatKickedOff|=cat.lamps()<.05&&cat.thrust()<.05;
+   if(off==42)capture(c,"hellcat-kicked.png");
+  }
+  if(off==14)onServer(c,p->{
+   if(p.level().getEntity(hellcatId) instanceof dev.jakmc.entity.JakHellcat target){
+    var reporter=net.minecraft.util.ProblemReporter.DISCARDING;
+    var output=net.minecraft.world.level.storage.TagValueOutput.createWithContext(reporter,target.registryAccess());
+    target.saveWithoutId(output);
+    var saved=output.buildResult();
+    var copy=dev.jakmc.entity.JakHellcat.TYPE.create(p.level(),net.minecraft.world.entity.EntitySpawnReason.LOAD);
+    copy.load(net.minecraft.world.level.storage.TagValueInput.create(reporter,copy.registryAccess(),saved));
+    hellcatSaved=copy.pilotId()<0&&copy.position().distanceToSqr(target.position())<.001&&saved.getIntOr("HullFlags",0)==2;
+   }
+  });
+  if(t>=235){
+   ACTIONS.addProperty("item_placed",hellcatPlaced);
+   ACTIONS.addProperty("native_save_roundtrip",hellcatSaved);
+   ACTIONS.addProperty("actual_entry_clip",hellcatBoarding&&hellcatMountedAt>0);
+   ACTIONS.addProperty("analog_throttle",hellcatHalfThrottle>.3&&hellcatHalfThrottle<.65&&hellcatFullThrottle>.9);
+   ACTIONS.addProperty("flight",walk>6&&hellcatClimb>1);
+   ACTIONS.addProperty("night_lamps",hellcatNight);
+   ACTIONS.addProperty("air_dismount_powered",hellcatLeftPowered);
+   ACTIONS.addProperty("kick_extinguishes",hellcatKickedOff);
+   ACTIONS.addProperty("nose_gun",hellcatShot);
+   peak=hellcatClimb;
+   STATES.add("dismount="+hellcatOffAt);
+   STATES.add("half="+hellcatHalfThrottle);
+   STATES.add("full="+hellcatFullThrottle);
+   finish(c,ACTIONS.entrySet().stream().allMatch(a->a.getValue().getAsBoolean())?"complete":"HellCat assertion failed");
+  }
+ }
+ public static void observeHellcatEvent(String kind){
+  if(running&&hellcat&&kind.equals("fire"))hellcatShot=true;
+ }
  private static UUID leaperId;
  private static boolean flut;
  private static volatile boolean tameSaddle,eggPlaced,eggHatched;
@@ -437,6 +568,7 @@ public final class InputScene {
   // to open the device at rest, as SDL calibrates virtual triggers on open.
   if(!JakInput.controllerReady(pad.id)){if(System.nanoTime()>deviceDeadline)finish(c,"SDL replay device not opened");return;}
   if(powers){powerActions(c);return;}
+  if(hellcat){hellcatActions(c);return;}
   if(leaper){leaperActions(c);return;}
   if(interactions){actions(c);return;}
   int t=++tick;
@@ -470,7 +602,7 @@ public final class InputScene {
  private static void capture(Minecraft c,String file){Screenshot.grab(c.gameDirectory,file,c.gameRenderer.mainRenderTarget(),1,m->{});}
  private static void finish(Minecraft c,String reason){
   if(powers||leaper)c.options.pauseOnLostFocus=pauseOnLostFocus;
-  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason","interaction assertion failed");}
+  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper||hellcat){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason",reason.equals("complete")?"interaction assertion failed":reason);}
   result.addProperty("jak_actions_reached",STATES.containsAll(Set.of("double-jump","roll","attack","board-stance")));
   try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
   if(c.getSingleplayerServer()!=null){var server=c.getSingleplayerServer();server.execute(()->{for(UUID id:ITEMS){var item=server.overworld().getEntity(id);if(item!=null)item.discard();}});}c.stop();

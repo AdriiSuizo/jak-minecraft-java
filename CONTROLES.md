@@ -49,3 +49,8 @@ Aparece en el desierto y también está disponible en la pestaña de criaturas d
 El lagarto aparece en desiertos. El Flut Flut aparece en pantanos y manglares. Ambos tienen su huevo generador en la pestaña de criaturas de Jak.
 
 Alimenta al Flut Flut con semillas, inténtalo domar con Triángulo o clic derecho con la mano vacía y colócale una montura. Los huevos que ponen los adultos se pueden recoger y colocar para incubarlos. Al montar, X salta y vuelve a saltar en el aire, Cuadrado ejecuta el golpe de la montura en el aire y Triángulo permite usar una puerta o desmontar. Con teclado, usa Espacio para saltar, G para el golpe y F para interactuar o desmontar.
+
+
+## HellCat
+
+Coloca el HellCat desde la pestaña de equipamiento de Jak y acércate al casco. Triángulo o clic derecho inicia la animación de subida. Ya sentado, R2 acelera y L2 frena y da marcha atrás. El stick izquierdo orienta el morro. X y Cuadrado hacen girar la nave sobre su eje en sentidos opuestos. Círculo activa el turbo mientras aceleras. R1 dispara el cañón y L1 el torpedo. Triángulo desmonta y deja la nave flotando con el motor encendido. Un golpe apaga el motor y las luces. Con teclado, W/S controlan aceleración y freno, y F desmonta.

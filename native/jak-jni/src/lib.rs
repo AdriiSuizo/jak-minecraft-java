@@ -16,6 +16,7 @@ mod audio;
 mod jak_steps;
 mod particle_subset;
 mod effects;
+mod hellcat_host;
 static RIDE_ART: OnceLock<HashMap<String, art_group::ArtAnim>> = OnceLock::new();
 static ANIMS:OnceLock<Arc<jak_core::anim::Anims>>=OnceLock::new();
 
@@ -196,7 +197,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
     }));
    }
   }
-  let ride_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-"))
+  let ride_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-")||name.starts_with("jakb-pilot-car-")||name.starts_with("daxter-pilot-car-"))
    .map(|(name,art)|(name.clone(),art.clone())).collect();
   RIDE_ART.set(ride_art).map_err(|_|"riding art configuration raced")?;
   let rows:Vec<_>=authored.iter().filter_map(|(name,a)|{
@@ -219,6 +220,19 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_rebase(mut env:JNIEnv,_:JClass,id:jlong,x:f32,y:f32,z:f32){
  protect(&mut env,||{let delta=Vec3::new(x,y,z)*BLOCK;if !delta.is_finite(){return Err("nonfinite rebase".into());}
   lock_sessions()?.live.get_mut(&(id as u64)).ok_or("stale session")?.jak.reframe(Quat::IDENTITY,-delta);Ok(())});
+}
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_relocate(mut env:JNIEnv,_:JClass,id:jlong,x:f32,y:f32,z:f32,vx:f32,vy:f32,vz:f32){
+ protect(&mut env,|| {
+  let at=Vec3::new(x,y,z)*BLOCK;
+  let velocity=Vec3::new(vx,vy,vz)*BLOCK;
+  if !at.is_finite()||!velocity.is_finite(){return Err("nonfinite rider exit".into());}
+  let mut sessions=lock_sessions()?;
+  let jak=&mut sessions.live.get_mut(&(id as u64)).ok_or("stale session")?.jak;
+  jak.relocate(at);
+  jak.control.transv=velocity;
+  Ok(())
+ });
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_destroy(mut env:JNIEnv,_:JClass,id:jlong){

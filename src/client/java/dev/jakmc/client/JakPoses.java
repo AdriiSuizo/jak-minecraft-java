@@ -41,6 +41,9 @@ public final class JakPoses {
         JakSounds.receive(p.entityId(),origin,json);
         JakEffects.receive(p.entityId(),origin,json);
         InputScene.observeMountEvents(p.entityId(),json);
+        if(client.player!=null&&client.player.getId()==p.entityId()&&json.get("hellcat") instanceof JsonObject flight&&flight.has("fired")){
+            InputScene.observeHellcatEvent("fire");
+        }
         PortScene.observe(p.entityId(),json);
         if(client.player!=null&&client.player.getId()==p.entityId()){
             client.player.setPos(position);client.player.setDeltaMovement(Vec3.ZERO);

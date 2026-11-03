@@ -4,6 +4,7 @@ import com.google.gson.*;
 import dev.jakmc.*;
 import dev.jakmc.content.JakItems;
 import dev.jakmc.entity.JakLeaper;
+import dev.jakmc.entity.JakHellcat;
 import dev.jakmc.nativebridge.*;
 import dev.jakmc.network.JakPackets;
 import java.nio.ByteBuffer;
@@ -36,6 +37,13 @@ public final class JakPlayers {
         long lastInput;
         float entityRate=1;
         JakLeaper mount;
+        JakHellcat craft;
+        Vec3 boardingStart;
+        int boardingTicks;
+        void releaseCraft(){
+            if(craft!=null)craft.release();
+            craft=null;
+        }
         boolean mountReleased;
         Vec3 mountHit;
         void releaseMount(){
@@ -44,7 +52,7 @@ public final class JakPlayers {
             mountReleased=false;
         }
         Session(ServerPlayer player){nativeId=NativeJak.create(player.getYRot());origin=player.position();last=origin;dimension=player.level().dimension().identifier().toString();collision=new MinecraftCollision.Query(player.level(),player,origin);NativeJak.bindWorld(nativeId,collision);}
-        public void close(){releaseMount();NativeJak.destroy(nativeId);}
+        public void close(){releaseMount();releaseCraft();NativeJak.destroy(nativeId);}
     }
     public static boolean active(Entity player){return player.getAttachedOrCreate(JakData.ENABLED)&&!player.isPassenger()&&player.isAlive();}
     public static void input(ServerPlayer player,JakPackets.Input input){
@@ -59,11 +67,21 @@ public final class JakPlayers {
             !mount.isAlive()||!mount.readyToMount()||mount.level()!=player.level()||player.distanceToSqr(mount)>16||
             !player.hasLineOfSight(mount))return false;
         var session=LIVE.computeIfAbsent(player.getUUID(),id->new Session(player));
-        if(session.mount!=null)return false;
+        if(session.mount!=null||session.craft!=null)return false;
         Vec3 at=mount.position().subtract(session.origin);
         NativeJak.mountControl(session.nativeId,0,(float)at.x,(float)at.y,(float)at.z,mount.getYRot());
         session.mount=mount;
         mount.reserve(player);
+        return true;
+    }
+    public static boolean boardHellcat(ServerPlayer player,JakHellcat craft){
+        if(!active(player)||player.isSleeping()||craft.pilotId()>=0)return false;
+        var s=LIVE.computeIfAbsent(player.getUUID(),id->new Session(player));
+        if(s.craft!=null||s.mount!=null)return false;
+        s.craft=craft;
+        s.boardingStart=player.position();
+        s.boardingTicks=0;
+        craft.reserve(player);
         return true;
     }
     public static void mountHit(ServerPlayer player,JakLeaper mount,Vec3 at){
@@ -120,6 +138,20 @@ public final class JakPlayers {
         var input=controlled?PROBE_INPUT.get(p.getUUID()):s.input;
         boolean fresh=controlled||p.level().getGameTime()-s.lastInput<=5;
         int edges=fresh?(controlled?input.pressed():s.pressed):0;
+        JsonObject flight=null;
+        if(s.craft!=null){
+            boolean missing=s.craft.isRemoved()||s.craft.level()!=p.level();
+            boolean forced=missing||s.craft.wrecked();
+            boolean leaving=forced||((edges&8)!=0&&s.boardingTicks>=14);
+            Vec3 exit=leaving&&!missing?s.craft.exit(p.level()):null;
+            if(forced||exit!=null){
+                s.releaseCraft();
+                relocate(s,exit==null?p.position():exit,new Vec3(0,1.92,0));
+            }else{
+                ++s.boardingTicks;
+                flight=s.craft.advance(p.level(),p,fresh?input:null,edges,s.boardingTicks==14);
+            }
+        }
         if(s.mount!=null){
             if((edges&8)!=0)NativeJak.mountControl(s.nativeId,1,0,0,0,0);
             if(s.mountHit!=null){
@@ -129,8 +161,8 @@ public final class JakPlayers {
             }
         }
         ByteBuffer b=s.controls.clear();
-        b.putInt(fresh?input.held():0).putInt(edges);
-        b.putFloat(fresh?input.strafe():0).putFloat(fresh?input.forward():0);
+        b.putInt(fresh&&flight==null?input.held():0).putInt(flight==null?edges:0);
+        b.putFloat(fresh&&flight==null?input.strafe():0).putFloat(fresh&&flight==null?input.forward():0);
         b.putFloat(fresh?input.rightX():0).putFloat(fresh?input.rightY():0).putFloat(fresh?input.brake():0).putFloat(fresh?input.throttle():0);
         b.putFloat(input.yaw()).putFloat(input.pitch());
         float water=waterSurface(p,s.origin);
@@ -139,6 +171,7 @@ public final class JakPlayers {
         int flags=p.getAttachedOrCreate(JakData.BOARD).isEmpty()?0:1;
         if(Float.isFinite(water))flags|=16;
         if(p.hasInfiniteMaterials())flags|=32;
+        if(flight!=null)flags|=2;
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE))flags|=4;
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.SLOW_FALLING))flags|=8;
         flags|=floor(p)<<8;
@@ -152,15 +185,44 @@ public final class JakPlayers {
             s.shieldHit=false;
         }
         b.putInt(flags).putFloat(p.getAttachedOrCreate(JakData.DARK_ECO)).putFloat(p.getAttachedOrCreate(JakData.LIGHT_ECO));
-        b.putInt(s.mount!=null?-1:JakItems.GUNS.indexOf(p.getMainHandItem().getItem()));
+        b.putInt(s.mount!=null||flight!=null?-1:JakItems.GUNS.indexOf(p.getMainHandItem().getItem()));
         AABB region=p.getBoundingBox().inflate(6,5,6);
         var triangles=s.noTriangles; // Queries use the live Minecraft shape callback.
-        s.actorBuffers.reset();var actors=MinecraftCollision.actors(p.level(),p,s.origin,region.inflate(256),s.actorBuffers);
+        s.actorBuffers.reset();var actors=flight!=null?s.noTriangles:MinecraftCollision.actors(p.level(),p,s.origin,region.inflate(256),s.actorBuffers);
+        if(flight!=null)relocate(s,vector(flight.getAsJsonArray("seat")),Vec3.ZERO);
         NativeJak.setStats(s.nativeId,p.getHealth()/p.getMaxHealth(),p.getAttachedOrCreate(JakData.AMMO.get(0)),p.getAttachedOrCreate(JakData.AMMO.get(1)),p.getAttachedOrCreate(JakData.AMMO.get(2)),p.getAttachedOrCreate(JakData.AMMO.get(3)));
         JsonObject pose=JsonParser.parseString(NativeJak.step(s.nativeId,b,triangles,actors,3)).getAsJsonObject();
         s.shield=pose.get("shield").getAsBoolean();
         s.entityRate=pose.get("entityRate").getAsFloat();
         Vec3 position=vector(pose.getAsJsonArray("pos")).add(s.origin);
+        if(flight!=null){
+            Vec3 seat=vector(flight.getAsJsonArray("seat"));
+            float reach=Math.min(1,s.boardingTicks/(20f*10/30));
+            double eased=Math.sin(reach*Math.PI/2);
+            var boarding=s.boardingStart;
+            position=new Vec3(net.minecraft.util.Mth.lerp(eased,boarding.x,seat.x),
+                net.minecraft.util.Mth.lerp(reach,boarding.y,seat.y),net.minecraft.util.Mth.lerp(eased,boarding.z,seat.z));
+            float yaw=net.minecraft.util.Mth.rotLerp(reach,input.yaw(),s.craft.getYRot());
+            JsonObject channel=new JsonObject();
+            channel.addProperty("entity",s.craft.getId());
+            channel.add("offset",coordinates(s.craft.position().subtract(position)));
+            channel.add("rotation",flight.get("rotation"));
+            channel.addProperty("boarding",s.boardingTicks<14?s.boardingTicks/20f:-1);
+            channel.add("steering",flight.get("steering"));
+            channel.add("throttle",flight.get("throttle"));
+            channel.add("lean",flight.get("lean"));
+            channel.add("lamps",flight.get("lamps"));
+            channel.add("engine",flight.get("engine"));
+            for(var event:flight.getAsJsonArray("events")){
+                if(event.getAsJsonObject().get("kind").getAsString().equals("fire"))channel.addProperty("fired",true);
+            }
+            pose.add("hellcat",channel);
+            pose.add("pos",coordinates(position.subtract(s.origin)));
+            pose.addProperty("yaw",yaw);
+            pose.addProperty("status",0);
+            pose.addProperty("board",false);
+            pose.getAsJsonArray("events").asList().clear();
+        }
         if(!Double.isFinite(position.x)||!Double.isFinite(position.y)||!Double.isFinite(position.z))throw new IllegalStateException("Nonfinite Jak pose");
         if(s.mount!=null){
             var ride=pose.get("ride");
@@ -190,6 +252,16 @@ public final class JakPlayers {
         var packet=new JakPackets.Pose(p.getId(),input.sequence(),s.origin.x,s.origin.y,s.origin.z,pose.toString());
         ServerPlayNetworking.send(p,packet);
         for(ServerPlayer watcher:PlayerLookup.tracking(p))if(watcher!=p)ServerPlayNetworking.send(watcher,packet);
+    }
+    private static void relocate(Session s,Vec3 at,Vec3 velocity){
+        Vec3 pos=at.subtract(s.origin);
+        NativeJak.relocate(s.nativeId,(float)pos.x,(float)pos.y,(float)pos.z,
+            (float)velocity.x,(float)velocity.y,(float)velocity.z);
+    }
+    private static JsonArray coordinates(Vec3 v){
+        var array=new JsonArray();
+        array.add(v.x);array.add(v.y);array.add(v.z);
+        return array;
     }
     private static void updateMount(JakLeaper mount,Vec3 position,float yaw,boolean ground){
         mount.setPos(position);

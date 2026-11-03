@@ -1,0 +1,11 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/hellcat",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "factorya/hellcat-lod0.glb",
+      "scale": 0.1
+    }
+  }
+}

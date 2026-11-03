@@ -145,6 +145,10 @@ public final class GltfModel {
         }
     }
     public void loadSegments(Path art,String lod)throws IOException{segments=dev.jakmc.nativebridge.ModelSegments.read(art,lod,surfaces.stream().mapToInt(s->s.indices.length/3).toArray());if(segments==null)throw new IOException("Source segment table mismatch: "+lod);}
+    void vehicleDamageStages(int[] stages)throws IOException{
+        if(stages.length!=surfaces.size())throw new IOException("HellCat stage data and mesh do not match");
+        segments=new dev.jakmc.nativebridge.ModelSegments(stages,new long[]{1,2,4});
+    }
     public void prepare(Posed pose){prepared.computeIfAbsent(pose,p->{var geometry=new ArrayList<float[]>();for(Surface surface:surfaces)geometry.add(skin(surface,p));return List.copyOf(geometry);});}
     public void animationsFrom(GltfModel source){readAnimations(source,null);}
     public void attachmentAnimationsFrom(GltfModel source,String prefix){readAnimations(source,prefix);}

@@ -34,6 +34,11 @@ public final class NativeJak {
     public static native void bindWorld(long session,Object collisionQuery);
     public static native void setStats(long session,float healthFraction,float red,float yellow,float blue,float dark);
     public static native String step(long session, ByteBuffer input, ByteBuffer triangles, ByteBuffer actors, int steps);
+    public static native long hellcatCreate(Object query,float yaw,float vx,float vy,float vz,float health,int flags,int torpedoes,long key);
+    public static native int hellcatFlames(float thrust,int age,ByteBuffer out);
+    public static native void hellcatDestroy(long session);
+    public static native String hellcatStep(long session,ByteBuffer input,ByteBuffer actors,float dx,float dy,float dz,float hour,int commands,int steps);
+    public static native void relocate(long session,float x,float y,float z,float vx,float vy,float vz);
     public static native String fxManifest();
     public static native long fxCreate();
     public static native void fxDestroy(long session);

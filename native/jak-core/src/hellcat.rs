@@ -330,6 +330,9 @@ impl HellCat {
             shot.tail = rotation * shot.tail + offset;
             shot.vel = rotation * shot.vel;
         }
+        for blast in &mut self.blasts {
+            blast.center = rotation * blast.center + offset;
+        }
     }
 
     /// Out of every planet's air (no gravity): the space gears are open.
@@ -1014,12 +1017,18 @@ impl HellCat {
 
     /// The flames at `thrust` (`engine-thrust`, 0 to 1).
     pub fn thruster_sprites_with(&self, thrust: f32) -> Vec<crate::particles::Sprite> {
+        if self.destroyed { return Vec::new(); }
+        self.thruster_sprite_pose(thrust, false)
+    }
+
+    pub fn thruster_sprite_pose(&self, thrust: f32, local: bool) -> Vec<crate::particles::Sprite> {
         use crate::particles::Sprite;
         let thrust = thrust.clamp(0.0, 1.0);
-        if self.destroyed || thrust <= 0.02 {
+        if thrust <= 0.02 {
             return Vec::new();
         }
-        let q = self.orientation();
+        let q = if local { Quat::IDENTITY } else { self.orientation() };
+        let root = if local { Vec3::ZERO } else { self.trans };
         let (right, up) = (q * Vec3::X, q * Vec3::Y);
         let back = q * -Vec3::Z;
         let angle = std::f32::consts::TAU / 65536.0;
@@ -1039,7 +1048,7 @@ impl HellCat {
                 * Quat::from_axis_angle(up, -1820.4445 * self.yaw_rate * angle)
                 * Quat::from_axis_angle(right, -2184.5334 * self.pitch_rate * angle)
                 * back;
-            let mut at = self.trans + q * *local;
+            let mut at = root + q * *local;
             for step in 0..15 {
                 let f = (15 - step) as f32 / 15.0;
                 let small = f * random(8192.0, 9011.2);

@@ -16,7 +16,12 @@ public final class JakSounds {
  private static final Map<Key,Loop> LOOPS=new HashMap<>();
  public static long played;
  public static void initialize(){
-  ClientTickEvents.END_CLIENT_TICK.register(c->{LOOPS.entrySet().removeIf(e->e.getValue().isStopped());});
+  ClientTickEvents.END_CLIENT_TICK.register(c->{
+   LOOPS.entrySet().removeIf(e->e.getValue().isStopped());
+   if(c.level!=null&&c.player!=null)for(var entity:c.level.entitiesForRendering()){
+    if(entity instanceof dev.jakmc.entity.JakHellcat cat&&cat.distanceToSqr(c.player)<64*64)vehicle(cat);
+   }
+  });
   ClientPlayConnectionEvents.DISCONNECT.register((handler,c)->clear());
  }
  private static SoundEvent event(String name){
@@ -37,6 +42,25 @@ public final class JakSounds {
    loop.update(cue,origin);if(start)client.getSoundManager().play(loop);
   }
   for(var e:LOOPS.entrySet())if(e.getKey().owner==owner&&!live.contains(e.getKey()))e.getValue().end();
+ }
+ private static void vehicle(dev.jakmc.entity.JakHellcat cat){
+  JsonObject packet=new JsonObject();
+  JsonArray loops=new JsonArray();
+  if(cat.thrust()>0&&!cat.wrecked()){
+   appendLoop(loops,"hellcat-engine",1);
+   if(cat.engine()>.01f)appendLoop(loops,"hellcat-boost",cat.engine());
+   if(cat.wind()>.01f)appendLoop(loops,"hellcat-bank",cat.wind());
+   float health=cat.hullHealth();
+   if(health<.5f)appendLoop(loops,health<.15f?"damage-high":health<.2f?"damage-med":"damage-low",.8f);
+  }
+  packet.add("loops",loops);
+  receive(cat.getId(),cat.position(),packet);
+ }
+ private static void appendLoop(JsonArray loops,String name,float gain){
+  JsonObject loop=new JsonObject();
+  loop.addProperty("name",name);loop.addProperty("gain",gain);loop.addProperty("pitch",1);
+  JsonArray pos=new JsonArray();pos.add(0);pos.add(0);pos.add(0);loop.add("pos",pos);
+  loops.add(loop);
  }
  public static void clear(){for(var loop:LOOPS.values())loop.end();LOOPS.clear();}
  private static final class Loop extends AbstractTickableSoundInstance {

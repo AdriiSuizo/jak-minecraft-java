@@ -19,7 +19,7 @@ public final class JakRenderer {
     private static GltfModel body,daxter,board,gun,wings,shield;
     private static float bodyScale;
     private static float floorOffset;
-    private static boolean ridingLoaded;
+    private static boolean ridingLoaded,pilotLoaded;
     private static GltfModel flutRider;
     private static GltfModel.Posed flutRiderRest,jakRest;
     public static long renderSerial;
@@ -60,7 +60,18 @@ public final class JakRenderer {
         if(actor==null||!actor.getAttachedOrCreate(JakData.ENABLED))return false;
         load();
         renderSerial++;lastEntityId=state.id;
-        stack.pushPose();stack.rotateDegrees(Axis.YP,-pose.yaw());stack.scale(bodyScale,bodyScale,bodyScale);stack.translate(0,floorOffset,0);
+        var flight=pose.raw().get("hellcat") instanceof com.google.gson.JsonObject craft?craft:null;
+        stack.pushPose();
+        stack.rotateDegrees(Axis.YP,-pose.yaw());
+        if(flight!=null){
+            var hull=Minecraft.getInstance().level.getEntity(flight.get("entity").getAsInt());
+            if(hull instanceof dev.jakmc.entity.JakHellcat cat&&flight.get("boarding").getAsFloat()<0){
+                var bank=new org.joml.Quaternionf().rotateY((float)Math.toRadians(pose.yaw())).mul(cat.attitude());
+                stack.mulPose(new org.joml.Matrix4f().rotation(bank));
+            }
+            loadPilot();
+        }
+        stack.scale(bodyScale,bodyScale,bodyScale);stack.translate(0,floorOffset,0);
         float elapsed=Math.clamp((System.nanoTime()-pose.received())/1e9f,0,.05f);
         float frame=pose.frame()+(pose.raw().has("frameRate")?pose.raw().get("frameRate").getAsFloat()*elapsed:0);
         var ride=pose.raw().get("ride");
@@ -71,6 +82,7 @@ public final class JakRenderer {
         var skeleton=flut?body.retargetRider(flutRider,flutRiderRest,
                 JakLeaperRenderer.ridePose(flutRider,"jakb1-",pose,elapsed),jakRest):
             mounted?JakLeaperRenderer.ridePose(body,"jakb-",pose,elapsed):body.pose(pose.clip(),frame);
+        if(flight!=null)skeleton=pilotPose(body,"jakb",flight,elapsed);
         int gunKind=JakItems.GUNS.indexOf(state.getMainHandItemStack().getItem());
         var gunState=pose.raw().getAsJsonObject("gun");
         boolean gunOut=gunState!=null&&gunState.get("out").getAsBoolean();
@@ -114,7 +126,7 @@ public final class JakRenderer {
         stack.translate(shoulder.x,shoulder.y,shoulder.z);stack.scale(1/1.4f,1/1.4f,1/1.4f);
         String daxClip=pose.clip().replace("jakb-","daxter-");
         if(!daxter.hasClip(daxClip))daxClip="daxter-stance-loop";
-        var daxPose=mounted?JakLeaperRenderer.ridePose(daxter,"daxter-",pose,elapsed):daxter.pose(daxClip,frame);
+        var daxPose=flight!=null?pilotPose(daxter,"daxter",flight,elapsed):mounted?JakLeaperRenderer.ridePose(daxter,"daxter-",pose,elapsed):daxter.pose(daxClip,frame);
         if(ScaleScene.active()){
             var b=body.bounds(skeleton,new Matrix4f());
             var d=daxter.bounds(daxPose,new Matrix4f().translation(shoulder).scale(1/1.4f));
@@ -128,9 +140,34 @@ public final class JakRenderer {
             stack.pushPose();stack.mulPose(rigid(body.joint(skeleton,"board")));
             board.submit(board.poseAtTime("board-close",Float.MAX_VALUE),stack,collector,state.lightCoords);stack.popPose();
         }
-        if(!mounted){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
+        if(!mounted&&flight==null){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
         stack.popPose();return true;
     }
+    private static void loadPilot(){
+        if(pilotLoaded)return;
+        var art=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ridingAnimations()).getAsJsonObject();
+        body.originalAnimations(art,"jakb-pilot-car-");
+        daxter.originalAnimations(art,"daxter-pilot-car-");
+        pilotLoaded=true;
+    }
+
+    private static GltfModel.Posed pilotPose(GltfModel model,String actor,com.google.gson.JsonObject flight,float elapsed){
+        String prefix=actor+"-pilot-car-";
+        float boarding=flight.get("boarding").getAsFloat();
+        if(boarding>=0)return model.poseAtTime(prefix+"get-on",boarding+elapsed);
+        float turn=(1-flight.get("steering").getAsFloat())*.5f;
+        float lean=flight.get("lean").getAsFloat();
+        float front=Math.clamp(.5f*(1+1.42f*(flight.get("throttle").getAsFloat()-.3f)),0,1);
+        var back=sample(model,prefix+"turn-back",turn);
+        var ahead=sample(model,prefix+"turn-front",turn);
+        var vertical=sample(model,prefix+"up-down",(1-lean)*.5f);
+        return model.blend(model.blend(back,ahead,front),vertical,Math.abs(lean));
+    }
+
+    private static GltfModel.Posed sample(GltfModel model,String clip,float fraction){
+        return model.pose(clip,Math.clamp(fraction,0,1)*(model.frames(clip)-1));
+    }
+
     private static void loadRide(boolean flut){
         if(ridingLoaded&&(!flut||flutRider!=null))return;
         var art=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ridingAnimations()).getAsJsonObject();
