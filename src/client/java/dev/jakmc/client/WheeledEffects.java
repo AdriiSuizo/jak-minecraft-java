@@ -1,0 +1,114 @@
+package dev.jakmc.client;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import dev.jakmc.entity.JakWheeledCar;
+import dev.jakmc.player.JakPlayers;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.WeakHashMap;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
+
+/** Original emitters stay on the fixed Jak effects clock, independent of the render frame rate. */
+final class WheeledEffects {
+    private static final float[] BASIS={1,0,0,0,1,0,0,0,1};
+    private static final Gson JSON=new Gson();
+    private static final Map<JakWheeledCar,JsonObject> SEEN=new WeakHashMap<>();
+    private static final Map<JakWheeledCar,Map<Integer,Vec3>> GRENADE_LAST=new WeakHashMap<>();
+    private static final double METRE=.64;
+
+    static void initialize(){
+        ClientTickEvents.END_CLIENT_TICK.register(client->{
+            if(client.level==null||client.player==null)return;
+            for(var entity:client.level.entitiesForRendering()){
+                if(entity instanceof JakWheeledCar car&&car.distanceToSqr(client.player)<96*96){
+                    var frame=car.frame();
+                    if(frame!=null&&SEEN.put(car,frame)!=frame)emit(car,frame);
+                }
+            }
+        });
+    }
+
+    private static void emit(JakWheeledCar car,JsonObject frame){
+        var commands=new JsonArray();
+        var q=frame.getAsJsonArray("rotation");
+        var rotation=new Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat());
+        var origin=car.position();
+        var previous=GRENADE_LAST.getOrDefault(car,Map.of());
+        var live=new HashMap<Integer,Vec3>();
+        for(var entry:frame.getAsJsonArray("grenades")){
+            var shot=entry.getAsJsonObject();
+            int id=shot.get("id").getAsInt();
+            Vec3 point=JakPlayers.vector(shot.getAsJsonArray("pos"));
+            live.put(id,origin.add(point));
+            commands.add(command("Attached",id,"group-guard-grenade",units(point),BASIS));
+            var last=previous.get(id);
+            if(last!=null){
+                Vec3 trail=origin.add(point).subtract(last);
+                if(trail.lengthSqr()>.00001)commands.add(command("BeamSized",975,units(last.subtract(origin)),
+                    vector(trail.normalize()),trail.length()*6400,1200));
+            }
+        }
+        for(int id:previous.keySet())if(!live.containsKey(id))commands.add(command("Stop",id));
+        if(!previous.isEmpty()||!live.isEmpty())GRENADE_LAST.put(car,live);
+        for(var entry:frame.getAsJsonArray("gunEffects")){
+            var effect=entry.getAsJsonObject();
+            String name=effect.get("effect").getAsString();
+            Vec3 at=JakPlayers.vector(effect.getAsJsonArray("pos"));
+            if(name.equals("beam")){
+                Vec3 path=JakPlayers.vector(effect.getAsJsonArray("end")).subtract(at);
+                for(int part:new int[]{975,978})commands.add(command("Beam",part,units(at),vector(path.normalize()),path.length()*6400));
+            }else commands.add(command("Spawn",name,units(at),BASIS));
+        }
+        boolean engine=car.getFirstPassenger()!=null;
+        float thrust=frame.get("throttle").getAsFloat();
+        for(int sub=0;sub<3;sub++){
+            for(var entry:frame.getAsJsonArray("emitters")){
+                var emitter=entry.getAsJsonArray();
+                var overrides=Map.of("num",emitter.get(2).getAsFloat(),"alpha",new int[]{32,32},"scale",new int[]{8192,8192});
+                commands.add(command("Var",emitter.get(0).getAsInt(),
+                    units(JakPlayers.vector(emitter.get(1).getAsJsonArray()).scale(METRE)),BASIS,overrides,0));
+            }
+            if(engine){
+                for(var point:frame.getAsJsonArray("exhaust")){
+                    var local=rotated(rotation,JakPlayers.vector(point.getAsJsonArray())).scale(METRE);
+                    var overrides=Map.of("num",.8f+thrust,"alpha",new float[]{16*(1-thrust*thrust),48*(1-thrust*thrust)},
+                        "vel",vector(rotated(rotation,new Vec3(0,0,-42))));
+                    commands.add(command("Var",923,units(local),BASIS,overrides,0));
+                }
+            }
+            if(frame.get("boost").getAsBoolean()){
+                boolean toad=car.model==JakWheeledCar.Model.TOAD;
+                double length=(toad?6:2)*4096*thrust;
+                double width=Math.min((toad?1:.6)*4096,length/2);
+                var back=vector(rotated(rotation,new Vec3(0,0,-1)));
+                for(var point:frame.getAsJsonArray("thrusters")){
+                    var local=rotated(rotation,JakPlayers.vector(point.getAsJsonArray())).scale(METRE);
+                    for(int blade=0;blade<3;blade++){
+                        double angle=Math.toRadians(30+60*blade);
+                        var axis=vector(rotated(rotation,new Vec3(-Math.sin(angle),Math.cos(angle),0)));
+                        commands.add(command("Blade",922,units(local),back,axis,length,width));
+                    }
+                }
+            }
+            commands.add(command("Step",1f/60));
+        }
+        if(commands.size()>3)JakEffects.local(car.getId(),origin,commands);
+    }
+
+    private static Vec3 rotated(Quaternionf rotation,Vec3 point){
+        Vector3f v=rotation.transform(point.toVector3f());
+        return new Vec3(v.x,v.y,v.z);
+    }
+    private static double[] units(Vec3 point){return vector(point.scale(6400));}
+    private static double[] vector(Vec3 point){return new double[]{point.x,point.y,point.z};}
+    private static JsonObject command(String name,Object... values){
+        var data=new JsonObject();
+        data.add(name,JSON.toJsonTree(name.equals("Step")||name.equals("Stop")?values[0]:values));
+        return data;
+    }
+}

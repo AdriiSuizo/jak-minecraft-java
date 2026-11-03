@@ -26,6 +26,7 @@ abstract class JakControllerCameraMixin {
     @Unique private float jakmc$mountHeight;
 
     @Unique private float jakmc$flightWeight,jakmc$pull,jakmc$speed;
+    @Unique private boolean jakmc$wheeled;
     @Unique private float jakmc$flightYaw,jakmc$flightPitch,jakmc$manualYaw,jakmc$manualPitch;
     @Unique private float jakmc$lastPlayerYaw,jakmc$lastPlayerPitch;
     @Unique private Vec3 jakmc$flightPivot,jakmc$lastFlightTarget,jakmc$trail=Vec3.ZERO;
@@ -38,7 +39,7 @@ abstract class JakControllerCameraMixin {
         JakInput.frame(client);
         JakPoses.beginFrame(client);
         var pose=entity==null?null:JakPoses.get(entity.getId());
-        jakmc$prepareFlight(client,pose);
+        jakmc$prepareFlight(client,pose,deltaTracker.getGameTimeDeltaPartialTick(false));
         boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
         jakmc$mountHeight+=((mounted?.8f:0)-jakmc$mountHeight)*(1-(float)Math.exp(-9*jakmc$dt));
         if(!jakmc$active()||client.options.getCameraType().isFirstPerson()||client.options.getCameraType().isMirrored()){
@@ -50,10 +51,13 @@ abstract class JakControllerCameraMixin {
         }
     }
 
-    @Unique private void jakmc$prepareFlight(Minecraft client,JakPoses.Pose pose){
+    @Unique private void jakmc$prepareFlight(Minecraft client,JakPoses.Pose pose,float partial){
         var player=client.player;
         var flight=pose!=null&&pose.raw().get("hellcat") instanceof com.google.gson.JsonObject channel?channel:null;
-        boolean chasing=jakmc$active()&&flight!=null&&flight.get("boarding").getAsFloat()<0
+        var car=jakmc$car();
+        jakmc$wheeled=car!=null&&car.frame()!=null;
+        var channel=jakmc$wheeled?car.frame():flight;
+        boolean chasing=jakmc$active()&&channel!=null&&channel.get("boarding").getAsFloat()<0
             &&client.options.getCameraType()==CameraType.THIRD_PERSON_BACK;
         float ease=1-(float)Math.exp(-8*jakmc$dt);
         jakmc$flightWeight+=((chasing?1:0)-jakmc$flightWeight)*ease;
@@ -65,15 +69,16 @@ abstract class JakControllerCameraMixin {
             return;
         }
         float yaw=player.getYRot(),pitch=player.getXRot();
-        var hull=JakPoses.presented().add(dev.jakmc.player.JakPlayers.vector(flight.getAsJsonArray("offset")));
-        var rotation=flight.getAsJsonArray("rotation");
+        var hull=jakmc$wheeled?car.getPosition(partial):
+            JakPoses.presented().add(dev.jakmc.player.JakPlayers.vector(channel.getAsJsonArray("offset")));
+        var rotation=channel.getAsJsonArray("rotation");
         var q=new org.joml.Quaternionf(rotation.get(0).getAsFloat(),rotation.get(1).getAsFloat(),
             rotation.get(2).getAsFloat(),rotation.get(3).getAsFloat());
         var nose=q.transform(new org.joml.Vector3f(0,0,1));
         float nosePitch=(float)Math.toDegrees(Math.asin(Math.clamp(nose.y,-1,1)));
         float targetYaw=(float)Math.toDegrees(Math.atan2(-nose.x,nose.z));
         float targetPitch=Math.clamp(11.46f-nosePitch,-62,70);
-        Vec3 from=hull.add(0,.32,0),target=hull.add(0,2.048,0);
+        Vec3 from=hull.add(0,.32,0),target=hull.add(0,jakmc$wheeled?1.152:2.048,0);
         var overhead=entity.level().clip(new ClipContext(from,target,ClipContext.Block.VISUAL,ClipContext.Fluid.NONE,entity));
         if(overhead.getType()!=HitResult.Type.MISS){
             target=from.add(0,Math.max(0,overhead.getLocation().y-from.y-.12),0);
@@ -103,8 +108,10 @@ abstract class JakControllerCameraMixin {
         float swing=1-(float)Math.exp(-5*jakmc$dt);
         jakmc$flightYaw=net.minecraft.util.Mth.rotLerp(swing,jakmc$flightYaw,targetYaw+jakmc$manualYaw);
         jakmc$flightPitch+=(Math.clamp(targetPitch+jakmc$manualPitch,-70,75)-jakmc$flightPitch)*swing;
-        jakmc$pull+=((flight.get("boost").getAsBoolean()?1:0)-jakmc$pull)*(1-(float)Math.exp(-2*jakmc$dt));
-        jakmc$speed=Math.clamp(flight.get("speed").getAsFloat()/19.2f,0,1);
+        jakmc$pull+=((channel.get("boost").getAsBoolean()?1:0)-jakmc$pull)*(1-(float)Math.exp(-2*jakmc$dt));
+        float speed=jakmc$wheeled?(float)dev.jakmc.player.JakPlayers.vector(channel.getAsJsonArray("velocity")).horizontalDistance():
+            channel.get("speed").getAsFloat();
+        jakmc$speed=Math.clamp(speed/19.2f,0,1);
     }
 
     @Inject(method="calculateFov",at=@At("RETURN"),cancellable=true)
@@ -120,13 +127,23 @@ abstract class JakControllerCameraMixin {
     }
 
     @Unique private boolean jakmc$active(){
-        return entity==Minecraft.getInstance().player&&JakPoses.presented()!=null;
+        return entity==Minecraft.getInstance().player&&(JakPoses.presented()!=null||jakmc$car()!=null);
+    }
+
+    @Unique private dev.jakmc.entity.JakWheeledCar jakmc$car(){
+        return entity==Minecraft.getInstance().player&&entity!=null
+            &&entity.getVehicle() instanceof dev.jakmc.entity.JakWheeledCar car?car:null;
     }
 
     @ModifyArgs(method="alignWithEntity",at=@At(value="INVOKE",target="Lnet/minecraft/client/Camera;setPosition(DDD)V"))
     private void jakmc$follow(Args args){
         if(!jakmc$active())return;
         var feet=JakPoses.presented();
+        if(jakmc$wheeled){
+            float partial=Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false);
+            feet=entity.getPosition(partial);
+        }
+        if(feet==null)return;
         args.set(0,feet.x);
         double height=feet.y+1.62;
         if(jakmc$mountHeight>.001f){
@@ -146,7 +163,7 @@ abstract class JakControllerCameraMixin {
         if(!jakmc$active())return distance;
         if(jakmc$flightPivot!=null){
             setRotation(jakmc$flightYaw,jakmc$flightPitch);
-            float chase=15.4f*.64f*(1-.25f*jakmc$speed)*(1+.3f*jakmc$pull);
+            float chase=(jakmc$wheeled?9f:15.4f)*.64f*(1-.25f*jakmc$speed)*(1+.3f*jakmc$pull);
             return net.minecraft.util.Mth.lerp(jakmc$flightWeight,distance,chase);
         }
         if(jakmc$aim>.001f){

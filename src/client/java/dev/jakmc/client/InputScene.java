@@ -22,6 +22,7 @@ public final class InputScene {
  private static CameraView view;
  public static CameraView camera(){
   if(view!=null)return view;
+  if(CarScene.camera()!=null)return CarScene.camera();
   var track=TrackScene.camera();
   if(track!=null)return track;
   var altar=AltarScene.camera();
@@ -492,7 +493,7 @@ public final class InputScene {
  private static UUID aimTarget,freezeTarget;
  private static volatile int slowStart,slowEnd,resumeStart,resumeEnd;
  private static boolean freezeSeen,pauseOnLostFocus;
- static boolean backgroundPad(int id){return running&&(powers||leaper||hellcat)&&pad!=null&&pad.id==id;}
+ static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||running&&(powers||leaper||hellcat)&&pad!=null&&pad.id==id;}
  private static int darkScreenshot,shieldScreenshot,wingsScreenshot,betweenPackets,flightJump;
  private static Vec3 lastCamera;
  private static long cameraSnapshot;

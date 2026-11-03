@@ -26,6 +26,8 @@ public final class JakClient implements ClientModInitializer {
   MaterialScene.initialize();
   AltarScene.initialize();
   TrackScene.initialize();
+  CarScene.initialize();
+  WheeledEffects.initialize();
   dev.jakmc.client.model.GltfItemRenderer.initialize();
   dev.jakmc.client.model.PropModels.initialize();
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
@@ -36,6 +38,7 @@ public final class JakClient implements ClientModInitializer {
   dev.jakmc.client.model.JakEnemyRenderer.initialize();
   dev.jakmc.client.model.JakLeaperRenderer.initialize();
   dev.jakmc.client.model.HellcatRenderer.initialize();
+  dev.jakmc.client.model.WheeledCarRenderer.initialize();
   net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(
       dev.jakmc.entity.JakFlutEgg.TYPE,dev.jakmc.client.model.JakFlutEggRenderer::new);
   net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(dev.jakmc.network.JakPackets.Pose.TYPE,(p,c)->JakPoses.receive(p));

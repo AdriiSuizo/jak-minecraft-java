@@ -17,6 +17,7 @@ mod jak_steps;
 mod particle_subset;
 mod effects;
 mod hellcat_host;
+mod wheeled_host;
 static RIDE_ART: OnceLock<HashMap<String, art_group::ArtAnim>> = OnceLock::new();
 static ANIMS:OnceLock<Arc<jak_core::anim::Anims>>=OnceLock::new();
 
@@ -180,6 +181,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
  protect(&mut env,||{
   let root=std::path::PathBuf::from(path.map_err(|e|e.to_string())?);
   effects::configure(&root)?;
+  wheeled_host::configure(&root)?;
   if ANIMS.get().is_some(){return Ok(ANIMS.get().unwrap().timed as jint);}
   let raw=root.join("raw_obj");let mut authored=HashMap::new();
   for e in std::fs::read_dir(&raw).map_err(|e|e.to_string())? {
@@ -197,7 +199,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
     }));
    }
   }
-  let ride_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-")||name.starts_with("jakb-pilot-car-")||name.starts_with("daxter-pilot-car-"))
+  let ride_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-")||name.starts_with("jakb-pilot-car-")||name.starts_with("daxter-pilot-car-")||name.starts_with("jakb-pilot-wcar-"))
    .map(|(name,art)|(name.clone(),art.clone())).collect();
   RIDE_ART.set(ride_art).map_err(|_|"riding art configuration raced")?;
   let rows:Vec<_>=authored.iter().filter_map(|(name,a)|{

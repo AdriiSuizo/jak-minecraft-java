@@ -23,6 +23,11 @@ public final class JakSounds {
    BARRELS.values().removeIf(BarrelLoop::isStopped);
    if(c.level!=null&&c.player!=null)for(var entity:c.level.entitiesForRendering()){
     if(entity instanceof dev.jakmc.entity.JakHellcat cat&&cat.distanceToSqr(c.player)<64*64)vehicle(cat);
+    if(entity instanceof dev.jakmc.entity.JakWheeledCar car&&car.distanceToSqr(c.player)<40*40){
+     var packet=new JsonObject();
+     if(car.frame()!=null&&car.getFirstPassenger()!=null)packet.add("loops",car.frame().getAsJsonArray("loops"));
+     receive(car.getId(),car.position(),packet);
+    }
    }
   });
   ClientPlayConnectionEvents.DISCONNECT.register((handler,c)->clear());

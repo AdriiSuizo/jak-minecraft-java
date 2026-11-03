@@ -303,6 +303,20 @@ public final class GltfModel {
         Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,to.morphs,t,r,s);
     }
+    Posed articulate(Posed rest,Map<String,Quaternionf> localTurns,Map<String,Vector3f> localTranslations){
+        Quaternionf[] turns=rest.rotations.clone();
+        Vector3f[] translations=rest.translations.clone();
+        localTurns.forEach((name,delta)->{
+            int joint=namedNodes.get(name);
+            turns[joint]=new Quaternionf(turns[joint]).mul(delta);
+        });
+        localTranslations.forEach((name,position)->{
+            int joint=namedNodes.get(name);
+            translations[joint]=position;
+        });
+        return compose(translations,turns,rest.scales,rest.morphs);
+    }
+    Vector3f localTranslation(Posed pose,String joint){return new Vector3f(pose.translations[namedNodes.get(joint)]);}
     public Matrix4f jointAt(Posed pose,int originalIndex){return pose.globals[joints[originalIndex]];}
     public Matrix4f joint(Posed pose,String name){Integer node=namedNodes.get(name);if(node==null)throw new IllegalArgumentException("Required original joint missing: "+name);return pose.globals[node];}
     public Posed poseAtTime(String name,float seconds){Clip clip=clips.get(name);if(clip==null)throw new IllegalArgumentException("Required original clip missing: "+name);if(seconds==Float.MAX_VALUE)return terminalPoses.computeIfAbsent(name,k->{Posed p=pose(k,frames(k)-1);prepare(p);return p;});int frames=clip.channels.stream().mapToInt(c->c.times.length).max().orElse(1);return pose(name,clip.duration>0?Math.clamp(seconds/clip.duration,0,1)*(frames-1):0);}

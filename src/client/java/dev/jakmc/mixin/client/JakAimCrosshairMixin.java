@@ -26,6 +26,7 @@ abstract class JakAimCrosshairMixin {
         boolean ready=hit.getEntity() instanceof dev.jakmc.entity.JakLeaper mount&&mount.riderId()<0&&
             mount.readyToMount()&&player.distanceToSqr(mount)<=16;
         if(hit.getEntity() instanceof dev.jakmc.entity.JakHellcat cat)ready=cat.canBoard(player,hit.getLocation());
+        if(hit.getEntity() instanceof dev.jakmc.entity.JakWheeledCar car)ready=car.canBoard(player,hit.getLocation());
         if(!ready)return;
         var label=Component.translatable(JakInput.controller().id()!=0?"hint.jakmc.leaper_pad":"hint.jakmc.leaper_mouse");
         graphics.nextStratum();

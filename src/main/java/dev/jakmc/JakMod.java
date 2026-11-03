@@ -14,6 +14,7 @@ public final class JakMod implements ModInitializer {
   dev.jakmc.content.JakProps.initialize();
   dev.jakmc.content.JakAssemblies.initialize();
   dev.jakmc.entity.JakHellcat.initialize();
+  dev.jakmc.entity.JakWheeledCar.initialize();
   dev.jakmc.entity.JakLeaper.initialize();
   dev.jakmc.entity.JakFlutFlut.initialize();
   dev.jakmc.entity.JakFlutEgg.initialize();

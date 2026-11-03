@@ -33,7 +33,8 @@ public final class JakInput {
     private static final dev.jakmc.client.input.SdlGamepad GAMEPAD=new dev.jakmc.client.input.SdlGamepad();
     private static dev.jakmc.client.input.SdlGamepad.State pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
     public static dev.jakmc.client.input.SdlGamepad.State controller(){return pad;}
-    private static boolean enabled(Minecraft c){return c.player!=null&&JakPlayers.active(c.player)&&!c.player.isSleeping();}
+    private static boolean inCar(Minecraft c){return c.player!=null&&c.player.getVehicle() instanceof dev.jakmc.entity.JakWheeledCar;}
+    private static boolean enabled(Minecraft c){return c.player!=null&&(JakPlayers.active(c.player)||inCar(c)&&c.player.getAttachedOrCreate(dev.jakmc.JakData.ENABLED))&&!c.player.isSleeping();}
     private static boolean blocked(Minecraft c){
         return !enabled(c)||c.gui.screen()!=null||(!c.isWindowActive()&&!InputScene.backgroundPad(controllerId));
     }
@@ -113,7 +114,7 @@ public final class JakInput {
             var pose=JakPoses.get(c.player.getId());
             boolean flying=pose!=null&&pose.raw().has("hellcat");
             if((held&TRIANGLE)==0)vehicleUseLock=false;
-            if(flying){
+            if(flying||inCar(c)){
                 vehicleUseLock|=(held&TRIANGLE)!=0;
                 useHeld=attackHeld=aiming=false;
                 useClicked=attackClicked=false;
@@ -197,7 +198,7 @@ public final class JakInput {
             var pose=JakPoses.get(client.player.getId());
             boolean flying=pose!=null&&pose.raw().has("hellcat");
             float brake=blocked?0:pad.brake(),throttle=blocked?0:pad.throttle();
-            if(flying&&!blocked&&pad.id()==0){
+            if((flying||inCar(client))&&!blocked&&pad.id()==0){
                 brake=client.options.keyDown.isDown()?1:0;
                 throttle=client.options.keyUp.isDown()?1:0;
                 forward=0;

@@ -62,10 +62,15 @@ public final class JakRenderer {
     }
 
     public static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector){
-        var pose=JakPoses.get(state.id);if(pose==null)return false;
+        var pose=JakPoses.get(state.id);
         var client=Minecraft.getInstance();if(client.level==null)return false;
         var actor=client.level.getEntity(state.id);
         if(actor==null||!actor.getAttachedOrCreate(JakData.ENABLED))return false;
+        if(actor.getVehicle() instanceof dev.jakmc.entity.JakWheeledCar car&&car.frame()!=null){
+            submitCarRider(state,stack,collector,car,client.getDeltaTracker().getGameTimeDeltaPartialTick(false));
+            return true;
+        }
+        if(pose==null)return false;
         load();
         renderSerial++;lastEntityId=state.id;
         var flight=pose.raw().get("hellcat") instanceof com.google.gson.JsonObject craft?craft:null;
@@ -151,12 +156,50 @@ public final class JakRenderer {
         if(!mounted&&flight==null){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
         stack.popPose();return true;
     }
+    private static void submitCarRider(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
+        dev.jakmc.entity.JakWheeledCar car,float partial){
+        load();
+        loadPilot();
+        var before=car.previousFrame();
+        var frame=car.frame();
+        var controls=frame.deepCopy();
+        controls.addProperty("steering",net.minecraft.util.Mth.lerp(partial,before.get("steer").getAsFloat(),frame.get("steer").getAsFloat()));
+        float age=frame.get("boarding").getAsFloat();
+        var skeleton=body.jakForm(carPilotPose(body,"jakb",controls,age<0?0:partial/20),false,0);
+        var passenger=carPilotPose(daxter,"daxter",controls,age<0?0:partial/20);
+        var attitude=WheeledCarRenderer.rotation(before).slerp(WheeledCarRenderer.rotation(frame),partial);
+        stack.pushPose();
+        stack.mulPose(new Matrix4f().rotation(attitude));
+        stack.scale(bodyScale,bodyScale,bodyScale);
+        stack.translate(0,floorOffset,0);
+        body.submitJakBody(skeleton,stack,collector,state.lightCoords,false,false);
+        Vector3f shoulder=body.joint(skeleton,"LshoulderPad").getTranslation(new Vector3f());
+        stack.translate(shoulder.x,shoulder.y,shoulder.z);
+        stack.scale(1/1.4f,1/1.4f,1/1.4f);
+        daxter.submit(passenger,stack,collector,state.lightCoords);
+        stack.popPose();
+        renderSerial++;
+        lastEntityId=state.id;
+    }
     private static void loadPilot(){
         if(pilotLoaded)return;
         var art=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ridingAnimations()).getAsJsonObject();
         body.originalAnimations(art,"jakb-pilot-car-");
         daxter.originalAnimations(art,"daxter-pilot-car-");
+        body.originalAnimations(art,"jakb-pilot-wcar-");
         pilotLoaded=true;
+    }
+
+    private static GltfModel.Posed carPilotPose(GltfModel model,String actor,com.google.gson.JsonObject controls,float elapsed){
+        if(controls.get("boarding").getAsFloat()>=0)return pilotPose(model,actor,controls,elapsed);
+        float turn=(1+controls.get("steering").getAsFloat());
+        float lean=controls.get("lean").getAsFloat();
+        float thrust=controls.get("throttle").getAsFloat();
+        String prefix=actor+(actor.equals("jakb")?"-pilot-wcar-":"-pilot-car-");
+        var back=model.pose(prefix+"turn-back",turn);
+        var front=model.pose(prefix+"turn-front",turn);
+        var vertical=model.pose(actor+"-pilot-car-up-down",2.5f*(1-lean));
+        return model.blend(model.blend(back,front,.5f*(1+thrust)),vertical,Math.abs(lean));
     }
 
     private static GltfModel.Posed pilotPose(GltfModel model,String actor,com.google.gson.JsonObject flight,float elapsed){

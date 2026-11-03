@@ -39,6 +39,7 @@ pub mod ladder;
 pub mod swim;
 pub mod target;
 pub mod weapons;
+pub mod wheeled;
 pub mod zoom;
 
 use std::sync::Arc;

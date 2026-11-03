@@ -52,6 +52,6 @@ public final class JakItems {
     public static void initialize(){
         for(String name:List.of("scatter_gun","wave_concussor","plasmite_rpg","blaster","beam_reflexor","gyro_burster","vulcan_fury","arc_wielder","needle_lazer","peace_maker","mass_inverter","super_nova"))
             GUNS.add(register(name,p->new Item(p.stacksTo(1))));
-        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,JakData.id("equipment"),FabricCreativeModeTab.builder().title(Component.translatable("tab.jakmc.equipment")).icon(()->new ItemStack(BOARD)).displayItems((context,out)->{ITEMS.values().forEach(out::accept);out.accept(dev.jakmc.entity.JakHellcat.ITEM);}).build());
+        Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,JakData.id("equipment"),FabricCreativeModeTab.builder().title(Component.translatable("tab.jakmc.equipment")).icon(()->new ItemStack(BOARD)).displayItems((context,out)->{ITEMS.values().forEach(out::accept);out.accept(dev.jakmc.entity.JakHellcat.ITEM);for(var car:dev.jakmc.entity.JakWheeledCar.Model.values())out.accept(car.item);}).build());
     }
 }
