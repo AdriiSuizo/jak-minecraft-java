@@ -17,7 +17,10 @@ public final class JakEnemySounds {
   }catch(IOException e){throw new UncheckedIOException(e);}
  }
  public static SoundEvent find(JakEnemyKind kind,String cue){
-  String key="sfx/"+kind.game+"/"+cue.toLowerCase(Locale.ROOT).replace('-','_');
+  return find(kind.game,cue);
+ }
+ static SoundEvent find(String game,String cue){
+  String key="sfx/"+game+"/"+cue.toLowerCase(Locale.ROOT).replace('-','_');
   return AVAILABLE.contains(key)?SoundEvent.createVariableRangeEvent(JakData.id(key)):null;
  }
  public static SoundEvent first(JakEnemyKind kind,String... names){for(String n:names){var s=find(kind,n);if(s!=null)return s;}return null;}

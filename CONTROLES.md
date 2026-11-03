@@ -38,3 +38,7 @@ Abrir/cerrar inventario, cambiar casillas e interactuar ya está integrado. Move
 
 
 Los aldeanos de Minecraft muestran tres apariencias de ciudadanos de Villa Refugio. En la pestaña de criaturas de Jak hay tres huevos para elegirlas; al usar un huevo sobre un adulto se crea una cría de esa apariencia. Para comerciar, usa Triángulo/Y o clic derecho.
+
+## Lagarto saltador de Spargus
+
+Aparece en el desierto y también está disponible en la pestaña de criaturas del creativo. Mira a un lagarto libre y pulsa Triángulo/Y o clic derecho para montar. Usa el stick izquierdo para conducir, X/A para saltar y vuelve a pulsarlo en el aire para el doble salto. Cuadrado/X hace el ataque terrestre o el picado según la altura. Triángulo/Y interactúa con puertas, vallas y otros objetivos de Minecraft al apuntarlos. Con la vista despejada, desmonta. Con teclado, F desmonta y G ejecuta el ataque.

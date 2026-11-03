@@ -5,6 +5,7 @@ import dev.jakmc.entity.*;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 import java.util.*;
 
@@ -18,7 +19,8 @@ public final class JakCreatureWater {
   ClientTickEvents.END_CLIENT_TICK.register(c->{
    if(c.level==null||c.isPaused())return;
    Set<Integer> present=new HashSet<>();
-   for(var entity:c.level.entitiesForRendering())if(entity instanceof JakEnemy e&&e.isAlive()){
+   for(var entity:c.level.entitiesForRendering())if(entity instanceof LivingEntity e&&e.isAlive()
+       &&(e instanceof JakEnemy||e instanceof JakLeaper mount&&mount.riderId()<0)){
     present.add(e.getId());boolean wet=e.isInWater(),was=WET.getOrDefault(e.getId(),false);WET.put(e.getId(),wet);if(!wet)continue;
     var pos=e.blockPosition();double surface=e.getY();
     for(int i=0;i<16;i++){var p=pos.above(i);var fluid=c.level.getFluidState(p);if(!fluid.is(FluidTags.WATER))break;surface=p.getY()+fluid.getHeight(c.level,p);}

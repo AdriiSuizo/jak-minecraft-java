@@ -15,23 +15,32 @@ import java.util.*;
 
 /** Replay through real SDL → normal client input → packets → server Jak; no probeInput. */
 public final class InputScene {
- private static boolean running,interactions,powers;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
+ private static boolean running,interactions,powers,leaper;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
  private static long deviceDeadline;private static Vec3 start,ecoCenter;private static double peak,walk;private static float yawStart,yawAfter;
  private static final Set<String> STATES=new TreeSet<>();private static final Set<UUID> ITEMS=new HashSet<>();
  public record CameraView(Vec3 position,float yaw,float pitch){}
  private static CameraView view;
  public static CameraView camera(){return view;}
  public static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(InputScene::tick);}
- public static void start(Minecraft c){
+ public static void start(Minecraft c){start(c,false);}
+ private static void start(Minecraft c,boolean outdoor){
   if(running||c.player==null||c.getSingleplayerServer()==null)throw new IllegalStateException("Open the isolated dev world");
   output=c.gameDirectory.toPath().resolve("jakmc/evidence/input");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
-  interactions=powers=false;ACTIONS.entrySet().clear();VIEWS.clear();
+  interactions=powers=leaper=false;ACTIONS.entrySet().clear();VIEWS.clear();
   start=c.player.position().add(7,0,0);tick=0;peak=0;walk=0;STATES.clear();ITEMS.clear();view=null;ecoCenter=null;
   c.gui.setScreen(null);c.options.setCameraType(CameraType.THIRD_PERSON_BACK);c.player.setYRot(0);c.player.setXRot(10);yawStart=0;yawAfter=0;
   pad=new SdlVirtualPad();deviceDeadline=System.nanoTime()+5_000_000_000L;running=true;var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{
    var server=c.getSingleplayerServer();var p=server.getPlayerList().getPlayer(uuid);if(p==null)return;
    server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"time set noon");server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"weather clear");
-   var base=net.minecraft.core.BlockPos.containing(start);start=new Vec3(base.getX()+.5,base.getY(),base.getZ()+.5);
+   var base=net.minecraft.core.BlockPos.containing(start);
+   if(outdoor){
+    int y=base.getY();
+    for(int x=-15;x<=15;x++)for(int z=-12;z<=35;z++){
+     y=Math.max(y,p.level().getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,base.getX()+x,base.getZ()+z));
+    }
+    base=base.atY(y+1);
+   }
+   start=new Vec3(base.getX()+.5,base.getY(),base.getZ()+.5);
    for(int x=-15;x<=15;x++)for(int z=-12;z<=35;z++){
     p.level().setBlock(base.offset(x,-1,z),net.minecraft.world.level.block.Blocks.SMOOTH_STONE.defaultBlockState(),3);
     for(int y=0;y<=7;y++)p.level().setBlock(base.offset(x,y,z),net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
@@ -40,13 +49,154 @@ public final class InputScene {
   });
  }
  public static void startInteractions(Minecraft c){start(c);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
+ private static UUID leaperId;
+ private static volatile int leaperEntity;
+ private static boolean mountSeen,offSeen;
+ private static int rideStart,jumpStart,offPress,slamImage,mountPress;
+ private static volatile boolean gateOpened,mountDamaged,mountSaved;
+ private static boolean hitRequested;
+ private static net.minecraft.core.BlockPos gate;
+ private static double rideTravel;
+ private static Vec3 mountStart;
+ public static void startLeaper(Minecraft c){
+  start(c,true);
+  leaper=true;
+  pauseOnLostFocus=c.options.pauseOnLostFocus;
+  c.options.pauseOnLostFocus=false;
+  output=c.gameDirectory.toPath().resolve("jakmc/evidence/leaper");
+  try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
+  mountSeen=offSeen=false;
+  rideStart=jumpStart=offPress=slamImage=mountPress=0;
+  gateOpened=mountDamaged=mountSaved=hitRequested=false;
+  rideTravel=0;
+  leaperEntity=-1;
+  leaperId=null;
+  onServer(c,p->{
+   var mount=dev.jakmc.entity.JakLeaper.TYPE.create(p.level(),net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+   mount.setNoAi(true);
+   mount.setPos(start.add(0,0,2.5));
+   mount.setYRot(0);mount.setYBodyRot(0);mount.setYHeadRot(0);
+   gate=net.minecraft.core.BlockPos.containing(mount.position().add(2,0,0));
+   p.level().setBlock(gate,net.minecraft.world.level.block.Blocks.OAK_FENCE_GATE.defaultBlockState(),3);
+   if(p.level().addFreshEntity(mount)){
+    leaperId=mount.getUUID();leaperEntity=mount.getId();ITEMS.add(leaperId);
+   }
+   var base=net.minecraft.core.BlockPos.containing(start);
+   for(int x=-5;x<=5;x++)for(int y=0;y<=5;y++){
+    p.level().setBlock(base.offset(x,y,24),net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(),3);
+   }
+  });
+ }
+ private static void leaperActions(Minecraft c){
+  int t=++tick;
+  var pose=JakPoses.get(c.player.getId());
+  if(t==12){c.player.setYRot(0);c.player.setXRot(2);c.gui.hud.getChat().clearMessages(false);}
+  view=null;
+  var target=c.level.getEntity(leaperEntity);
+  if(t>=22&&t<=25&&target!=null)mountView(target.position());
+  if(t==25)capture(c,"leaper-idle.png");
+  if(t>25&&t<85&&!mountSeen&&target!=null){
+   aimAt(c,target.position().add(0,1.25,0));
+   if(mountPress==0&&c.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit&&hit.getEntity()==target){
+    mountPress=t+2;
+   }
+  }
+  boolean mounted=pose!=null&&pose.raw().get("ride") instanceof JsonObject;
+  String state=pose==null?"":pose.raw().get("state").getAsString();
+  if(state.startsWith("target-flut-"))STATES.add(state);
+  if(!mountSeen&&mounted){
+   mountSeen=true;
+   capture(c,"leaper-mount.png");
+  }
+  if(rideStart==0&&state.equals("target-flut-stance")){
+   rideStart=t;
+   mountStart=pose.position();
+  }
+  int rideAge=rideStart==0?-1:t-rideStart;
+  if(rideAge>=15&&rideAge<=18)mountView(pose.position());
+  if(rideAge==18)capture(c,"leaper-riding.png");
+  if(rideAge>=19&&rideAge<=23)aimAt(c,Vec3.atBottomCenterOf(gate).add(0,.65,0));
+  if(rideAge==24){
+   onServer(c,p->gateOpened=p.level().getBlockState(gate).getValue(net.minecraft.world.level.block.FenceGateBlock.OPEN));
+   c.player.setYRot(0);c.player.setXRot(2);
+  }
+  pad.axis(1,rideAge>=25&&rideAge<47?-.8f:0);
+  if(rideAge==50)jumpStart=t;
+  int jumpAge=jumpStart==0?-1:t-jumpStart;
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,jumpAge>=0&&jumpAge<8||jumpAge>=12&&jumpAge<17);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,jumpAge>=21&&jumpAge<24);
+  if(jumpAge>=17&&jumpAge<=19&&mounted)mountView(pose.position());
+  if(jumpAge==19)capture(c,"leaper-jump.png");
+  if(pose!=null&&mounted&&mountStart!=null)rideTravel=Math.max(rideTravel,pose.position().subtract(mountStart).horizontalDistance());
+  if(!hitRequested&&jumpAge>=38&&state.equals("target-flut-stance")){
+   hitRequested=true;
+   onServer(c,p->{
+    if(p.level().getEntity(leaperId) instanceof dev.jakmc.entity.JakLeaper mount){
+     float old=mount.getHealth();
+     mount.hurtServer(p.level(),p.damageSources().generic(),4);
+     mountDamaged=mount.getHealth()<old;
+    }
+   });
+  }
+  if(offPress==0&&STATES.contains("target-flut-hit")&&state.equals("target-flut-stance")){
+   c.player.setXRot(-25);
+   offPress=t+4;
+  }
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,mountPress>0&&t>=mountPress&&t<mountPress+4||rideAge>=21&&rideAge<23||offPress>0&&t>=offPress&&t<offPress+4);
+  if(pose!=null)for(var event:pose.raw().getAsJsonArray("events")){
+   if(event.getAsJsonObject().get("kind").getAsString().equals("flut_slam")&&!ACTIONS.has("ground_attack")){
+    ACTIONS.addProperty("ground_attack",true);
+    slamImage=t+3;
+   }
+  }
+  if(slamImage>0&&t>=slamImage-1&&t<=slamImage&&target!=null)mountView(target.position());
+  if(t==slamImage)capture(c,"leaper-slam.png");
+  if(offPress>0&&t>offPress&&!mounted&&mountSeen&&!offSeen){
+   offSeen=true;
+   onServer(c,p->{
+    if(p.level().getEntity(leaperId) instanceof dev.jakmc.entity.JakLeaper mount){
+     var reporter=net.minecraft.util.ProblemReporter.DISCARDING;
+     var output=net.minecraft.world.level.storage.TagValueOutput.createWithContext(reporter,mount.registryAccess());
+     mount.saveWithoutId(output);
+     var copy=dev.jakmc.entity.JakLeaper.TYPE.create(p.level(),net.minecraft.world.entity.EntitySpawnReason.LOAD);
+     copy.load(net.minecraft.world.level.storage.TagValueInput.create(reporter,copy.registryAccess(),output.buildResult()));
+     mountSaved=copy.riderId()<0&&copy.getHealth()==mount.getHealth()&&copy.position().distanceToSqr(mount.position())<.001;
+    }
+   });
+   capture(c,"leaper-dismount.png");
+  }
+  if(t>=265){
+   var entity=c.level.getEntity(leaperEntity);
+   ACTIONS.addProperty("mounted_via_interact",mountSeen&&rideStart>0);
+   ACTIONS.addProperty("rode",rideTravel>4);
+   ACTIONS.addProperty("interacted_while_mounted",gateOpened);
+   ACTIONS.addProperty("mounted_damage_reaction",mountDamaged&&STATES.contains("target-flut-hit"));
+   ACTIONS.addProperty("native_save_roundtrip",mountSaved);
+   ACTIONS.addProperty("jump",STATES.contains("target-flut-jump"));
+   ACTIONS.addProperty("double_jump",STATES.contains("target-flut-double-jump"));
+   ACTIONS.addProperty("dismounted",offSeen&&entity instanceof dev.jakmc.entity.JakLeaper mount&&mount.riderId()<0
+       &&mount.position().distanceTo(c.player.position())>.4);
+   ACTIONS.addProperty("ground_attack",ACTIONS.has("ground_attack"));
+   STATES.add("mount_input="+mountPress);
+   walk=rideTravel;
+   finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"leaper assertion failed");
+  }
+ }
+ private static void aimAt(Minecraft client,Vec3 target){
+  Vec3 delta=target.subtract(client.player.getEyePosition());
+  float yaw=(float)Math.toDegrees(Math.atan2(-delta.x,delta.z));
+  float pitch=(float)-Math.toDegrees(Math.atan2(delta.y,delta.horizontalDistance()));
+  client.player.turn(net.minecraft.util.Mth.wrapDegrees(yaw-client.player.getYRot())/.15,
+      (pitch-client.player.getXRot())/.15);
+ }
+ private static void mountView(Vec3 feet){look(feet.add(3.5,2.5,-2.3),feet.add(0,1.25,0));}
  private static boolean shieldTested,darkSeen,lightSeen,wingsSeen,shotSeen,aimSeen,flightSeen,healSeen;
  private static volatile boolean hit,placeSeen,mineSeen,aimHit;
  private static volatile float woundedHealth;
  private static UUID aimTarget,freezeTarget;
  private static volatile int slowStart,slowEnd,resumeStart,resumeEnd;
  private static boolean freezeSeen,pauseOnLostFocus;
- static boolean backgroundPad(int id){return running&&powers&&pad!=null&&pad.id==id;}
+ static boolean backgroundPad(int id){return running&&(powers||leaper)&&pad!=null&&pad.id==id;}
  private static int darkScreenshot,shieldScreenshot,wingsScreenshot,betweenPackets,flightJump;
  private static Vec3 lastCamera;
  private static long cameraSnapshot;
@@ -226,6 +376,7 @@ public final class InputScene {
   // to open the device at rest, as SDL calibrates virtual triggers on open.
   if(!JakInput.controllerReady(pad.id)){if(System.nanoTime()>deviceDeadline)finish(c,"SDL replay device not opened");return;}
   if(powers){powerActions(c);return;}
+  if(leaper){leaperActions(c);return;}
   if(interactions){actions(c);return;}
   int t=++tick;
   var pose=JakPoses.get(c.player.getId());if(pose!=null){if(pose.raw().has("state"))STATES.add(pose.raw().get("state").getAsString());peak=Math.max(peak,c.player.getY()-start.y);}
@@ -257,8 +408,8 @@ public final class InputScene {
  private static void look(Vec3 at,Vec3 target){Vec3 d=target.subtract(at);view=new CameraView(at,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),(float)Math.toDegrees(Math.atan2(-d.y,d.horizontalDistance())));}
  private static void capture(Minecraft c,String file){Screenshot.grab(c.gameDirectory,file,c.gameRenderer.mainRenderTarget(),1,m->{});}
  private static void finish(Minecraft c,String reason){
-  if(powers)c.options.pauseOnLostFocus=pauseOnLostFocus;
-  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason","interaction assertion failed");}
+  if(powers||leaper)c.options.pauseOnLostFocus=pauseOnLostFocus;
+  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason","interaction assertion failed");}
   result.addProperty("jak_actions_reached",STATES.containsAll(Set.of("double-jump","roll","attack","board-stance")));
   try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
   if(c.getSingleplayerServer()!=null){var server=c.getSingleplayerServer();server.execute(()->{for(UUID id:ITEMS){var item=server.overworld().getEntity(id);if(item!=null)item.discard();}});}c.stop();

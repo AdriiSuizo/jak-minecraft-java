@@ -64,6 +64,7 @@ public final class DevBridge {
                 case "collision_perf_scene" -> {CollisionPerfScene.start(client);out.addProperty("scheduled",true);}
                 case "gems_scene" -> {GemScene.start(client);out.addProperty("scheduled",true);}
                 case "input_actions_scene" -> {InputScene.startInteractions(client);out.addProperty("scheduled",true);}
+                case "leaper_scene" -> {InputScene.startLeaper(client);out.addProperty("scheduled",true);}
                 case "powers_scene" -> {InputScene.startPowers(client);out.addProperty("scheduled",true);}
                 case "input_scene" -> {InputScene.start(client);out.addProperty("scheduled",true);}
                 case "rings_scene" -> {WeaponScene.startRings(client);out.addProperty("scheduled",true);}

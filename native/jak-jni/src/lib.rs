@@ -16,6 +16,7 @@ mod audio;
 mod jak_steps;
 mod particle_subset;
 mod effects;
+static RIDE_ART: OnceLock<HashMap<String, art_group::ArtAnim>> = OnceLock::new();
 static ANIMS:OnceLock<Arc<jak_core::anim::Anims>>=OnceLock::new();
 
 pub const ABI_VERSION: u32 = 3;
@@ -135,6 +136,7 @@ fn event(e:Event)->Value {
   Event::Trace{kind,from,to}=>json!({"kind":"trace","gun":format!("{kind:?}"),"from":pos(from),"to":pos(to)}),
   Event::Explosion{kind,center,radius}=>json!({"kind":"explosion","gun":format!("{kind:?}"),"pos":pos(center),"radius":radius/BLOCK}),
   Event::Lift{actor,seconds}=>json!({"kind":"lift","actor":actor,"seconds":seconds}),
+  Event::FlutSlam{pos:p}=>json!({"kind":"flut_slam","pos":pos(p)}),
   Event::HardLanding{health}=>json!({"kind":"fall_damage","damage":health}),
   Event::Splash{pos:p,speed}=>json!({"kind":"splash","pos":pos(p),"speed":speed/BLOCK}),
   Event::GroundPound{pos:p}=>json!({"kind":"ground_pound","pos":pos(p)}),
@@ -185,6 +187,18 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
     authored.extend(art_group::read(&std::fs::read(e.path()).map_err(|e|e.to_string())?));
    }
   }
+  if let Some(active)=root.ancestors().find(|p|p.file_name().is_some_and(|n|n=="active")){
+   let path=active.join("jak1/data/decompiler_out/jak1/raw_obj/eichar-flut+0-ag.go");
+   if let Ok(data)=std::fs::read(path){
+    authored.extend(art_group::read_jak1(&data).into_iter().filter_map(|(name,art)|{
+     let suffix=name.strip_prefix("eichar-flut-")?;
+     Some((format!("jakb1-flut-{suffix}"),art))
+    }));
+   }
+  }
+  let ride_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-"))
+   .map(|(name,art)|(name.clone(),art.clone())).collect();
+  RIDE_ART.set(ride_art).map_err(|_|"riding art configuration raced")?;
   let rows:Vec<_>=authored.iter().filter_map(|(name,a)|{
    let n=a.align.as_ref().map(Vec::len).or_else(||a.joints.as_ref().map(Vec::len))?;
    Some((name.as_str(),jak_core::anim::AnimInfo{frames:n.min(65535) as u16,speed:a.speed,artist_base:a.artist_base,artist_step:a.artist_step}))
@@ -266,7 +280,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   let host_controls = flags & (1 << 13) != 0;
   let first_person = host_controls && flags & (1 << 14) != 0;
   let board = s.jak.state.is_board();
-  let manual_aim = host_controls && !board && !s.jak.swimming() && pad.held & jak_core::pad::button::L2 != 0;
+  let mounted = s.jak.state.is_flut();
+  let manual_aim = host_controls && !board && !mounted && !s.jak.swimming() && pad.held & jak_core::pad::button::L2 != 0;
   let facing = Quat::from_rotation_y(-yaw);
   s.jak.gun.aim = None;
   s.jak.gun.aim_point = None;
@@ -275,7 +290,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
       use jak_core::pad::button::*;
       let power = pad.held & R3 != 0;
       let faces = X | SQUARE | CIRCLE | TRIANGLE;
-      let cancel = board || s.jak.swimming() || s.jak.powers_blocked || flags & (1 << 15) != 0;
+      let cancel = board || mounted || s.jak.swimming() || s.jak.powers_blocked || flags & (1 << 15) != 0;
       let power_edge = pad.pressed & R3 != 0;
       if (power || power_edge) && !s.power_held {
           s.dark_pending = !s.jak.light() && !cancel;
@@ -299,7 +314,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
       }
       pad.held &= !R3;
       pad.pressed &= !R3;
-      if !board && (first_person || manual_aim && pad.left[0].hypot(pad.left[1]) <= 0.2) {
+      if !board && !mounted && (first_person || manual_aim && pad.left[0].hypot(pad.left[1]) <= 0.2) {
           s.jak.control.quat = facing;
           s.jak.control.dir_targ = facing;
       }
@@ -337,6 +352,14 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
        body.sample(&mut s.jak,&mut s.joint_rotations);
    }
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
+   let frame_events=s.jak.take_events();
+   for event in &frame_events{
+    if let Event::FlutSlam{pos}=event{
+     if let Some(particles)=s.jak.particles.as_mut(){
+      particles.spawn("group-flut-attack-strike-ground",*pos,glam::Mat3::IDENTITY);
+     }
+    }
+   }
    let mut commands=s.jak.particles.as_mut().map(|p|p.take_journal()).unwrap_or_default();
    // Snapshot the original rope/field after each of the three 60 Hz steps.
    // Replay it before that step's barrier, not all three at the 20 Hz packet end.
@@ -345,7 +368,6 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    effects.extend(commands.into_iter().map(effects::WireCommand::Particle));
    effects.push(effects::WireCommand::Weapon(effects::WeaponCommand{visual:s.jak.weapon_visuals()}));
    effects.extend(after.into_iter().map(effects::WireCommand::Particle));
-   let frame_events=s.jak.take_events();
    audio::emit_jak_sounds_for(&s.jak,0,Some(jak_steps::Floor::from_u8(((flags>>8)&31) as u8)),&frame_events,&mut s.audio);
    let blasts:Vec<_>=frame_events.iter().filter_map(|e|if let Event::Explosion{center,radius,..}=e{Some((*center,*radius))}else{None}).collect();
    let smash=s.jak.dark||matches!(s.jak.attack.danger,Some(jak_core::attack::Danger::Flop|jak_core::attack::Danger::FlopDown));
@@ -360,6 +382,15 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   let loops:Vec<_>=s.audio.loop_requests().into_iter().map(sound).collect();
   let healed=std::mem::take(&mut s.jak.lightjak.heal_fraction);
   let j=&s.jak;
+  let ride=if j.state.is_flut(){
+   Some(json!({"runMix":j.flut.run_mix,"clone":j.flut.clone,"swimming":j.flut.swimming,
+    "frameMax":j.anims.max(j.chan.anim),"fixed":j.flut_mount_target().is_some()}))
+  }else{None};
+  let dismounted=s.jak.flut.dismounted.take().map(|(at,q)|{
+   let forward=q*Vec3::Z;
+   json!({"pos":pos(at),"yaw":(-forward.x).atan2(forward.z).to_degrees()})
+  });
+  let j=&s.jak;
   let frame_rate=if before_clip==j.chan.anim&&j.chan.frame>=before_frame{((j.chan.frame-before_frame)/(steps as f32/60.)).clamp(-240.,240.)}else{0.};
   let gun=json!({"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
   let wings=j.lightjak.wings.filter(|w|w.shown).map(|w|{
@@ -372,9 +403,42 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
    json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}),"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
+  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}),"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_ridingAnimations(env:JNIEnv,_:JClass)->jstring{
+ let rows:HashMap<&str,Value>=RIDE_ART.get().into_iter().flat_map(|bank|bank.iter())
+  .filter_map(|(name,art)|Some((name.as_str(),json!({"speed":art.speed,"joints":art.joints.as_ref()?}))))
+  .collect();
+ env.new_string(json!(rows).to_string()).map_or(std::ptr::null_mut(),|s|s.into_raw())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_mountReady(_env:JNIEnv,_:JClass)->jni::sys::jboolean{
+ u8::from(ANIMS.get().is_some_and(|a|a.max(jak_core::anim::FLUT1_GET_ON)>24.)
+   &&RIDE_ART.get().is_some_and(|a|a.get("jakb-flut-get-on").is_some_and(|c|c.joints.is_some())))
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_mountControl(
+ mut env:JNIEnv,_:JClass,id:jlong,action:jint,x:f32,y:f32,z:f32,yaw:f32
+){
+ protect(&mut env,||{
+  let at=Vec3::new(x,y,z)*BLOCK;
+  if !at.is_finite()||!yaw.is_finite(){return Err("Invalid mount position".into());}
+  let mut sessions=lock_sessions()?;
+  let jak=&mut sessions.live.get_mut(&(id as u64)).ok_or("Stale mount session")?.jak;
+  match action{
+   0=>jak.request_flut(at,Quat::from_rotation_y(-yaw.to_radians())),
+   1=>jak.request_flut_off(),
+   2=>jak.flut_hit(at),
+   _=>return Err("Invalid mount action".into()),
+  }
+  Ok(())
+ });
 }
 
 #[cfg(test)]

@@ -105,3 +105,7 @@ Final build passed in 28s; package receipt `.local/citizens-build-receipt.json`.
 ## 2026-11-03 — frame-smooth camera and original Jak powers
 
 Shared presentation for local avatar and camera, per-frame SDL look, native shoulder clipping, R3 powers, L2 aim, contextual R2 fire/place/mine. Original wing and shield clips and animated material layers, dark color variants and body-joint effects. Real shield damage reaction, flight, healing and per-dimension native entity slowdown with recovery. ABI3 preserved. Actual Minecraft evidence and limits in docs/CURRENT-PORT-HANDOFF.md.
+
+## 2026-11-03 — Jak 3 desert Leaper
+
+Native Minecraft creature and desert spawn, original mounted physics, Jak/Daxter/Leaper clips and original hit/landing/audio presentation. Native gate interaction while riding, mount prompt, dismount, damage and native entity data round trip verified. Evidence and remaining related work in docs/CURRENT-PORT-HANDOFF.md.

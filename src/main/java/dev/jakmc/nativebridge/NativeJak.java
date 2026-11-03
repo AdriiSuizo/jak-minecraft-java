@@ -25,6 +25,9 @@ public final class NativeJak {
     public static native int floor(String blockId,String stepSound);
     public static native int configure(String originalExportRoot);
     public static native String animationMetadata(String originalExportRoot,String model,boolean jak1);
+    public static native String ridingAnimations();
+    public static native boolean mountReady();
+    public static native void mountControl(long session,int action,float x,float y,float z,float yaw);
     public static native long create(float minecraftYaw);
     public static native void destroy(long session);
     public static native void rebase(long session,float deltaX,float deltaY,float deltaZ);

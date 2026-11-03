@@ -23,6 +23,7 @@ abstract class JakControllerCameraMixin {
     @Unique private float jakmc$dt;
     @Unique private float jakmc$distance=Float.NaN;
     @Unique private float jakmc$aim;
+    @Unique private float jakmc$mountHeight;
 
     @Inject(method="update",at=@At("HEAD"))
     private void jakmc$prepareFrame(DeltaTracker deltaTracker,CallbackInfo ci){
@@ -32,6 +33,9 @@ abstract class JakControllerCameraMixin {
         jakmc$lastFrame=now;
         JakInput.frame(client);
         JakPoses.beginFrame(client);
+        var pose=entity==null?null:JakPoses.get(entity.getId());
+        boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
+        jakmc$mountHeight+=((mounted?.8f:0)-jakmc$mountHeight)*(1-(float)Math.exp(-9*jakmc$dt));
         if(!jakmc$active()||client.options.getCameraType().isFirstPerson()||client.options.getCameraType().isMirrored()){
             jakmc$distance=Float.NaN;
             jakmc$aim=0;
@@ -55,7 +59,15 @@ abstract class JakControllerCameraMixin {
         if(!jakmc$active())return;
         var feet=JakPoses.presented();
         args.set(0,feet.x);
-        args.set(1,feet.y+1.62);
+        double height=feet.y+1.62;
+        if(jakmc$mountHeight>.001f){
+            Vec3 from=new Vec3(feet.x,height,feet.z);
+            var hit=entity.level().clip(new ClipContext(from,from.add(0,jakmc$mountHeight,0),
+                ClipContext.Block.VISUAL,ClipContext.Fluid.NONE,entity));
+            height+=hit.getType()==HitResult.Type.MISS?jakmc$mountHeight:
+                Math.max(0,hit.getLocation().y-height-.12);
+        }
+        args.set(1,height);
         args.set(2,feet.z);
     }
 

@@ -1,4 +1,9 @@
 {
+  "hint.jakmc.leaper_mouse": "Clic derecho · Montar",
+  "hint.jakmc.leaper_pad": "△ Montar",
+  "entity.jakmc.leaper": "Lagarto saltador",
+  "item.jakmc.leaper_spawn_egg": "Generador de Lagarto saltador",
+  "message.jakmc.mount_assets": "Faltan los datos originales de la montura en las exportaciones de OpenGOAL.",
   "tab.jakmc.equipment": "Jak: equipo",
   "message.jakmc.board_equipped": "Turbotabla equipada en su propia ranura",
   "key.categories.jakmc.controls": "Jak",

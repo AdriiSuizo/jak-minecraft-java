@@ -148,6 +148,35 @@ public final class GltfModel {
     public void prepare(Posed pose){prepared.computeIfAbsent(pose,p->{var geometry=new ArrayList<float[]>();for(Surface surface:surfaces)geometry.add(skin(surface,p));return List.copyOf(geometry);});}
     public void animationsFrom(GltfModel source){readAnimations(source,null);}
     public void attachmentAnimationsFrom(GltfModel source,String prefix){readAnimations(source,prefix);}
+    void originalAnimations(JsonObject art,String prefix){
+        for(var entry:art.entrySet()){
+            String name=entry.getKey();
+            if(!name.startsWith(prefix))continue;
+            var clip=entry.getValue().getAsJsonObject();
+            var frames=clip.getAsJsonArray("joints");
+            if(frames.isEmpty()||frames.get(0).getAsJsonArray().size()!=joints.length-2)continue;
+            float[] times=new float[frames.size()];
+            float rate=clip.get("speed").getAsFloat()*60;
+            for(int i=0;i<times.length;i++)times[i]=i/rate;
+            var channels=new ArrayList<Channel>();
+            for(int joint=2;joint<joints.length;joint++){
+                float[] translations=new float[times.length*3],rotations=new float[times.length*4],scales=new float[times.length*3];
+                for(int frame=0;frame<times.length;frame++){
+                    var pose=frames.get(frame).getAsJsonArray().get(joint-2).getAsJsonArray();
+                    for(int c=0;c<3;c++){
+                        translations[frame*3+c]=pose.get(c).getAsFloat();
+                        scales[frame*3+c]=pose.get(c+7).getAsFloat();
+                    }
+                    for(int c=0;c<4;c++)rotations[frame*4+c]=pose.get(c+3).getAsFloat();
+                }
+                int node=joints[joint];
+                channels.add(new Channel(node,"translation",times,translations,3,false));
+                channels.add(new Channel(node,"rotation",times,rotations,4,false));
+                channels.add(new Channel(node,"scale",times,scales,3,false));
+            }
+            clips.put(name,new Clip(channels,times[times.length-1]));
+        }
+    }
     private void readAnimations(GltfModel source,String attachmentPrefix){
         if(!source.json.has("animations"))return;
         for(var element:source.json.getAsJsonArray("animations")){

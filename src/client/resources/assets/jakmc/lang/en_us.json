@@ -1,4 +1,9 @@
 {
+  "hint.jakmc.leaper_mouse": "Right click · Mount",
+  "hint.jakmc.leaper_pad": "△ Mount",
+  "entity.jakmc.leaper": "Leaper",
+  "item.jakmc.leaper_spawn_egg": "Leaper Spawn Egg",
+  "message.jakmc.mount_assets": "The original mount data is missing from the OpenGOAL exports.",
   "tab.jakmc.equipment": "Jak: equipo",
   "message.jakmc.board_equipped": "Turbotabla equipada en su propia ranura",
   "key.categories.jakmc.controls": "Jak",

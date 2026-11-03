@@ -19,6 +19,7 @@ public final class JakRenderer {
     private static GltfModel body,daxter,board,gun,wings,shield;
     private static float bodyScale;
     private static float floorOffset;
+    private static boolean ridingLoaded;
     public static long renderSerial;
     public static int lastEntityId=-1;
     public static float standingHeight;
@@ -60,13 +61,16 @@ public final class JakRenderer {
         stack.pushPose();stack.rotateDegrees(Axis.YP,-pose.yaw());stack.scale(bodyScale,bodyScale,bodyScale);stack.translate(0,floorOffset,0);
         float elapsed=Math.clamp((System.nanoTime()-pose.received())/1e9f,0,.05f);
         float frame=pose.frame()+(pose.raw().has("frameRate")?pose.raw().get("frameRate").getAsFloat()*elapsed:0);
+        var ride=pose.raw().get("ride");
+        boolean mounted=ride!=null&&ride.isJsonObject();
+        if(mounted)loadRide();
         int frames=body.frames(pose.clip());if(pose.raw().has("loop")&&pose.raw().get("loop").getAsBoolean())frame%=frames;
-        var skeleton=body.pose(pose.clip(),frame);
+        var skeleton=mounted?JakLeaperRenderer.ridePose(body,"jakb-",pose,elapsed):body.pose(pose.clip(),frame);
         int gunKind=JakItems.GUNS.indexOf(state.getMainHandItemStack().getItem());
         var gunState=pose.raw().getAsJsonObject("gun");
         boolean gunOut=gunState!=null&&gunState.get("out").getAsBoolean();
         boolean shieldUp=pose.raw().has("shield")&&pose.raw().get("shield").getAsBoolean();
-        if(gunKind>=0&&gunOut&&!shieldUp&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
+        if(!mounted&&gunKind>=0&&gunOut&&!shieldUp&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
             String upper=switch(gunKind/3){case 0->"jakb-gun-stance";case 1->"jakb-gun-stance-yellow";case 2->"jakb-gun-stance-blue";default->"jakb-gun-stance-dark";};
             float age=0;var g=pose.raw().getAsJsonObject("gun");
             if(g!=null&&g.get("out").getAsBoolean()){
@@ -105,7 +109,7 @@ public final class JakRenderer {
         stack.translate(shoulder.x,shoulder.y,shoulder.z);stack.scale(1/1.4f,1/1.4f,1/1.4f);
         String daxClip=pose.clip().replace("jakb-","daxter-");
         if(!daxter.hasClip(daxClip))daxClip="daxter-stance-loop";
-        var daxPose=daxter.pose(daxClip,frame);
+        var daxPose=mounted?JakLeaperRenderer.ridePose(daxter,"daxter-",pose,elapsed):daxter.pose(daxClip,frame);
         if(ScaleScene.active()){
             var b=body.bounds(skeleton,new Matrix4f());
             var d=daxter.bounds(daxPose,new Matrix4f().translation(shoulder).scale(1/1.4f));
@@ -119,8 +123,18 @@ public final class JakRenderer {
             stack.pushPose();stack.mulPose(rigid(body.joint(skeleton,"board")));
             board.submit(board.poseAtTime("board-close",Float.MAX_VALUE),stack,collector,state.lightCoords);stack.popPose();
         }
-        hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);
+        if(!mounted){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
         stack.popPose();return true;
+    }
+    private static void loadRide(){
+        if(ridingLoaded)return;
+        var art=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ridingAnimations()).getAsJsonObject();
+        body.originalAnimations(art,"jakb-flut-");
+        daxter.originalAnimations(art,"daxter-flut-");
+        if(!body.hasClip("jakb-flut-get-on")||!daxter.hasClip("daxter-flut-get-on")){
+            throw new IllegalStateException("Original riding joint count did not match the Jak and Daxter rigs");
+        }
+        ridingLoaded=true;
     }
     private record ShieldTiming(boolean open,float changed){}
     private static final java.util.Map<net.minecraft.world.entity.Entity,ShieldTiming> SHIELDS=new java.util.WeakHashMap<>();

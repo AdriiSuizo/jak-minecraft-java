@@ -72,7 +72,7 @@ public final class MinecraftCollision {
     private static void triangle(ByteBuffer b,int flags,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz){b.putFloat(ax).putFloat(ay).putFloat(az).putFloat(bx).putFloat(by).putFloat(bz).putFloat(cx).putFloat(cy).putFloat(cz).putInt(flags);}
     public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region){return actors(level,owner,origin,region,null);}
     public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region,DirectBufferArena arena) {
-        var entities=level.getEntities(owner,region,e->e.isAlive()&&e.isPickable());
+        var entities=level.getEntities(owner,region,e->e.isAlive()&&e.isPickable()&&(!(e instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()!=owner.getId()));
         ByteBuffer data=arena==null?NativeJak.buffer(entities.size()*32):arena.acquire(entities.size()*32);
         for(Entity e:entities){AABB b=e.getBoundingBox().move(-origin.x,-origin.y,-origin.z);data.putLong(e.getId());
             data.putFloat((float)b.minX).putFloat((float)b.minY).putFloat((float)b.minZ);

@@ -62,6 +62,24 @@ public final class JakInput {
         return Trigger.BOARD;
     }
 
+    private static boolean useWhileMounted(Minecraft c){
+        if(c.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit){
+            return !(hit.getEntity() instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()!=c.player.getId();
+        }
+        if(c.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit
+            &&hit.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK){
+            var state=c.level.getBlockState(hit.getBlockPos());
+            var block=state.getBlock();
+            return state.getMenuProvider(c.level,hit.getBlockPos())!=null
+                ||block instanceof net.minecraft.world.level.block.DoorBlock
+                ||block instanceof net.minecraft.world.level.block.TrapDoorBlock
+                ||block instanceof net.minecraft.world.level.block.FenceGateBlock
+                ||block instanceof net.minecraft.world.level.block.ButtonBlock
+                ||block instanceof net.minecraft.world.level.block.LeverBlock
+                ||block instanceof net.minecraft.world.level.block.BedBlock;
+        }
+        return false;
+    }
     private static void poll(Minecraft c){
         if(!enabled(c)){
             pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
@@ -93,9 +111,10 @@ public final class JakInput {
             int edges=held&~physicalHeld;
             var pose=JakPoses.get(c.player.getId());
             boolean board=pose!=null&&pose.board();
+            boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
             boolean powers=(held&R3)!=0||DARK.isDown()||LIGHT.isDown();
             var itemAction=triggerFor(c.player.getMainHandItem(),board);
-            boolean busy=c.player.isInWater()||powers;
+            boolean busy=c.player.isInWater()||powers||mounted;
             aiming=!board&&!busy&&!c.options.getCameraType().isMirrored()
                 &&((held&L2)!=0||AIM.isDown());
             Trigger wanted=busy&&!board?Trigger.RESERVED:itemAction;
@@ -106,7 +125,7 @@ public final class JakInput {
             else if(trigger!=wanted)trigger=Trigger.RESERVED;
             boolean useTrigger=trigger==Trigger.USE||trigger==Trigger.PLACE&&aiming;
             boolean mineTrigger=trigger==Trigger.MINE;
-            boolean triangle=(held&TRIANGLE)!=0&&!powers;
+            boolean triangle=(held&TRIANGLE)!=0&&!powers&&(!mounted||useWhileMounted(c));
             useHeld=triangle||useTrigger;
             attackHeld=mineTrigger;
             useClicked|=triangle&&(edges&TRIANGLE)!=0||useTrigger&&(edges&R2)!=0;
@@ -116,6 +135,7 @@ public final class JakInput {
             int reserved=board?R2:R1|R2;
             int mapped=held&~reserved;
             int mappedEdges=edges&~reserved;
+            if(mounted&&triangle){mapped&=~TRIANGLE;mappedEdges&=~TRIANGLE;}
             int nativeTrigger=trigger==Trigger.FIRE?R1:trigger==Trigger.BOARD?R2:0;
             if(rightDown)mapped|=nativeTrigger;
             if((edges&R2)!=0)mappedEdges|=nativeTrigger;

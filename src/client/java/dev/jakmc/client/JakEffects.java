@@ -54,8 +54,23 @@ public final class JakEffects {
   String name=names[index];
   Path root=RuntimeConfig.assets.resolve("textures");
   String page="level-default-sprite";
+  boolean jak1=name.startsWith("jak1:");
+  if(jak1){
+   root=RuntimeConfig.assets.getParent().getParent().getParent().getParent()
+       .resolve("jak1/data/decompiler_out/jak1/textures");
+   name=name.substring(5);
+   page="effects";
+  }
   if(name.contains("/")){int split=name.indexOf('/');page=name.substring(0,split);name=name.substring(split+1);}
   Path file=root.resolve(page).resolve(name+".png");
+  if(jak1&&!Files.isRegularFile(file)){
+   String override=System.getenv("IW4L_JAK1_TEXTURES");
+   String local=System.getenv("LOCALAPPDATA");
+   if(override!=null)file=Path.of(override,page,name+".png");
+   if(!Files.isRegularFile(file)&&local!=null){
+    file=Path.of(local,"iw4l-mashup/jak1-proj/decompiler_out/jak1/textures",page,name+".png");
+   }
+  }
   if(!Files.isRegularFile(file)){
    MISSING.add(index);JakMod.LOG.error("Original Jak particle texture unavailable: {}",file);return null;
   }

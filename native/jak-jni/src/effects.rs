@@ -24,6 +24,15 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  let text=read("engine/target/target-part.gc")?;
  let subset=crate::particle_subset::particle_subset(&text,&["group-target-hit","group-lightning-glow","group-land-poof-stn"],&[157,173,187],&["lightning-darkjak-attack","lightning-darkjak-transform"]);
  library.read(&subset.replace("(sp-item 70 :period (seconds 0.5) :length (seconds 0.017))",""));
+ if let Some(active)=root.ancestors().find(|p|p.file_name().is_some_and(|n|n=="active")){
+  let flut=active.join("jak1/data/goal_src/jak1/levels/flut_common/flut-part.gc");
+  if let Ok(text)=std::fs::read_to_string(flut){
+   let slam=crate::particle_subset::particle_subset(&text,&["group-flut-attack-strike-ground"],&[],&[]);
+   // Put Jak 1 launchers in their own range within this shared runtime bank.
+   library.read_jak1(&slam.replace("sp-item 749","sp-item 1749").replace("defpart 749","defpart 1749")
+       .replace("sp-item 750","sp-item 1750").replace("defpart 750","defpart 1750"));
+  }
+ }
  if library.part_count()<150||library.group_count()<30{return Err("Incomplete original particle definitions".into());}
  let mut textures=library.textures();
  // Arc Wielder's lightning-new appearances also reference the original page.

@@ -12,7 +12,8 @@ public interface JakEntityClock {
     static long time(Level level){return level.getGameTime()-of(level).skipped;}
 
     static boolean affected(Entity entity){
-        return !(entity instanceof Player)&&entity.countPlayerPassengers()==0;
+        return !(entity instanceof Player)&&entity.countPlayerPassengers()==0
+            &&(!(entity instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()<0);
     }
 
     final class State {

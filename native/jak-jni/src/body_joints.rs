@@ -13,6 +13,7 @@ struct Joint {
 pub struct BodyJoints {
     joints: Vec<Joint>,
     clips: HashMap<String, Vec<Vec<[f32; 10]>>>,
+    flut_main: Vec<Vec3>,
 }
 
 impl BodyJoints {
@@ -74,7 +75,12 @@ impl BodyJoints {
             // Art frames exclude align and prejoint. The motion solver owns align.
             poses.first().is_some_and(|p| p.len()+2 == joints.len()).then(|| (name.clone(),poses))
         }).collect();
-        Ok(Self { joints, clips })
+        // Jak 1's dismount computes its final lateral displacement from "main"
+        // (the first joint after align and prejoint in the eichar export).
+        let flut_main=authored.get("jakb1-flut-get-off").and_then(|art|art.joints.as_ref())
+            .map_or_else(Vec::new,|frames|frames.iter().filter_map(|frame|frame.first())
+                .map(|main|Vec3::from_slice(main)*jak_core::METER).collect());
+        Ok(Self { joints, clips, flut_main })
     }
 
     pub fn sample(&self, jak: &mut jak_core::Jak, rotations: &mut Vec<Quat>) {
@@ -105,6 +111,11 @@ impl BodyJoints {
             }
             jak.joints[index] = position;
             rotations[index] = rotation;
+        }
+        if jak.chan.anim==jak_core::anim::FLUT1_GET_OFF&&!self.flut_main.is_empty(){
+            let lo=(frame as usize).min(self.flut_main.len()-1);
+            let hi=(lo+1).min(self.flut_main.len()-1);
+            jak.joints[2]=self.flut_main[lo].lerp(self.flut_main[hi],(frame-lo as f32).clamp(0.,1.));
         }
     }
 }

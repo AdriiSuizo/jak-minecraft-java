@@ -9,6 +9,7 @@
     "JakControllerCameraMixin",
     "JakCameraPresentationMixin",
     "JakAimCrosshairMixin",
+    "JakMountedPickMixin",
     "JakClientFreezeTickMixin",
     "JakFreezePresentationMixin",
     "JakAvatarPositionMixin",
