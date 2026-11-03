@@ -196,7 +196,7 @@ public final class JakEnemy extends Monster {
  @Override protected void dropCustomDeathLoot(ServerLevel level,DamageSource source,boolean playerKill){
   super.dropCustomDeathLoot(level,source,playerKill);
   // Eligibility is independent of whether the model has a physical gem joint.
-  if(kind.metalHead)spawnAtLocation(level,new net.minecraft.world.item.ItemStack(JakItems.SKULL_GEM));
+  if(kind.metalHead)dev.jakmc.content.GemPhysics.launch(spawnAtLocation(level,new net.minecraft.world.item.ItemStack(JakItems.SKULL_GEM)));
   spawnAtLocation(level,new net.minecraft.world.item.ItemStack(kind.jak1()?JakItems.LIGHT_ECO:JakItems.DARK_ECO));
  }
  @Override protected SoundEvent getHurtSound(DamageSource source){return kind==null?null:JakEnemySounds.first(kind,kind.model+"-hit",kind.model.equals("predator")?"pred-hit":"IMPACT_SOFT");}

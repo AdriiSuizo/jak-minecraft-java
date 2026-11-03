@@ -20,8 +20,9 @@ abstract class JakPickupMixin {
  @Inject(method="playerTouch",at=@At("HEAD"),cancellable=true)
  private void jakmc$take(Player player,CallbackInfo ci){
   ItemEntity self=(ItemEntity)(Object)this;var stack=self.getItem();jakmc$gemCount=0;
-  if(!(player instanceof ServerPlayer p)||!JakPlayers.active(p)||self.hasPickUpDelay()||(target!=null&&!target.equals(p.getUUID())))return;
+  if(!(player instanceof ServerPlayer p)||self.hasPickUpDelay()||(target!=null&&!target.equals(p.getUUID())))return;
   if(stack.is(JakItems.SKULL_GEM)){jakmc$gemCount=stack.getCount();return;}
+  if(!JakPlayers.active(p))return;
   boolean light=stack.is(JakItems.LIGHT_ECO);if(!light&&!stack.is(JakItems.DARK_ECO))return;
   ci.cancel();var type=light?JakData.LIGHT_ECO:JakData.DARK_ECO;float energy=p.getAttachedOrCreate(type);if(energy>=100)return;
   var item=stack.getItem();float each=light?2:4;int count=Math.min(stack.getCount(),(int)Math.ceil((100-energy)/each));
@@ -33,6 +34,6 @@ abstract class JakPickupMixin {
  @Inject(method="playerTouch",at=@At("TAIL"))
  private void jakmc$gemSound(Player player,CallbackInfo ci){
   ItemEntity self=(ItemEntity)(Object)this;
-  if(jakmc$gemCount>0&&(self.isRemoved()||self.getItem().getCount()<jakmc$gemCount))self.level().playSound(null,self.getX(),self.getY(),self.getZ(),SoundEvent.createVariableRangeEvent(JakData.id("sfx/gem_pickup")),SoundSource.PLAYERS,1,1);
+  if(jakmc$gemCount>0&&(self.isRemoved()||self.getItem().getCount()<jakmc$gemCount)){dev.jakmc.content.GemPhysics.pickup(self,player);}
  }
 }

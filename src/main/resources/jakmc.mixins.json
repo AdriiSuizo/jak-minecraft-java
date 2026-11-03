@@ -5,7 +5,8 @@
   "mixins": [
     "PlayerTravelMixin",
     "ServerMovementMixin",
-    "JakPickupMixin"
+    "JakPickupMixin",
+    "GemPhysicsMixin"
   ],
   "injectors": {
     "defaultRequire": 1
