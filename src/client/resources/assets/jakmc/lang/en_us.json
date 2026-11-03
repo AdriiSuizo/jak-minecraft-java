@@ -82,5 +82,21 @@
   "item.jakmc.hellcat": "KG HellCat",
   "tab.jakmc.biomes": "Jak Biomes",
   "tab.jakmc.building": "Jak Building",
-  "tab.jakmc.details": "Jak Details"
+  "tab.jakmc.details": "Jak Details",
+  "item.jakmc.dune_hopper": "Dune Hopper",
+  "item.jakmc.sand_shark": "Sand Shark",
+  "entity.jakmc.dune_hopper": "Dune Hopper",
+  "entity.jakmc.sand_shark": "Sand Shark",
+  "item.jakmc.zoomer_bike_a": "Zoomer Bike A",
+  "entity.jakmc.zoomer_bike_a": "Zoomer Bike A",
+  "item.jakmc.zoomer_bike_b": "Zoomer Bike B",
+  "entity.jakmc.zoomer_bike_b": "Zoomer Bike B",
+  "item.jakmc.zoomer_bike_c": "Zoomer Bike C",
+  "entity.jakmc.zoomer_bike_c": "Zoomer Bike C",
+  "item.jakmc.zoomer_car_a": "Zoomer Car A",
+  "entity.jakmc.zoomer_car_a": "Zoomer Car A",
+  "item.jakmc.zoomer_car_b": "Zoomer Car B",
+  "entity.jakmc.zoomer_car_b": "Zoomer Car B",
+  "item.jakmc.zoomer_car_c": "Zoomer Car C",
+  "entity.jakmc.zoomer_car_c": "Zoomer Car C"
 }
