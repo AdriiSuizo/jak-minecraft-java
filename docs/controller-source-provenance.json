@@ -1,0 +1,36 @@
+{
+  "purpose": "Read-only controller/camera/eco oracle; standards applied as work philosophy, not LSC4 project commands",
+  "sources": [
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak.rs",
+      "sha256": "5df4a2f29a58aefac36d1da4778a2d055e49760216dd7c43f071ceb0af19b39a"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\console\\src\\gamepad.rs",
+      "sha256": "bf7b2b5a7367cd154778c746229069b1acc3a3abc1e94b1008b3ea62340522c3"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\jak_mode\\src\\pad.rs",
+      "sha256": "1ad09ca8862ed35f3ea2052048dccb23c5840ad97d0bad361ec0880473756e95"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak_eco.rs",
+      "sha256": "36b86894d9cf5c61034d0aea9fe26c9aa53c3929a39a90b80affecd39a566c34"
+    },
+    {
+      "path": "C:\\Users\\vieir\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\bevy_input-0.19.0\\src\\gamepad.rs",
+      "sha256": "bfb76acebf03c25024f309fe255ffb53451e548fdfbc807844857deb380aab68"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\PORTING-STANDARDS to learn from for other projects.md",
+      "sha256": "915b10531372193432b20d49a62ff99db7b93135cd00c53c22e62c3680687926"
+    }
+  ],
+  "api_documentation": [
+    "https://wiki.libsdl.org/SDL3/SDL_GetGamepads",
+    "https://wiki.libsdl.org/SDL3/SDL_GetGamepadAxis",
+    "https://wiki.libsdl.org/SDL3/SDL_AttachVirtualJoystick"
+  ],
+  "reviewed_reference": "https://github.com/AdriiSuizo/jak-enhanced-trilogy",
+  "reference_imports": "README consulted; no fork code/assets imported this checkpoint"
+}
