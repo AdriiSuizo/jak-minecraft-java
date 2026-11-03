@@ -18,3 +18,5 @@ All Jak work is in scope. The order below is an implementation dependency order,
 | Visuals and compatibility | Java rendering plus OpenGOAL | stable occlusion, no clone fog/LOD overrides; native save/dimensions |
 
 Installer and public distribution are deferred by explicit user instruction. Assets are generated locally from owned game exports and not committed. Build, unit checks and visible real-game behavior have separate acceptance entries; none substitutes for the other.
+
+Current implementation and exact remaining integration: [CURRENT-PORT-HANDOFF.md](CURRENT-PORT-HANDOFF.md). The original source references above remain oracles, not acceptance of completed Java features.

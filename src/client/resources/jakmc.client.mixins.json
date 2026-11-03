@@ -1,7 +1,13 @@
 {
- "required":true,
- "package":"dev.jakmc.mixin.client",
- "compatibilityLevel":"JAVA_25",
- "client":["JakRenderMixin","JakDisconnectMixin"],
- "injectors":{"defaultRequire":1}
+ "required": true,
+ "package": "dev.jakmc.mixin.client",
+ "compatibilityLevel": "JAVA_25",
+ "client": [
+  "JakRenderMixin",
+  "JakDisconnectMixin",
+  "DevSceneCameraMixin"
+ ],
+ "injectors": {
+  "defaultRequire": 1
+ }
 }

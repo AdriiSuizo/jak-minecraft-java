@@ -16,6 +16,7 @@ use crate::pad::button;
 use crate::projectile::{ActorWorld, Projectile, ProjectileHit, reborrow};
 use crate::{Event, Jak};
 mod wave;
+pub mod presentation;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum GunColor {
@@ -451,6 +452,7 @@ struct Knot {
 /// its end on the world sparking.
 #[derive(Clone, Debug)]
 struct ArcTracker {
+    created: i64,
     knots: [Knot; 12],
     /// In its `active` state (R1 held), else `inactive` (fading out).
     active: bool,
@@ -1317,15 +1319,10 @@ impl Jak {
 
     /// `gun-blue-2-lightning-init-by-other`: its six bolts.
     fn new_arc_tracker(&self, now: i64) -> ArcTracker {
-        let thin = blue_light(false);
-        let big = blue_light(true);
-        let seed = (now as u32).wrapping_mul(2_654_435_761) | 1;
-        let mut bolts: Vec<_> = (0..4u32)
-            .map(|i| crate::lightning_bolt::Bolt::new(12, 6, thin.clone(), now, seed.wrapping_add(i * 7919)))
-            .collect();
-        bolts.extend((4..6u32).map(|i| crate::lightning_bolt::Bolt::new(12, 5, big.clone(), now, seed.wrapping_add(i * 7919))));
+        let bolts = presentation::arc_bolts(now);
         let knot = Knot { pt: Vec3::ZERO, dir: Vec3::Z, length: meters(6.0) };
         ArcTracker {
+            created: now,
             knots: [knot; 12],
             active: false,
             state_time: now,
@@ -1585,29 +1582,7 @@ impl Jak {
     /// 15 to 25 ticks.
     fn arc_setup_draw(&mut self, arc: &mut ArcTracker, world: &mut dyn CollideWorld) {
         let now = self.time;
-        let n = arc.pts.len();
-        let fade = if n > 0 { (arc.pts[0].distance(arc.pts[n - 1]) + 16384.0).min(262144.0) } else { 262144.0 };
-        for (i, bolt) in arc.bolts.iter_mut().enumerate() {
-            let big = i >= 4;
-            bolt.appearance.alpha_1.2 = fade;
-            bolt.inner_point_travel_time = if big { 25 } else { 150 };
-            bolt.snap_inner_points = true;
-            bolt.fractal_reduction = 0.4 * 9f32.ln() / 12f32.ln();
-            bolt.generate_mode = 1;
-            bolt.num_active_spans = n.saturating_sub(1);
-            let off = if big { 4096.0 } else { 8192.0 };
-            for v in 0..bolt.num_active_spans {
-                bolt.span_pts_start[v] = arc.pts[v];
-                bolt.spans[v].random_offset_size_start = if v > 0 { off } else { 0.0 };
-                bolt.set_inner_points(v, if big { 3 } else { 4 });
-                bolt.spans[v].inner_random_offset_size = off;
-            }
-            if n > 0 {
-                let last = bolt.num_active_spans;
-                bolt.span_pts_start[last] = arc.pts[last];
-                bolt.spans[last].random_offset_size_start = 0.0;
-            }
-        }
+        presentation::configure_arc(&mut arc.bolts, &arc.pts);
         self.arc_bolts_frame(arc);
         if let Some(_) = arc.terminal
             && now - arc.last_spark_time >= arc.spark_interval
@@ -2842,41 +2817,11 @@ impl crate::Jak {
     /// shadow cast straight down from 30 m over the shot (its own mesh is
     /// masked off), dark bands on the ground spreading out.
     pub(crate) fn gravity_ring_sprites(&self) -> Vec<crate::particles::Sprite> {
-        let mut out = Vec::new();
-        for e in &self.weapons.effects {
-            let Effect::Gravity { center, start, .. } = e else { continue };
-            let since = (self.time - start) as f32 / TICKS_PER_SECOND as f32;
-            for k in 0..5 {
-                let Some((outer, inner)) = gravity_ring(k, since) else { continue };
-                let (mid, band) = ((outer + inner) * 0.5, outer - inner);
-                if mid <= 0.05 || band <= 0.01 {
-                    continue;
-                }
-                // Around it in pieces a meter or two long.
-                let pieces = ((std::f32::consts::TAU * mid / 1.5).ceil() as usize).clamp(12, 160);
-                let step = std::f32::consts::TAU / pieces as f32;
-                for i in 0..pieces {
-                    let a = (i as f32 + 0.5) * step;
-                    let (s, c) = a.sin_cos();
-                    let pos = *center + Vec3::new(c, 0.0, s) * meters(mid) + Vec3::Y * meters(0.08);
-                    out.push(crate::particles::Sprite {
-                        screen_aligned: false,
-                        pos,
-                        // Overlapping, the soft sprite's falloff inside the
-                        // band, so the pieces make one dark band.
-                        size: [meters(mid * step * 2.4), meters(band * 1.8)],
-                        rotation: 0.0,
-                        rgba: [0.0, 0.0, 0.0, 60.0],
-                        texture: "glow-soft".into(),
-                        blend: crate::particles::Blend::Normal,
-                        corner: 0,
-                        stretch: Some(Vec3::new(-s, 0.0, c)),
-                        flat: Some(Vec3::Y),
-                    });
-                }
-            }
-        }
-        out
+        self.weapons.effects.iter().filter_map(|e| match e {
+            Effect::Gravity { center, start, .. } => Some(presentation::GravityVisual {
+                center: *center, age: (self.time-start) as f32/TICKS_PER_SECOND as f32,
+            }), _=>None,
+        }).flat_map(|g| presentation::gravity_sprites(g.center,g.age)).collect()
     }
 
     /// The Arc Wielder's lightning this frame: its six bolts' strips (Jak
@@ -3020,6 +2965,8 @@ mod arc_draw_tests {
 /// the model, where it is and how it is turned (Jak units).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShotModel {
+    /// Stable within a simulation session, independent of vector removal/order.
+    pub id: u64,
     pub model: &'static str,
     pub pos: Vec3,
     pub rot: Quat,
@@ -3054,17 +3001,17 @@ impl crate::Jak {
             let d = v.try_normalize().unwrap_or(Vec3::Z);
             Quat::from_rotation_arc(Vec3::Z, d)
         };
-        let plain = |model, pos, rot| ShotModel { model, pos, rot, scale: Vec3::ONE, anim: ShotAnim::Rest, alpha: 1.0 };
+        let plain = |id, model, pos, rot| ShotModel { id, model, pos, rot, scale: Vec3::ONE, anim: ShotAnim::Rest, alpha: 1.0 };
         let mut out: Vec<ShotModel> = self
             .weapons
             .shots
             .iter()
             .filter_map(|shot| match &shot.state {
                 ShotState::Saucer { phase, spin, .. } if *phase != SaucerPhase::Husk => {
-                    Some(plain("gun-saucer", shot.trans, Quat::from_rotation_y(*spin)))
+                    Some(plain((shot.spawn as u64)<<8 | shot.kind as u64,"gun-saucer", shot.trans, Quat::from_rotation_y(*spin)))
                 }
-                ShotState::Grenade { .. } => Some(ShotModel { scale: Vec3::splat(2.5), ..plain("gun-grenade", shot.trans, along(shot.transv)) }),
-                ShotState::Nuke { dir, .. } => Some(plain("gun-nuke", shot.trans, along(*dir))),
+                ShotState::Grenade { .. } => Some(ShotModel { scale: Vec3::splat(2.5), ..plain((shot.spawn as u64)<<8 | shot.kind as u64,"gun-grenade", shot.trans, along(shot.transv)) }),
+                ShotState::Nuke { dir, .. } => Some(plain((shot.spawn as u64)<<8 | shot.kind as u64,"gun-nuke", shot.trans, along(*dir))),
                 _ => None,
             })
             .collect();
@@ -3082,7 +3029,7 @@ impl crate::Jak {
                     let age = (now - start) as f32 / TICKS_PER_SECOND as f32;
                     out.push(ShotModel {
                         anim: ShotAnim::Once { clip: "gun-red-cone-idle", age },
-                        ..plain("gun-red-cone", *pos, along(*dir))
+                        ..plain((1u64<<63)|((*start as u64)<<8)|0,"gun-red-cone", *pos, along(*dir))
                     });
                 }
                 Effect::Left { which: LeftModel::RedSphere, pos, start, .. } => {
@@ -3091,7 +3038,7 @@ impl crate::Jak {
                     out.push(ShotModel {
                         scale: Vec3::splat(1.0 + 24.0 * age),
                         anim: ShotAnim::BurstFade { burst: "gun-red-sphere-burst", fade: "gun-red-sphere-fade", age },
-                        ..plain("gun-red-sphere", *pos, facing)
+                        ..plain((1u64<<63)|((*start as u64)<<8)|1,"gun-red-sphere", *pos, facing)
                     });
                 }
                 Effect::Nuke { center, start, small: false, .. } => {
@@ -3116,7 +3063,7 @@ impl crate::Jak {
                         scale: Vec3::new(x, y, 1.0) * 1.7,
                         anim: ShotAnim::At { clip: "gun-nuke-sphere-fade", fraction: 1.0 - alpha },
                         alpha,
-                        ..plain("gun-nuke-sphere", *center + Vec3::Y * (meters(5.0) + meters(2.0) * t), upright_facing)
+                        ..plain((1u64<<63)|((*start as u64)<<8)|2,"gun-nuke-sphere", *center + Vec3::Y * (meters(5.0) + meters(2.0) * t), upright_facing)
                     });
                 }
                 _ => {}

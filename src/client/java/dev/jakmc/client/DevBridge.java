@@ -59,6 +59,8 @@ public final class DevBridge {
                     String name=request.get("name").getAsString();if(!name.matches("[a-zA-Z0-9_-]+\\.png"))throw new IllegalArgumentException("Invalid screenshot name");
                     Screenshot.grab(client.gameDirectory,name,client.gameRenderer.mainRenderTarget(),1,message->JakMod.LOG.info("Bridge screenshot: {}",message.getString()));out.addProperty("file",client.gameDirectory.toPath().resolve("screenshots").resolve(name).toString());
                 }
+                case "rings_scene" -> {WeaponScene.startRings(client);out.addProperty("scheduled",true);}
+                case "weapons_scene" -> {WeaponScene.start(client);out.addProperty("scheduled",true);}
                 case "effects_scene" -> {PortScene.start(client);out.addProperty("scheduled",true);}
                 case "enemies_scene" -> {EnemyScene.start(client);out.addProperty("scheduled",true);}
                 case "systems_scene" -> {EnemyScene.startSystems(client);out.addProperty("scheduled",true);}

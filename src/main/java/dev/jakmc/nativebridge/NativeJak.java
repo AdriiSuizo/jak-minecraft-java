@@ -7,7 +7,7 @@ import java.nio.file.Path;
 
 /** The only JNI surface. Versioned, bounded, little-endian packets. */
 public final class NativeJak {
-    public static final int ABI = 2;
+    public static final int ABI = 3;
     private static boolean loaded;
     private NativeJak() { }
 

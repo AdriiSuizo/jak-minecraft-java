@@ -16,7 +16,7 @@ mod particle_subset;
 mod effects;
 static ANIMS:OnceLock<Arc<jak_core::anim::Anims>>=OnceLock::new();
 
-pub const ABI_VERSION: u32 = 2;
+pub const ABI_VERSION: u32 = 3;
 /// One Minecraft block = 1.5625 original meters. Actor stands 1.8 blocks tall.
 pub const BLOCK: f32 = 6400.;
 /// NPC resources use the same authored artist-frame events as the player.
@@ -239,10 +239,19 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   s.jak.gun.aim_dir=Some(Vec3::new(-yaw.sin()*pitch.cos(),-pitch.sin(),yaw.cos()*pitch.cos()));
   let mut pad=PadInput{held:read_u(b,0),pressed:read_u(b,4),left:[read_f(b,8),read_f(b,12)],right:[read_f(b,16),read_f(b,20)],triggers:[read_f(b,24),read_f(b,28)]};
   let mut events=Vec::new();
+  let mut effects:Vec<effects::WireCommand>=Vec::new();
   let before_clip=s.jak.chan.anim;let before_frame=s.jak.chan.frame;
   s.world.error=None;
   for _ in 0..steps{
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
+   let mut commands=s.jak.particles.as_mut().map(|p|p.take_journal()).unwrap_or_default();
+   // Snapshot the original rope/field after each of the three 60 Hz steps.
+   // Replay it before that step's barrier, not all three at the 20 Hz packet end.
+   let barrier=commands.iter().rposition(|c|matches!(c,jak_core::particles::journal::Command::Step(_))).unwrap_or(commands.len());
+   let after=commands.split_off(barrier);
+   effects.extend(commands.into_iter().map(effects::WireCommand::Particle));
+   effects.push(effects::WireCommand::Weapon(effects::WeaponCommand{visual:s.jak.weapon_visuals()}));
+   effects.extend(after.into_iter().map(effects::WireCommand::Particle));
    let frame_events=s.jak.take_events();
    audio::emit_jak_sounds_for(&s.jak,0,Some(jak_steps::Floor::from_u8(((flags>>8)&31) as u8)),&frame_events,&mut s.audio);
    let blasts:Vec<_>=frame_events.iter().filter_map(|e|if let Event::Explosion{center,radius,..}=e{Some((*center,*radius))}else{None}).collect();
@@ -256,16 +265,15 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   let sound=|r:audio::JakSoundRequest|json!({"name":r.name,"pos":pos(r.position),"gain":r.gain,"pitch":r.pitch});
   let sounds:Vec<_>=s.audio.take_requests().into_iter().map(sound).collect();
   let loops:Vec<_>=s.audio.loop_requests().into_iter().map(sound).collect();
-  let effects=s.jak.particles.as_mut().map(|p|p.take_journal()).unwrap_or_default();
   let healed=std::mem::take(&mut s.jak.lightjak.heal_fraction);
   let j=&s.jak;
   let frame_rate=if before_clip==j.chan.anim&&j.chan.frame>=before_frame{((j.chan.frame-before_frame)/(steps as f32/60.)).clamp(-240.,240.)}else{0.};
   let gun=json!({"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
   let models:Vec<_>=j.shot_models().into_iter().map(|m|{
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
-   json!({"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
+   json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  Ok(json!({"abi":ABI_VERSION,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}),"status":j.control.status,"board":j.state.is_board(),"dark":j.dark,"light":j.light(),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
+  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}),"status":j.control.status,"board":j.state.is_board(),"dark":j.dark,"light":j.light(),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
 }

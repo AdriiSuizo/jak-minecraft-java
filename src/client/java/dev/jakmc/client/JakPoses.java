@@ -17,6 +17,7 @@ public final class JakPoses {
         var pose=new Pose(position,json.get("yaw").getAsFloat(),json.get("clip").getAsString(),json.get("frame").getAsFloat(),json.get("board").getAsBoolean(),json.get("dark").getAsBoolean(),json.get("light").getAsBoolean(),json,System.nanoTime());
         POSES.put(p.entityId(),pose);
         Vec3 origin=new Vec3(p.originX(),p.originY(),p.originZ());
+        dev.jakmc.client.model.JakShotRenderer.receive(p.entityId(),origin,json);
         JakSounds.receive(p.entityId(),origin,json);
         JakEffects.receive(p.entityId(),origin,json);
         PortScene.observe(p.entityId(),json);
@@ -26,7 +27,11 @@ public final class JakPoses {
             client.player.setYBodyRot(pose.yaw());
         }
     }
+    public static void prune(Minecraft client){
+        if(client.level==null)return;long now=System.nanoTime();
+        var it=POSES.entrySet().iterator();while(it.hasNext()){var e=it.next();if(now-e.getValue().received()>2_000_000_000L&&client.level.getEntity(e.getKey())==null){dev.jakmc.client.model.JakShotRenderer.remove(e.getKey());it.remove();}}
+    }
     public static Pose get(int id){return POSES.get(id);}
     public static Map<Integer,Pose> all(){return java.util.Collections.unmodifiableMap(POSES);}
-    public static void clear(){POSES.clear();}
+    public static void clear(){POSES.clear();dev.jakmc.client.model.JakShotRenderer.clear();}
 }

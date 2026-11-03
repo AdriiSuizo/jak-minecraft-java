@@ -3,6 +3,7 @@ import net.fabricmc.api.ClientModInitializer;
 public final class JakClient implements ClientModInitializer {
  @Override public void onInitializeClient() {
   JakInput.initialize();
+  net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(JakPoses::prune);
   JakSounds.initialize();
   JakEffects.initialize();
   JakCreatureWater.initialize();
@@ -10,6 +11,7 @@ public final class JakClient implements ClientModInitializer {
   ScaleScene.initialize();
   PortScene.initialize();
   EnemyScene.initialize();
+  WeaponScene.initialize();
   dev.jakmc.client.model.GltfItemRenderer.initialize();
   dev.jakmc.client.model.EcoItemRenderer.initialize();
   dev.jakmc.client.model.JakShotRenderer.initialize();

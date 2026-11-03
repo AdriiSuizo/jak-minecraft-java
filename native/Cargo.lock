@@ -61,6 +61,7 @@ dependencies = [
  "glam",
  "jak-core",
  "jni",
+ "serde",
  "serde_json",
 ]
 

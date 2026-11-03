@@ -4,7 +4,13 @@ use std::collections::VecDeque;
 use jak_core::particles::{Library,Particles,journal::Command};
 pub static LIBRARY:OnceLock<Arc<Library>>=OnceLock::new();
 static TEXTURES:OnceLock<Vec<String>>=OnceLock::new();
-struct Fx {particles:Particles,queue:VecDeque<Command>,carry:f64}
+#[derive(serde::Serialize,serde::Deserialize)]
+#[serde(untagged)]
+pub enum WireCommand {Particle(Command),Weapon(WeaponCommand)}
+#[derive(serde::Serialize,serde::Deserialize)]
+pub struct WeaponCommand {#[serde(rename="WeaponVisuals")]pub visual:jak_core::weapons::presentation::Visuals}
+impl WireCommand {fn is_step(&self)->bool{matches!(self,Self::Particle(Command::Step(_)))}}
+struct Fx {particles:Particles,weapons:jak_core::weapons::presentation::Presentation,queue:VecDeque<WireCommand>,carry:f64}
 #[derive(Default)]struct Effects {next:u64,live:HashMap<u64,Fx>}
 static EFFECTS:OnceLock<Mutex<Effects>>=OnceLock::new();
 fn effects()->&'static Mutex<Effects>{EFFECTS.get_or_init(||Mutex::new(Effects::default()))}
@@ -21,7 +27,7 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  if library.part_count()<150||library.group_count()<30{return Err("Incomplete original particle definitions".into());}
  let mut textures=library.textures();
  // Arc Wielder's lightning-new appearances also reference the original page.
- for name in ["level-default-sprite/pal-lightning","level-default-sprite/lightning-tile"] {if !textures.iter().any(|s|s==name){textures.push(name.into());}}
+ for name in ["level-default-sprite/pal-lightning","level-default-sprite/lightning-tile","level-default-sprite/glow-soft"] {if !textures.iter().any(|s|s==name){textures.push(name.into());}}
  textures.sort();TEXTURES.set(textures).map_err(|_|"texture configuration raced")?;
  LIBRARY.set(Arc::new(library)).map_err(|_|"particle configuration raced")?;Ok(())
 }
@@ -40,18 +46,18 @@ fn translate(c:&mut Command,offset:Vec3){
  env.new_string(report.to_string()).map_or(std::ptr::null_mut(),|s|s.into_raw())
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxCreate(mut env:JNIEnv,_:JClass)->jlong{
- protect(&mut env,||{let library=LIBRARY.get().ok_or("Particles not configured")?.clone();let mut e=effects().lock().map_err(|e|e.to_string())?;e.next+=1;let id=e.next;e.live.insert(id,Fx{particles:Particles::new(library),queue:VecDeque::new(),carry:0.});Ok(id as jlong)})
+ protect(&mut env,||{let library=LIBRARY.get().ok_or("Particles not configured")?.clone();let mut e=effects().lock().map_err(|e|e.to_string())?;e.next+=1;let id=e.next;e.live.insert(id,Fx{particles:Particles::new(library),weapons:Default::default(),queue:VecDeque::new(),carry:0.});Ok(id as jlong)})
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxDestroy(mut env:JNIEnv,_:JClass,id:jlong){protect(&mut env,||{effects().lock().map_err(|e|e.to_string())?.live.remove(&(id as u64));Ok(())});}
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxBacklog(mut env:JNIEnv,_:JClass,id:jlong)->jint{
- protect(&mut env,||{let e=effects().lock().map_err(|e|e.to_string())?;let f=e.live.get(&(id as u64)).ok_or("Stale FX session")?;Ok(f.queue.iter().filter(|c|matches!(c,Command::Step(_))).count()as jint)})
+ protect(&mut env,||{let e=effects().lock().map_err(|e|e.to_string())?;let f=e.live.get(&(id as u64)).ok_or("Stale FX session")?;Ok(f.queue.iter().filter(|c|c.is_step()).count()as jint)})
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxPush(mut env:JNIEnv,_:JClass,id:jlong,data:JString,x:f32,y:f32,z:f32){
  let data:Result<String,_>=env.get_string(&data).map(Into::into);
  protect(&mut env,||{let data=data.map_err(|e|e.to_string())?;if data.len()>2_000_000{return Err("Particle command packet too large".into());}
-  let mut commands:Vec<Command>=serde_json::from_str(&data).map_err(|e|e.to_string())?;
+  let mut commands:Vec<WireCommand>=serde_json::from_str(&data).map_err(|e|e.to_string())?;
   let offset=Vec3::new(x,y,z)*BLOCK;if !offset.is_finite(){return Err("Nonfinite effect origin".into());}
-  for c in &mut commands{translate(c,offset);}
+  for c in &mut commands{match c{WireCommand::Particle(c)=>translate(c,offset),WireCommand::Weapon(c)=>{c.visual.validate()?;c.visual.translate(offset);}}}
   let mut e=effects().lock().map_err(|e|e.to_string())?;let f=e.live.get_mut(&(id as u64)).ok_or("Stale FX session")?;
   if f.queue.len()+commands.len()>20000{return Err("Particle launch queue overflow".into());}f.queue.extend(commands);Ok(())
  });
@@ -69,20 +75,20 @@ fn translate(c:&mut Command,offset:Vec3){
   f.particles.set_camera(vec(view,0)*BLOCK);f.particles.set_view(vec(view,12),vec(view,24),read_f(view,36));
   f.carry+=(dt as f64).clamp(0.,0.1);
   let ordinary=(f.carry*60.).floor().min(6.) as usize;f.carry-=ordinary as f64/60.;
-  let queued=f.queue.iter().filter(|c|matches!(c,Command::Step(_))).count();
+  let queued=f.queue.iter().filter(|c|c.is_step()).count();
   // A loading/render stall must not leave the emitter permanently seconds
   // behind its owner. Retain at most one Minecraft tick for interpolation.
   let steps=ordinary.max(queued.saturating_sub(3)).min(120);
   for _ in 0..steps {
    let mut stepped=false;
-   while let Some(c)=f.queue.pop_front(){stepped=matches!(c,Command::Step(_));c.apply(&mut f.particles)?;if stepped{break;}}
+   while let Some(c)=f.queue.pop_front(){stepped=c.is_step();match c{WireCommand::Particle(c)=>c.apply(&mut f.particles)?,WireCommand::Weapon(c)=>f.weapons.sync(c.visual)?}if stepped{break;}}
    // Effects keep aging after the authoritative producer disconnects/stops.
-   if !stepped{f.particles.step(1./60.);}
+   if !stepped{f.particles.step(1./60.);f.weapons.age(1./60.);}
   }
   let mut count=0;
   let eye=vec(view,0)*BLOCK;let forward=vec(view,12).normalize_or(Vec3::NEG_Z);let up=vec(view,24).normalize_or(Vec3::Y);let right=forward.cross(up).normalize_or(Vec3::X);
   let pixels=read_f(view,40)/(2.*(read_f(view,36).to_radians()*0.5).tan());
-  for s in f.particles.sprites(){let Some(tex)=texture(&s.texture)else{continue};
+  for s in f.particles.sprites(){let Some(tex)=texture(&s.texture).or_else(||texture(&format!("level-default-sprite/{}",s.texture)))else{continue};
    let [w,h]=s.size;if (s.pos-eye).dot(forward) < -w.max(h){continue;}
    let axes=match(s.flat,s.stretch){
     (Some(normal),Some(dir))=>{let dir=dir.normalize_or_zero();let side=normal.cross(dir).normalize_or_zero();if side==Vec3::ZERO{continue;}(dir*w*0.5,side*h*0.5)},
@@ -94,10 +100,13 @@ fn translate(c:&mut Command,offset:Vec3){
    let area=(w*h*(pixels/(p-eye).dot(forward).max(1e-3)).powi(2)).clamp(0.,1.);
    let rgba=[s.rgba[0]/255.,s.rgba[1]/255.,s.rgba[2]/255.,s.rgba[3]*area/255.];
    let blend=match s.blend{jak_core::particles::Blend::Normal=>0,jak_core::particles::Blend::Subtract=>1,jak_core::particles::Blend::Add=>2,jak_core::particles::Blend::Glow=>3};
+   if (count+4)*44>out.len(){break;}
    for i in 0..4{write_vertex(out,&mut count,corners[i]/BLOCK,rgba,uv[i],tex,blend)?;}
   }
+  let tex=texture("level-default-sprite/glow-soft").ok_or("Missing gravity ring texture")?;
+  for quad in f.weapons.ring_quads(){if(count+4)*44>out.len(){break;}for v in quad{write_vertex(out,&mut count,v.pos/BLOCK,[0.,0.,0.,v.rgba[3]/255.],v.st,tex,0)?;}}
   let mut vertices=0;
-  for strip in f.particles.lightning_strips(){let Some(tex)=texture(&strip.texture)else{continue};for i in 2..strip.verts.len(){let tri=if i%2==0{[i-2,i-1,i]}else{[i-1,i-2,i]};for k in [0,1,2,2]{if (vertices+1)*44>bolt_out.len(){return Err("Lightning buffer exhausted".into());}let v=&strip.verts[tri[k]];let mut at=vertices*44;
+  'strips: for strip in f.particles.lightning_strips().into_iter().chain(f.weapons.strips(up)){let qualified=if strip.texture.contains('/') {strip.texture.clone()}else{format!("level-default-sprite/{}",strip.texture)};let Some(tex)=texture(&qualified).or_else(||texture(&strip.texture))else{continue};for i in 2..strip.verts.len(){let tri=if i%2==0{[i-2,i-1,i]}else{[i-1,i-2,i]};if (vertices+4)*44>bolt_out.len(){break 'strips;}for k in [0,1,2,2]{let v=&strip.verts[tri[k]];let mut at=vertices*44;
    for x in [v.pos.x/BLOCK,v.pos.y/BLOCK,v.pos.z/BLOCK,v.rgba[0]/255.,v.rgba[1]/255.,v.rgba[2]/255.,v.rgba[3]/255.,v.st[0],v.st[1]]{bolt_out[at..at+4].copy_from_slice(&x.to_le_bytes());at+=4;}
    for x in [tex as u32,if strip.additive{2u32}else{0u32}]{bolt_out[at..at+4].copy_from_slice(&x.to_le_bytes());at+=4;}vertices+=1;
   }}}

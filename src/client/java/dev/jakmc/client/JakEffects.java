@@ -23,7 +23,7 @@ public final class JakEffects {
  private static final Set<Integer> MISSING=new HashSet<>();
  private static String[] names;
  private static final ByteBuffer VIEW=NativeJak.buffer(44),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
- public static int drawnVertices;
+ public static int drawnVertices,drawnLightningVertices,drawnDarkVertices;
  private static final class Owner implements AutoCloseable {
   final long handle=NativeJak.fxCreate();final Vec3 origin;long received=System.nanoTime(),lastDraw;
   Owner(Vec3 origin){this.origin=origin;}
@@ -76,6 +76,7 @@ public final class JakEffects {
   }return drawn;
  }
  private static void submit(LevelRenderContext context){
+  drawnVertices=0;drawnLightningVertices=0;drawnDarkVertices=0;
   var client=Minecraft.getInstance();if(client.level==null||OWNERS.isEmpty())return;
   manifest();
   var camera=context.levelState().cameraRenderState;long now=System.nanoTime();drawnVertices=0;
@@ -90,6 +91,8 @@ public final class JakEffects {
    VIEW.putFloat(client.options.fov().get().floatValue()).putFloat(client.getWindow().getHeight());
    float dt=client.isPaused()?0:fx.lastDraw==0?1/60f:Math.clamp((now-fx.lastDraw)/1e9f,0,.1f);fx.lastDraw=now;
    long counts=NativeJak.fxDraw(fx.handle,dt,VIEW,SPRITES,BOLTS);
+   drawnLightningVertices+=(int)(counts>>>32);
+   for(int i=0;i<(int)counts;i++){int at=i*44;if(SPRITES.getFloat(at+12)==0&&SPRITES.getFloat(at+16)==0&&SPRITES.getFloat(at+20)==0&&SPRITES.getFloat(at+24)>0)drawnDarkVertices++;}
    Map<Integer,Batch> batches=new LinkedHashMap<>();
    collect(SPRITES,(int)counts,batches);collect(BOLTS,(int)(counts>>>32),batches);
    var stack=context.poseStack();stack.pushPose();stack.translate(fx.origin.x-camera.pos.x,fx.origin.y-camera.pos.y,fx.origin.z-camera.pos.z);

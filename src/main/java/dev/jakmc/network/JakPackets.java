@@ -20,7 +20,7 @@ public final class JakPackets {
         public boolean valid(){return sequence>=0&&(held&~65535)==0&&(pressed&~65535)==0&&Float.isFinite(strafe)&&Float.isFinite(forward)&&Math.abs(strafe)<=1&&Math.abs(forward)<=1&&Float.isFinite(yaw)&&Float.isFinite(pitch)&&Math.abs(pitch)<=90&&Float.isFinite(brake)&&brake>=0&&brake<=1&&Float.isFinite(throttle)&&throttle>=0&&throttle<=1;}
     }
     public record Pose(int entityId,int sequence,double originX,double originY,double originZ,String json) implements CustomPacketPayload {
-        public static final Type<Pose> TYPE=new Type<>(JakData.id("pose_v2"));
+        public static final Type<Pose> TYPE=new Type<>(JakData.id("pose_v3"));
         public static final StreamCodec<RegistryFriendlyByteBuf,Pose> CODEC=StreamCodec.of((b,v)->{b.writeVarInt(v.entityId);b.writeVarInt(v.sequence);b.writeDouble(v.originX);b.writeDouble(v.originY);b.writeDouble(v.originZ);b.writeByteArray(compress(v.json));},b->new Pose(b.readVarInt(),b.readVarInt(),b.readDouble(),b.readDouble(),b.readDouble(),inflate(b.readByteArray(262144))));
         public Type<Pose> type(){return TYPE;}
     }

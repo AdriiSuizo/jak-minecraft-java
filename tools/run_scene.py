@@ -4,11 +4,11 @@ import argparse,datetime,json,os,shutil,subprocess,time
 from bridge import call,ROOT
 
 def run():
-    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['scale','effects','enemies','systems','combat'],default='scale');scene=parser.parse_args().scene
+    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['scale','effects','enemies','systems','combat','weapons','rings'],default='scale');scene=parser.parse_args().scene
     stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     evidence=ROOT/'.local/evidence'/(scene+'-'+stamp);evidence.mkdir(parents=True)
     result=ROOT/f'run/jakmc/evidence/{scene}/result.json'
-    image=ROOT/('run/screenshots/scale-two-block-ceiling.png' if scene=='scale' else 'run/screenshots/port-blaster.png' if scene=='effects' else 'run/screenshots/enemy-babak-idle.png' if scene=='enemies' else 'run/screenshots/enemy-chase-step.png')
+    image=ROOT/('run/screenshots/scale-two-block-ceiling.png' if scene=='scale' else 'run/screenshots/weapon-10-28.png' if scene=='rings' else 'run/screenshots/weapon-7-28.png' if scene in ('weapons','rings') else 'run/screenshots/port-blaster.png' if scene=='effects' else 'run/screenshots/enemy-babak-idle.png' if scene=='enemies' else 'run/screenshots/enemy-chase-step.png')
     if result.exists():shutil.copyfile(result,evidence/'previous-result.json')
     if image.exists():shutil.copyfile(image,evidence/'previous-screen.png')
     ready=ROOT/'run/jakmc/bridge/ready.json'
@@ -32,13 +32,17 @@ def run():
                         call(scene+'_scene');sent=True;break
             time.sleep(.25)
         if not sent:raise RuntimeError('Game exited before the requested scene started')
-        process.wait(timeout=120 if scene=='enemies' else 60 if scene=='systems' else 40)
+        process.wait(timeout=120 if scene in ('enemies','weapons') else 60 if scene=='systems' else 40)
         if process.returncode!=0:raise RuntimeError(f'Native game exited {process.returncode}')
-        shutil.copyfile(result,evidence/'result.json');shutil.copyfile(image,evidence/'screen.png')
+        shutil.copyfile(result,evidence/'result.json')
+        if scene in ('weapons','rings') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError('Weapon scene did not complete; see result.json')
+        shutil.copyfile(image,evidence/'screen.png')
+        if scene in ('weapons','rings'):
+            for capture in (ROOT/'run/screenshots').glob('weapon-*.png'):shutil.copyfile(capture,evidence/capture.name)
         if scene=='effects':
             shutil.copyfile(ROOT/'run/screenshots/port-board-zap.png',evidence/'board.png')
             shutil.copyfile(ROOT/'run/screenshots/port-wave.png',evidence/'wave.png')
-        if scene in ('enemies','systems','combat'):
+        if scene in ('enemies','systems','combat','weapons','rings'):
             for capture in (ROOT/'run/screenshots').glob('enemy-*.png'):
                 shutil.copyfile(capture,evidence/capture.name)
         outcome=json.loads(result.read_text(encoding='utf-8'))
@@ -60,6 +64,8 @@ def run():
         if sent and result.exists():shutil.copyfile(result,evidence/'result.json')
         if sent and scene in ('enemies','systems','combat'):
             for capture in (ROOT/'run/screenshots').glob('enemy-*.png'):shutil.copyfile(capture,evidence/capture.name)
+        if sent and scene in ('weapons','rings'):
+            for capture in (ROOT/'run/screenshots').glob('weapon-*.png'):shutil.copyfile(capture,evidence/capture.name)
         log.close()
 
 if __name__=='__main__':run()
