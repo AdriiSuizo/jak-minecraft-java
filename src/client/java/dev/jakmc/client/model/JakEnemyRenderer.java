@@ -19,11 +19,12 @@ public final class JakEnemyRenderer extends EntityRenderer<JakEnemy,JakEnemyRend
  private final Map<Integer,Blend> blends=new HashMap<>();
  private final JakEnemyKind kind;
  private GltfModel model;
+ private GltfModel.Posed resting;
  public static long rendered;
  public static final Set<String> seen=new HashSet<>();
  public static final Map<Integer,Set<String>> seenClips=new HashMap<>();
  public JakEnemyRenderer(EntityRendererProvider.Context context,JakEnemyKind kind){super(context);this.kind=kind;shadowRadius=kind.half*JakEnemyKind.SCALE;}
- private void load(){if(model!=null)return;try{model=new GltfModel(kind.root().resolve(kind.asset),"enemy_"+kind.model,true);for(String c:kind.clips)if(!c.isEmpty()&&!model.hasClip(c))throw new IllegalStateException("Required original GLB clip absent "+c);}catch(IOException e){throw new UncheckedIOException(e);}}
+ private void load(){if(model!=null)return;try{model=new GltfModel(kind.root().resolve(kind.asset),"enemy_"+kind.model,true);if(kind.guard())resting=model.pose("",0);for(String c:kind.clips)if(!c.isEmpty()&&!model.hasClip(c))throw new IllegalStateException("Required original GLB clip absent "+c);}catch(IOException e){throw new UncheckedIOException(e);}}
  public static void initialize(){for(var e:JakEntities.TYPES.entrySet())EntityRendererRegistry.register(e.getValue(),context->new JakEnemyRenderer(context,JakEnemyKind.ALL.get(e.getKey())));}
  @Override public State createRenderState(){return new State();}
  @Override public void extractRenderState(JakEnemy entity,State state,float partial){
@@ -31,7 +32,7 @@ public final class JakEnemyRenderer extends EntityRenderer<JakEnemy,JakEnemyRend
   String clip=entity.animation();var art=kind.animations.get(clip);float seconds=entity.animationSeconds(partial),duration=art==null?0:art.duration();
   if(entity.animationLoops()&&duration>0)seconds%=duration;
   float frame=art==null?0:Math.min(Math.max(0,art.frames()-1),seconds*60*art.speed());
-  var posed=model.pose(clip,frame);var blend=blends.computeIfAbsent(entity.getId(),id->new Blend());
+  var posed=kind.guard()&&entity.isInWater()&&entity.isAlive()?JakCitizenRenderer.tread(model,resting,state.ageInTicks/40f):model.pose(clip,frame);var blend=blends.computeIfAbsent(entity.getId(),id->new Blend());
   if(!clip.equals(blend.clip)){blend.from=blend.last;blend.start=state.ageInTicks;blend.clip=clip;}
   if(blend.from!=null){float transition=entity.state()==JakEnemy.State.HURT?.035f:.15f;float t=(state.ageInTicks-blend.start)/(20*transition);if(t<1)posed=model.blend(blend.from,posed,t);else blend.from=null;}
   blend.last=posed;state.pose=posed;state.yaw=Mth.rotLerp(partial,entity.yBodyRotO,entity.yBodyRot);state.hurt=entity.hurtTime>0||entity.deathTime>0;

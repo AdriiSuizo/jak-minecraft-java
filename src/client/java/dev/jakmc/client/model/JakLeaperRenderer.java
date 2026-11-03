@@ -23,6 +23,7 @@ public final class JakLeaperRenderer extends EntityRenderer<JakLeaper,JakLeaperR
     // The original 1.4 prejoint scale defines the animal's scale relative to Jak.
     private static final float SCALE=0.7717099f/1.4f;
     private final boolean flut;
+    private static GltfModel leaperModel;
     private GltfModel model,bare;
     private GltfModel.Posed modelRest,bareRest;
     private final java.util.Map<JakFlutFlut,FlutMaterial.Blink> blinks=new java.util.WeakHashMap<>();
@@ -65,6 +66,10 @@ public final class JakLeaperRenderer extends EntityRenderer<JakLeaper,JakLeaperR
         return pose;
     }
 
+    static float saddleCycle(String motion,float ticks){
+        float duration=leaperModel==null?1:Math.max(.01f,leaperModel.duration(PREFIX+"flut-"+motion));
+        return (ticks/20f)%duration/duration;
+    }
     @Override public State createRenderState(){return new State();}
 
     @Override public void extractRenderState(JakLeaper entity,State state,float partial){
@@ -77,7 +82,10 @@ public final class JakLeaperRenderer extends EntityRenderer<JakLeaper,JakLeaperR
                     bare=new GltfModel(root.resolve("levels/beach/flutflut-lod0.glb"),"flut_bare",true);
                     modelRest=model.pose("",0);
                     bareRest=bare.pose("",0);
-                }else model=new GltfModel(RuntimeConfig.assets.resolve("levels/waswide/flut-saddle-lod0.glb"),"leaper",true);
+                }else{
+                    model=new GltfModel(RuntimeConfig.assets.resolve("levels/waswide/flut-saddle-lod0.glb"),"leaper",true);
+                    leaperModel=model;
+                }
             }
             catch(IOException failure){throw new UncheckedIOException("Cannot load original Leaper rig",failure);}
         }

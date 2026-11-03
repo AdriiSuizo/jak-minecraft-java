@@ -100,5 +100,78 @@
       "citizen-chick-shuffle": 1.0666667222976685,
       "citizen-chick-riding-stance": 0
     }
+  },
+  {
+    "model": "wlander-male",
+    "asset": "levels/waswide/wlander-male-lod0.glb",
+    "clips": {
+      "wlander-male-idle0": 0.6666666865348816,
+      "wlander-male-walk0": 1.0666667222976685,
+      "wlander-male-walk1": 1.0666667222976685,
+      "wlander-male-run0": 1.0666667222976685,
+      "wlander-male-idle-to-shoot": 0.800000011920929,
+      "wlander-male-shoot-idle": 0.5333333611488342,
+      "wlander-male-shoot0": 0.6666666865348816,
+      "wlander-male-shoot-to-idle": 0.5333333611488342,
+      "wlander-male-attack-rifle-butt": 1.0,
+      "wlander-male-getup-back": 1.2000000476837158,
+      "wlander-male-getup-front": 1.4666666984558105,
+      "wlander-male-knocked-back": 0.3333333432674408,
+      "wlander-male-knocked-back-land": 0.6666666865348816,
+      "wlander-male-knocked-forward": 0.3333333432674408,
+      "wlander-male-knocked-forward-land": 1.0666667222976685,
+      "wlander-male-shoot-turn0": 0.800000011920929,
+      "wlander-male-shoot-turn1-start": 0.13333334028720856,
+      "wlander-male-shoot-turn1": 0.5333333611488342,
+      "wlander-male-shoot-turn1-end": 0.13333334028720856,
+      "wlander-male-ragdoll": 0
+    },
+    "game": "jak3"
+  },
+  {
+    "model": "wlander-female",
+    "asset": "levels/waswide/wlander-female-lod0.glb",
+    "clips": {
+      "wlander-female-idle0": 1.6666666269302368,
+      "wlander-female-walk0": 1.0666667222976685,
+      "wlander-female-run0": 1.0666667222976685,
+      "wlander-female-gun-takeout": 0.7333333492279053,
+      "wlander-female-gun-out": 0.4000000059604645,
+      "wlander-female-gun-out-idle": 0.7333333492279053,
+      "wlander-female-run-2-gun-out": 0.2666666805744171,
+      "wlander-female-shoot0": 0.800000011920929,
+      "wlander-female-knocked-back": 0.2666666805744171,
+      "wlander-female-knocked-back-land": 1.2000000476837158,
+      "wlander-female-knocked-back-2-gun-out": 0.3333333432674408,
+      "wlander-female-knocked-forward": 0.2666666805744171,
+      "wlander-female-knocked-forward-land": 1.1333333253860474,
+      "wlander-female-getup-forward": 1.0,
+      "wlander-female-shoot-turn0": 0.800000011920929,
+      "wlander-female-shoot-turn1-start": 0.2666666805744171,
+      "wlander-female-shoot-turn1": 0.3333333432674408,
+      "wlander-female-shoot-turn1-end": 0.3333333432674408,
+      "wlander-female-gun-away0": 1.4666666984558105,
+      "wlander-female-walk-gun0": 1.0666667222976685,
+      "wlander-female-attack-kick-spin0": 1.4666666984558105,
+      "wlander-female-attack-gunbutt-spin0": 1.7333333492279053,
+      "wlander-female-ragdoll": 0,
+      "wlander-female-shoot-idle": 0.7333333492279053
+    },
+    "game": "jak3"
+  },
+  {
+    "model": "monk",
+    "asset": "levels/wasleapr/monk-lod0.glb",
+    "clips": {
+      "monk-idle": 0.800000011920929,
+      "monk-walk": 0.9333315491676331,
+      "monk-jog": 0.9333315491676331,
+      "monk-run": 0.9333315491676331,
+      "monk-run-squash": 0.46666622161865234,
+      "monk-jump": 0.6666653752326965,
+      "monk-standing-idle-1": 1.9999961853027344,
+      "monk-standing-idle-2": 1.9999961853027344
+    },
+    "game": "jak3"
   }
 ]

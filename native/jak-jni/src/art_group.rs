@@ -164,6 +164,11 @@ pub fn read_jak1(bytes: &[u8]) -> HashMap<String, ArtAnim> {
 
 /// Jak 1 creature art groups have the same format as the player groups.
 pub fn read_jak1_named(bytes: &[u8], prefix: &str) -> HashMap<String, ArtAnim> {
+    read_v4_named(bytes,prefix,0.01)
+}
+
+/// Jak 2 still uses linked v4 objects, with fractional cue volume.
+pub fn read_v4_named(bytes: &[u8], prefix: &str, volume_scale: f32) -> HashMap<String, ArtAnim> {
     let mut out = HashMap::new();
     let Some(seg) = bytes.get(16..) else {
         return out;
@@ -216,7 +221,7 @@ pub fn read_jak1_named(bytes: &[u8], prefix: &str) -> HashMap<String, ArtAnim> {
                     eyes: None,
                     // Jak 1 gives its volumes in percent.
                     effects: u32_at(seg, anim + 16)
-                        .map_or_else(Vec::new, |lump| effects(seg, lump as usize, &symbols, 0.01)),
+                        .map_or_else(Vec::new, |lump| effects(seg, lump as usize, &symbols, volume_scale)),
                 },
             );
         }

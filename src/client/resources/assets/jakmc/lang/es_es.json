@@ -98,5 +98,14 @@
   "item.jakmc.zoomer_car_b": "Zoomer Coche B",
   "entity.jakmc.zoomer_car_b": "Zoomer Coche B",
   "item.jakmc.zoomer_car_c": "Zoomer Coche C",
-  "entity.jakmc.zoomer_car_c": "Zoomer Coche C"
+  "entity.jakmc.zoomer_car_c": "Zoomer Coche C",
+  "entity.jakmc.crimson_guard": "Guardia carmesí",
+  "item.jakmc.crimson_guard_spawn_egg": "Huevo generador de guardia carmesí",
+  "item.jakmc.red_ammo": "Munición roja del arma Morph",
+  "item.jakmc.yellow_ammo": "Munición amarilla del arma Morph",
+  "item.jakmc.blue_ammo": "Munición azul del arma Morph",
+  "item.jakmc.dark_ammo": "Munición oscura del arma Morph",
+  "item.jakmc.wlander_male_spawn_egg": "Huevo generador de habitante de Spargus",
+  "item.jakmc.wlander_female_spawn_egg": "Huevo generador de habitante de Spargus",
+  "item.jakmc.monk_spawn_egg": "Huevo generador de monje de Spargus"
 }

@@ -18,6 +18,7 @@ final class VehicleEffects {
     private static final float[] BASIS={1,0,0,0,1,0,0,0,1};
     private static final Gson JSON=new Gson();
     private static final Map<JakVehicle,JsonObject> SEEN=new WeakHashMap<>();
+    private static final Map<dev.jakmc.entity.JakEnemy,String> GUARD_FRAMES=new WeakHashMap<>();
     private static final Map<JakVehicle,Map<Integer,Vec3>> GRENADE_LAST=new WeakHashMap<>();
     private static final double METRE=.64;
 
@@ -28,6 +29,9 @@ final class VehicleEffects {
                 if(entity instanceof JakVehicle car&&car.distanceToSqr(client.player)<96*96){
                     var frame=car.frame();
                     if(frame!=null&&SEEN.put(car,frame)!=frame)emit(car,frame);
+                }else if(entity instanceof dev.jakmc.entity.JakEnemy guard&&guard.kind.guard()){
+                    String shot=guard.guardShot();
+                    if(!shot.equals(GUARD_FRAMES.put(guard,shot))&&!shot.isEmpty())guardShots(guard,shot);
                 }
             }
         });
@@ -99,6 +103,33 @@ final class VehicleEffects {
             commands.add(command("Step",1f/60));
         }
         if(commands.size()>3)JakEffects.local(car.getId(),origin,commands);
+    }
+
+    private static void guardShots(dev.jakmc.entity.JakEnemy guard,String frame){
+        var commands=new JsonArray();
+        Vec3 origin=guard.position();
+        for(var entry:com.google.gson.JsonParser.parseString(frame).getAsJsonArray()){
+            var shot=entry.getAsJsonObject();
+            Vec3 tail=JakPlayers.vector(shot.getAsJsonArray("tail")).subtract(origin);
+            Vec3 head=JakPlayers.vector(shot.getAsJsonArray("head")).subtract(origin);
+            Vec3 direction=JakPlayers.vector(shot.getAsJsonArray("direction"));
+            boolean hit=shot.get("hit").getAsBoolean();
+            commands.add(command("Beam",hit?850:854,units(tail),vector(direction),head.distanceTo(tail)*6400));
+            if(hit){
+                Vec3 flash=tail.lerp(head,.8);
+                commands.add(command("Launch",851,units(flash),BASIS));
+                commands.add(command("Launch",852,units(flash),BASIS));
+                Vec3 side=new Vec3(0,1,0).cross(direction).normalize();
+                if(side.lengthSqr()==0)side=new Vec3(1,0,0);
+                Vec3 up=direction.cross(side);
+                double[] impactBasis={side.x,side.y,side.z,up.x,up.y,up.z,direction.x,direction.y,direction.z};
+                commands.add(command("Launch",853,units(head),impactBasis));
+                String group=shot.get("actor").getAsBoolean()?"group-guard-shot-hit-object":"group-guard-shot-hit";
+                commands.add(command("Spawn",group,units(head.subtract(direction.scale(.32))),BASIS));
+            }else commands.add(command("Launch",855,units(tail.add(direction.scale(.32))),BASIS));
+        }
+        for(int i=0;i<3;i++)commands.add(command("Step",1f/60));
+        JakEffects.local(guard.getId(),origin,commands);
     }
 
     private static Vec3 rotated(Quaternionf rotation,Vec3 point){

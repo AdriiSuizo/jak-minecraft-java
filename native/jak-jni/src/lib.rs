@@ -33,7 +33,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_animationMetadata(m
  let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||->Result<String,String>{
   let model=model?;if model.is_empty()||!model.bytes().all(|c|c.is_ascii_lowercase()||c.is_ascii_digit()||c==b'-'){return Err("Invalid original model name".into());}
   let bytes=std::fs::read(root?.join("raw_obj").join(format!("{model}-ag.go"))).map_err(|e|e.to_string())?;
-  let prefix=format!("{model}-");let anims=if jak1!=0{art_group::read_jak1_named(&bytes,&prefix)}else{art_group::read_named(&bytes,&prefix)};
+  let prefix=format!("{model}-");let anims=if jak1!=0{art_group::read_jak1_named(&bytes,&prefix)}else if bytes.get(8..12)==Some(&4_u32.to_le_bytes()){art_group::read_v4_named(&bytes,&prefix,1.0)}else{art_group::read_named(&bytes,&prefix)};
   if anims.is_empty(){return Err(format!("No original animation metadata for {model}"));}
   let rows:serde_json::Map<String,Value>=anims.into_iter().map(|(name,a)|{
    let frames=a.joints.as_ref().map(Vec::len).or_else(||a.align.as_ref().map(Vec::len)).unwrap_or(1);

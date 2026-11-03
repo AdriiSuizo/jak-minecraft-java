@@ -31,6 +31,22 @@ public final class JakItems {
     public static final Item SKULL_GEM=register("skull_gem",Item::new);
     public static final Item DARK_ECO=eco("dark_eco",false);
     public static final Item LIGHT_ECO=eco("light_eco",true);
+    public static final List<Item> AMMUNITION=List.of(ammo("red",0,50),ammo("yellow",1,100),ammo("blue",2,100),ammo("dark",3,20));
+    private static Item ammo(String color,int index,int capacity){
+        return register(color+"_ammo",p->new Item(p){
+            @Override public InteractionResult use(Level level,Player player,InteractionHand hand){
+                var type=JakData.AMMO.get(index);
+                float stored=player.getAttachedOrCreate(type);
+                int amount=Math.min(player.getItemInHand(hand).getCount(),Math.max(0,capacity-(int)Math.ceil(stored)));
+                if(amount==0)return InteractionResult.PASS;
+                if(!level.isClientSide()){
+                    player.setAttached(type,Math.min(capacity,stored+amount));
+                    if(!player.hasInfiniteMaterials())player.getItemInHand(hand).shrink(amount);
+                }
+                return InteractionResult.SUCCESS;
+            }
+        });
+    }
     public static final List<Item> GUNS=new ArrayList<>();
     private static Item eco(String name,boolean light){return register(name,p->new Item(p){
         @Override public InteractionResult use(Level level,Player player,InteractionHand hand){

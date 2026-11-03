@@ -309,6 +309,17 @@ public final class GltfModel {
         Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,to.morphs,t,r,s);
     }
+    Posed attachJoint(Posed pose,String joint,String anchor,Vector3f offset){
+        int node=namedNodes.get(joint),parent=nodes[node].parent;
+        var at=new Matrix4f(pose.globals[parent]).invert().mul(pose.globals[namedNodes.get(anchor)]).translate(offset);
+        var translations=pose.translations.clone();
+        var rotations=pose.rotations.clone();
+        var scales=pose.scales.clone();
+        translations[node]=at.getTranslation(new Vector3f());
+        rotations[node]=at.getUnnormalizedRotation(new Quaternionf()).normalize();
+        scales[node]=at.getScale(new Vector3f());
+        return compose(translations,rotations,scales,pose.morphs);
+    }
     Posed articulate(Posed rest,Map<String,Quaternionf> localTurns,Map<String,Vector3f> localTranslations){
         Quaternionf[] turns=rest.rotations.clone();
         Vector3f[] translations=rest.translations.clone();

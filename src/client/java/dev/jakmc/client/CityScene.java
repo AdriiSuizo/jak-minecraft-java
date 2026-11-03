@@ -30,13 +30,39 @@ final class CityScene {
     private static GameType beforeMode;
     private static Vec3 before;
     private static BlockPos searchFrom;
-    private static boolean pause,wasJak;
+    private static boolean pause,wasJak,wasFlying;
+    private static volatile int guardFightId=-1;
+    private static boolean sawGuardFire;
+    private static int guardScreenshotAt;
+    private static net.minecraft.world.Difficulty beforeDifficulty;
+    private static float healthBeforeFight,absorptionBeforeFight,healthBefore;
+    private static final java.util.Map<java.util.UUID,Vec3> guardStarts=new java.util.HashMap<>();
 
     static InputScene.CameraView camera(){return view;}
     static void initialize(){
         ClientTickEvents.END_CLIENT_TICK.register(client->{
             if(!ready||finished)return;
-            if(++ticks==100){
+            if(guardFightId>=0){
+                if(client.level.getEntity(guardFightId) instanceof dev.jakmc.entity.JakEnemy guard&&!guard.guardShot().isEmpty()){
+                    if(!sawGuardFire){
+                        sawGuardFire=true;
+                        var look=guard.position().add(0,1.2,0);
+                        Vec3 eye=client.player.getEyePosition();
+                        Vec3 d=look.subtract(eye);
+                        view=new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),
+                            (float)-Math.toDegrees(Math.atan2(d.y,d.horizontalDistance())));
+                        guardScreenshotAt=ticks+1;
+                    }
+                }
+                if(guardScreenshotAt>0&&ticks==guardScreenshotAt)
+                    Screenshot.grab(client.gameDirectory,"cities-guard.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
+                if(++ticks>=145)onServer(client,p->finishGuardFight(client,p));
+                return;
+            }
+            if(++ticks==70&&index==0)onServer(client,p->{
+                for(var guard:guards(p))guardStarts.put(guard.getUUID(),guard.position());
+            });
+            if(ticks==100){
                 Vec3 point=Vec3.atCenterOf(target).add(0,index==0?38:6,0);
                 Vec3 eye=point.add(index==0?93:49,index==0?21:36,index==0?105:68);
                 Vec3 d=point.subtract(eye);
@@ -45,7 +71,7 @@ final class CityScene {
             }
             if(ticks==120)Screenshot.grab(client.gameDirectory,index==0?"cities-haven.png":"cities-spargus.png",
                 client.gameRenderer.mainRenderTarget(),1,_-> {});
-            if(ticks==130){
+            if(ticks==180){
                 ready=false;
                 onServer(client,p->inspect(client,p));
             }
@@ -56,15 +82,18 @@ final class CityScene {
         pause=client.options.pauseOnLostFocus;
         client.options.pauseOnLostFocus=false;
         finished=ready=false;
-        ticks=index=0;
-        results.entrySet().clear();
+        ticks=index=0;guardFightId=-1;sawGuardFire=false;guardScreenshotAt=0;
+        results.entrySet().clear();guardStarts.clear();
         onServer(client,p->{
-            before=p.position();
+            before=p.position();healthBefore=p.getHealth();absorptionBeforeFight=p.getAbsorptionAmount();
             searchFrom=BlockPos.containing(search==null?before:search);
             beforeMode=p.gameMode.getGameModeForPlayer();
             wasJak=p.getAttachedOrCreate(JakData.ENABLED);
             p.setAttached(JakData.ENABLED,false);
-            p.setGameMode(GameType.SPECTATOR);
+            wasFlying=p.getAbilities().flying;
+            p.setGameMode(GameType.CREATIVE);
+            p.getAbilities().flying=true;
+            p.onUpdateAbilities();
             locate(client,p);
         });
     }
@@ -88,6 +117,10 @@ final class CityScene {
         p.teleportTo(target.getX()+.5,target.getY()+12,target.getZ()+.5);
         ticks=0;
         ready=true;
+    }
+    private static java.util.List<dev.jakmc.entity.JakEnemy> guards(ServerPlayer p){
+        var center=Vec3.atCenterOf(target);
+        return p.level().getEntitiesOfClass(dev.jakmc.entity.JakEnemy.class,new AABB(center,center).inflate(85),e->e.kind.guard());
     }
     private static void inspect(Minecraft client,ServerPlayer p){
         var report=new JsonObject();
@@ -130,7 +163,80 @@ final class CityScene {
         report.addProperty("altars",altar);
         report.addProperty("rampCells",ramps);
         report.addProperty("cars",cars.size());
+        if(index==0){
+            var guards=guards(p);
+            report.addProperty("guards",guards.size());
+            report.addProperty("guardsPatrolling",guards.stream().filter(g->guardStarts.containsKey(g.getUUID())
+                &&g.position().distanceToSqr(guardStarts.get(g.getUUID()))>4).count());
+            var patrols=new com.google.gson.JsonArray();
+            for(var guard:guards){
+                var row=guard.diagnostics();
+                row.addProperty("ticks",guard.tickCount);
+                var initial=guardStarts.get(guard.getUUID());
+                if(initial!=null)row.addProperty("travel",initial.distanceTo(guard.position()));
+                patrols.add(row);
+            }
+            report.add("patrols",patrols);
+        }
+        if(index==1){
+            var bounds=new AABB(Vec3.atCenterOf(target),Vec3.atCenterOf(target)).inflate(120);
+            var residents=level.getEntitiesOfClass(net.minecraft.world.entity.npc.villager.Villager.class,bounds);
+            report.addProperty("wastelanders",residents.stream().filter(e->dev.jakmc.entity.CitizenKind.of(
+                ((dev.jakmc.entity.CitizenState)e).citizenVariant()).wastelander()).count());
+            var mounts=level.getEntitiesOfClass(dev.jakmc.entity.JakLeaper.class,bounds,e->e.getType()==dev.jakmc.entity.JakLeaper.TYPE);
+            report.addProperty("leapers",mounts.size());
+            report.addProperty("monkPatrols",mounts.stream().filter(e->e.getFirstPassenger() instanceof dev.jakmc.entity.CitizenState resident
+                &&resident.citizenVariant()==dev.jakmc.entity.CitizenKind.MONK).count());
+        }
         results.add(index==0?"haven":"spargus",report);
+        if(index==0&&startGuardFight(p))return;
+        next(client,p);
+    }
+    private static boolean startGuardFight(ServerPlayer p){
+        var level=p.level();
+        for(var guard:guards(p)){
+            if(!guard.onGround()||guard.getTarget()!=null)continue;
+            for(var facing:net.minecraft.core.Direction.Plane.HORIZONTAL){
+                var at=guard.blockPosition().relative(facing,8);
+                if(!level.hasChunkAt(at)||!level.isEmptyBlock(at)||!level.isEmptyBlock(at.above())
+                    ||level.getBlockState(at.below()).getCollisionShape(level,at.below()).isEmpty())continue;
+                var base=Vec3.atBottomCenterOf(at);
+                var trace=level.clip(new net.minecraft.world.level.ClipContext(guard.position().add(0,.8,0),base.add(0,.9,0),
+                    net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,guard));
+                if(trace.getType()!=net.minecraft.world.phys.HitResult.Type.MISS)continue;
+                beforeDifficulty=level.getDifficulty();
+                if(beforeDifficulty==net.minecraft.world.Difficulty.PEACEFUL)level.getServer().setDifficulty(net.minecraft.world.Difficulty.NORMAL,true);
+                p.setGameMode(GameType.SURVIVAL);
+                p.setAbsorptionAmount(20);
+                p.teleportTo(base.x,base.y,base.z);
+                healthBeforeFight=p.getHealth()+p.getAbsorptionAmount();
+                guard.hurtServer(level,p.damageSources().playerAttack(p),.5f);
+                guardFightId=guard.getId();
+                ticks=0;ready=true;
+                return true;
+            }
+        }
+        return false;
+    }
+    private static void finishGuardFight(Minecraft client,ServerPlayer p){
+        if(guardFightId<0)return;
+        var level=p.level();
+        var report=results.getAsJsonObject("haven");
+        report.addProperty("guardShotPresented",sawGuardFire);
+        report.addProperty("guardShotDamage",healthBeforeFight-p.getHealth()-p.getAbsorptionAmount());
+        if(level.getEntity(guardFightId) instanceof dev.jakmc.entity.JakEnemy guard){
+            var region=guard.getBoundingBox().inflate(3);
+            guard.hurtServer(level,p.damageSources().playerAttack(p),1000);
+            report.addProperty("guardAmmoDrop",level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,region,
+                e->dev.jakmc.content.JakItems.AMMUNITION.contains(e.getItem().getItem()))
+                .stream().mapToInt(e->e.getItem().getCount()).sum());
+        }
+        guardFightId=-1;ready=false;
+        if(level.getDifficulty()!=beforeDifficulty)level.getServer().setDifficulty(beforeDifficulty,true);
+        p.setHealth(healthBefore);
+        p.setAbsorptionAmount(absorptionBeforeFight);
+        p.setGameMode(GameType.CREATIVE);
+        p.getAbilities().flying=true;p.onUpdateAbilities();
         next(client,p);
     }
     private static void next(Minecraft client,ServerPlayer p){
@@ -139,8 +245,11 @@ final class CityScene {
         var haven=results.getAsJsonObject("haven");
         var spargus=results.getAsJsonObject("spargus");
         boolean ok=haven.has("roadBlocks")&&haven.get("roadBlocks").getAsInt()>100
-            &&haven.get("altars").getAsInt()==1&&haven.get("rampCells").getAsInt()>20
-            &&spargus.has("roadBlocks")&&spargus.get("roadBlocks").getAsInt()>100&&spargus.get("cars").getAsInt()==2;
+            &&haven.get("guardsPatrolling").getAsInt()>0&&haven.has("guardAmmoDrop")
+            &&haven.get("guardAmmoDrop").getAsInt()>=5&&haven.get("guardShotPresented").getAsBoolean()
+            &&haven.get("guardShotDamage").getAsFloat()>0&&haven.get("altars").getAsInt()==1&&haven.get("rampCells").getAsInt()>20
+            &&spargus.has("roadBlocks")&&spargus.get("roadBlocks").getAsInt()>100&&spargus.get("cars").getAsInt()==2
+            &&spargus.get("wastelanders").getAsInt()>0&&spargus.get("monkPatrols").getAsInt()==2;
         results.addProperty("reason",ok?"complete":"Normal-world city acceptance failed");
         try{
             var path=client.gameDirectory.toPath().resolve("jakmc/evidence/cities");
@@ -148,6 +257,8 @@ final class CityScene {
             Files.writeString(path.resolve("result.json"),results.toString());
         }catch(IOException e){throw new UncheckedIOException(e);}
         p.setGameMode(beforeMode);
+        p.getAbilities().flying=wasFlying;
+        p.onUpdateAbilities();
         p.setAttached(JakData.ENABLED,wasJak);
         p.teleportTo(before.x,before.y,before.z);
         finished=true;

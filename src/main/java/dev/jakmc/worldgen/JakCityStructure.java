@@ -5,6 +5,10 @@ import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.jakmc.JakData;
 import dev.jakmc.entity.JakVehicle;
+import dev.jakmc.entity.JakEntities;
+import dev.jakmc.entity.CitizenKind;
+import dev.jakmc.entity.CitizenState;
+import dev.jakmc.entity.JakLeaper;
 import java.util.Arrays;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
@@ -183,7 +187,14 @@ public final class JakCityStructure extends Structure {
                     level.setBlock(at,fill,Block.UPDATE_KNOWN_SHAPE);
                 }
             }
-            if(site==Site.HAVEN)spawnResident(level,chunk,random,cells);
+            spawnResident(level,chunk,random,cells);
+            if(site==Site.HAVEN){
+                for(var patrol:plan.patrols)spawnGuard(level,chunkBounds,patrol);
+            }else{
+                for(var patrol:plan.patrols)spawnLeaper(level,chunkBounds,patrol.start(),patrol.end());
+                spawnLeaper(level,chunkBounds,new BlockPos(-12,0,-16),null);
+                spawnLeaper(level,chunkBounds,new BlockPos(12,0,-16),null);
+            }
             for(var garage:plan.garages){
                 var pos=CityBlueprint.rotate(garage.pos(),turns).offset(origin);
                 if(!chunkBounds.isInside(pos))continue;
@@ -194,6 +205,44 @@ public final class JakCityStructure extends Structure {
                 car.snapTo(spot.x,spot.y,spot.z,CityBlueprint.rotate(garage.facing(),turns).toYRot(),0);
                 level.addFreshEntity(car);
             }
+        }
+
+        private void spawnLeaper(WorldGenLevel level,BoundingBox chunk,BlockPos start,BlockPos end){
+            var ground=site.plan().streetFoot(start);
+            var destination=end==null?null:site.plan().streetFoot(end);
+            if(ground==null||end!=null&&destination==null)return;
+            var point=CityBlueprint.rotate(ground,turns).offset(origin);
+            if(!chunk.isInside(point)||!level.isEmptyBlock(point)||!level.isEmptyBlock(point.above())
+                ||level.getBlockState(point.below()).getCollisionShape(level,point.below()).isEmpty())return;
+            var leaper=JakLeaper.TYPE.create(level.getLevel(),EntitySpawnReason.STRUCTURE);
+            if(leaper==null)return;
+            var at=Vec3.atBottomCenterOf(point);
+            leaper.snapTo(at.x,at.y,at.z,0,0);
+            leaper.setPersistenceRequired();
+            if(end!=null){
+                var monk=EntityTypes.VILLAGER.create(level.getLevel(),EntitySpawnReason.STRUCTURE);
+                if(monk==null)return;
+                ((CitizenState)monk).citizenVariant(CitizenKind.MONK);
+                monk.snapTo(at.x,at.y+1.6,at.z,0,0);
+                monk.setPersistenceRequired();
+                if(!monk.startRiding(leaper,true,false))return;
+                leaper.patrol(point,CityBlueprint.rotate(destination,turns).offset(origin));
+                // Worldgen serializes the mount with its passenger as one NBT tree.
+            }
+            level.addFreshEntity(leaper);
+        }
+
+        private void spawnGuard(WorldGenLevel level,BoundingBox chunk,CityBlueprint.Patrol route){
+            var point=CityBlueprint.rotate(route.start(),turns).offset(origin);
+            if(!chunk.isInside(point)||!level.isEmptyBlock(point)||!level.isEmptyBlock(point.above()))return;
+            var destination=CityBlueprint.rotate(route.end(),turns).offset(origin);
+            var guard=JakEntities.TYPES.get("crimson-guard").create(level.getLevel(),EntitySpawnReason.STRUCTURE);
+            if(guard==null)return;
+            guard.patrol(point,destination);
+            var at=Vec3.atBottomCenterOf(point);
+            guard.snapTo(at.x,at.y,at.z,CityBlueprint.rotate(route.facing(),turns).toYRot(),0);
+            guard.setPersistenceRequired();
+            level.addFreshEntity(guard);
         }
 
         private void spawnResident(WorldGenLevel level,ChunkPos chunk,RandomSource random,CityBlueprint.Fragment cells){
@@ -210,7 +259,9 @@ public final class JakCityStructure extends Structure {
                         ||!level.getBlockState(point.below()).isSolidRender())continue;
                     var resident=EntityTypes.VILLAGER.create(level.getLevel(),EntitySpawnReason.STRUCTURE);
                     if(resident==null)return;
-                    ((dev.jakmc.entity.CitizenState)resident).citizenVariant(random.nextInt(3));
+                    int variant=site==Site.HAVEN?random.nextInt(CitizenKind.HAVEN_VARIANTS)
+                        :random.nextFloat()<.65f?CitizenKind.SPARGUS_MALE:CitizenKind.SPARGUS_FEMALE;
+                    ((CitizenState)resident).citizenVariant(variant);
                     var at=Vec3.atBottomCenterOf(point);
                     resident.snapTo(at.x,at.y,at.z,side.toYRot(),0);
                     resident.setPersistenceRequired();

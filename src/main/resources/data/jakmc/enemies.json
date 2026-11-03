@@ -559,5 +559,28 @@
     "jumpMin": 0.5,
     "jumpFactor": 0.1,
     "metalHead": true
+  },
+  {
+    "model": "crimson-guard",
+    "game": "jak2",
+    "asset": "levels/castle/crimson-guard-lod0.glb",
+    "clips": [
+      "crimson-guard-idle", "crimson-guard-notice", "crimson-guard-run", "crimson-guard-rifle-butt",
+      "crimson-guard-idle", "crimson-guard-walk", "crimson-guard-yellow-hit0", "crimson-guard-die"
+    ],
+    "jumpClips": ["", "", ""],
+    "run": 12.0,
+    "walk": 3.0,
+    "sight": 25.0,
+    "stop": 110.0,
+    "reach": 3.5,
+    "hp": 16.0,
+    "damage": 2,
+    "half": 1.5,
+    "height": 3.9,
+    "leaps": false,
+    "jumpMin": 0.0,
+    "jumpFactor": 0.0,
+    "metalHead": false
   }
 ]

@@ -1,0 +1,11 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/morph_ammo",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "gun-ammo-dark-lod0.glb",
+      "scale": 0.7
+    }
+  }
+}

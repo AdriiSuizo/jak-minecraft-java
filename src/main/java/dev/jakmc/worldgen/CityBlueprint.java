@@ -40,16 +40,19 @@ final class CityBlueprint {
         }
         int size(){return cells.length;}
     }
+    record Patrol(BlockPos start,BlockPos end,Direction facing){}
     record Garage(BlockPos pos,Direction facing,boolean duneHopper){}
     private record Prop(int kind,BlockPos origin,int turns){}
     private static final Rotation[] ROTATIONS={Rotation.NONE,Rotation.CLOCKWISE_90,Rotation.CLOCKWISE_180,Rotation.COUNTERCLOCKWISE_90};
     private final Map<Long,Fragment> chunks;
     final List<Garage> garages;
+    final List<Patrol> patrols;
     final int minX,minY,minZ,maxX,maxY,maxZ;
 
-    private CityBlueprint(Map<Long,Fragment> chunks,List<Garage> garages,int[] bounds){
+    private CityBlueprint(Map<Long,Fragment> chunks,List<Garage> garages,List<Patrol> patrols,int[] bounds){
         this.chunks=chunks;
         this.garages=garages;
+        this.patrols=patrols;
         minX=bounds[0];minY=bounds[1];minZ=bounds[2];
         maxX=bounds[3];maxY=bounds[4];maxZ=bounds[5];
     }
@@ -58,6 +61,7 @@ final class CityBlueprint {
         String path="/data/jakmc/catalog/"+id+".jbp";
         var cells=new HashMap<Long,Int2ObjectOpenHashMap<BlockState>>();
         var garages=new ArrayList<Garage>();
+        var routes=new LinkedHashMap<BlockPos,java.util.EnumSet<Direction>>();
         var gates=new LinkedHashMap<BlockPos,BlockState>();
         var missing=new TreeSet<String>();
         var bounds=new int[]{Integer.MAX_VALUE,Integer.MAX_VALUE,Integer.MAX_VALUE,
@@ -82,6 +86,10 @@ final class CityBlueprint {
                     int index=data.readUnsignedShort();
                     if(index>=count)throw new IOException("Invalid city palette index "+index);
                     String name=names[index];
+                    if(name.startsWith("minecraft:light_blue_glazed_terracotta[")){
+                        var junction=new BlockPos(pos.getX(),0,pos.getZ());
+                        routes.computeIfAbsent(junction,_ ->java.util.EnumSet.noneOf(Direction.class)).add(sourceDirection(name));
+                    }
                     if(name.startsWith("jak:garaje_")){
                         garages.add(new Garage(pos,sourceDirection(name),name.contains("salta_dunas")));
                         continue;
@@ -131,7 +139,28 @@ final class CityBlueprint {
         JakMod.LOG.info("Jak city plan {}: {} chunk fragments, {} garage bays, {} compatibility mappings",
             id,index.size(),garages.size(),missing.size());
         if(!missing.isEmpty())JakMod.LOG.info("Jak city {} legacy palette mappings: {}",id,missing);
-        return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),bounds);
+        var patrols=new ArrayList<Patrol>();
+        routes.forEach((start,directions)->{
+            // Split the junction grid into beats, with at most one guard per intersection pair.
+            if(Math.floorMod(start.getX()/28+start.getZ()/28,2)!=0)return;
+            for(var facing:directions){
+                BlockPos end=start.relative(facing,28);
+                if(!routes.getOrDefault(end,java.util.EnumSet.noneOf(Direction.class)).contains(facing.getOpposite()))continue;
+                patrols.add(new Patrol(start,end,facing));break;
+            }
+        });
+        List<Patrol> selected=patrols;
+        if(id.equals("spargus")){
+            // Two separate original street beats, one on each side of the plaza.
+            var spargusPatrols=new ArrayList<Patrol>(2);
+            var nearest=java.util.Comparator.comparingInt((Patrol p)->p.start().getX()*p.start().getX()+p.start().getZ()*p.start().getZ());
+            for(int side:new int[]{-1,1}){
+                patrols.stream().filter(p->p.start().getX()*side>0&&p.end().getX()*side>0)
+                    .min(nearest).ifPresent(spargusPatrols::add);
+            }
+            selected=spargusPatrols;
+        }
+        return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),List.copyOf(selected),bounds);
     }
 
     private static BlockState resolve(String source,TreeSet<String> missing){
@@ -197,6 +226,23 @@ final class CityBlueprint {
         bounds[2]=Math.min(bounds[2],pos.getZ());bounds[5]=Math.max(bounds[5],pos.getZ());
         int packed=(pos.getY()<<8)|((pos.getZ()&15)<<4)|(pos.getX()&15);
         cells.computeIfAbsent(key(pos.getX()>>4,pos.getZ()>>4),_ ->new Int2ObjectOpenHashMap<>()).put(packed,state);
+    }
+
+    BlockPos streetFoot(BlockPos junction){
+        var fragment=chunks.get(key(junction.getX()>>4,junction.getZ()>>4));
+        if(fragment==null)return null;
+        int column=(junction.getX()&15)|((junction.getZ()&15)<<4);
+        for(int y=2;y>=-3;y--){
+            int floor=java.util.Arrays.binarySearch(fragment.cells(),((y-1)<<8)|column);
+            if(floor<0||fragment.states()[floor].isAir())continue;
+            boolean clear=true;
+            for(int h=0;h<4;h++){
+                int index=java.util.Arrays.binarySearch(fragment.cells(),((y+h)<<8)|column);
+                if(index>=0&&!fragment.states()[index].isAir()){clear=false;break;}
+            }
+            if(clear)return new BlockPos(junction.getX(),y,junction.getZ());
+        }
+        return null;
     }
 
     Fragment cells(int chunkX,int chunkZ,int turns){

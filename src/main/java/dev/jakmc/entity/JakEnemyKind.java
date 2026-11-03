@@ -42,6 +42,7 @@ public final class JakEnemyKind {
  public Path root(){return game.equals("jak3")?RuntimeConfig.assets:RuntimeConfig.assets.getParent().getParent().getParent().getParent().resolve(game+"/data/decompiler_out/"+game);}
  public float duration(String clip){var a=animations.get(clip);return a==null?0:a.duration();}
  public String first(String... names){for(String n:names)if(!n.isEmpty()&&animations.containsKey(n))return n;return clips[0];}
+ public boolean guard(){return model.equals("crimson-guard");}
  public boolean jak1(){return game.equals("jak1");}
  public static void initialize(){
   if(!ALL.isEmpty())return;

@@ -8,6 +8,6 @@ public class EnemyMetadataCheck {
    for(var c:k.getAsJsonArray("clips"))if(!c.getAsString().isEmpty()&&!data.has(c.getAsString()))System.out.println("MISSING "+m+" "+c);
    if(data.size()<3)throw new AssertionError("Incomplete "+m);
   }
-  Files.writeString(Path.of(".local/enemy-animation-metadata.json"),new GsonBuilder().setPrettyPrinting().create().toJson(report));System.out.println("PASS: 17 original enemy art groups decoded");
+  Files.writeString(Path.of(".local/enemy-animation-metadata.json"),new GsonBuilder().setPrettyPrinting().create().toJson(report));System.out.println("PASS: "+report.size()+" original enemy art groups decoded");
  }
 }

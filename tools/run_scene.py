@@ -75,6 +75,10 @@ def run():
         if scene=='scale':
             detail=ROOT/'run/screenshots/scale-forward-eyes.png'
             if detail.exists() and detail.stat().st_mtime_ns>=capture_after:shutil.copyfile(detail,evidence/detail.name)
+        if scene=='cities':
+            for name in ('cities-spargus.png','cities-guard.png'):
+                shot=ROOT/'run/screenshots'/name
+                if shot.exists() and shot.stat().st_mtime_ns>=capture_after:shutil.copyfile(shot,evidence/name)
         if scene=='track':
             grind=ROOT/'run/screenshots/jak-track-grind.png'
             if grind.exists() and grind.stat().st_mtime_ns>=capture_after:

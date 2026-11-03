@@ -6,6 +6,7 @@ import dev.jakmc.player.JakPlayers;
 import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -36,6 +37,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
@@ -45,6 +48,10 @@ public class JakLeaper extends Animal {
         SynchedEntityData.defineId(JakLeaper.class,EntityDataSerializers.INT);
     public static EntityType<JakLeaper> TYPE;
     public static Item EGG;
+    private BlockPos patrolStart,patrolEnd;
+    private boolean patrolReturn;
+    private int patrolRetry;
+    public void patrol(BlockPos start,BlockPos end){patrolStart=start;patrolEnd=end;}
 
     public JakLeaper(EntityType<? extends JakLeaper> type,Level level){
         super(type,level);
@@ -55,7 +62,7 @@ public class JakLeaper extends Animal {
         var key=ResourceKey.create(Registries.ENTITY_TYPE,JakData.id("leaper"));
         TYPE=Registry.register(BuiltInRegistries.ENTITY_TYPE,key,EntityType.Builder
             .<JakLeaper>of(JakLeaper::new,MobCategory.CREATURE)
-            .sized(1.12f,2.08f).eyeHeight(1.7f).clientTrackingRange(10).updateInterval(1).build(key));
+            .sized(1.12f,2.08f).eyeHeight(1.7f).passengerAttachments(1.6f).clientTrackingRange(10).updateInterval(1).build(key));
         FabricDefaultAttributeRegistry.register(TYPE,createMobAttributes()
             .add(Attributes.MAX_HEALTH,30).add(Attributes.MOVEMENT_SPEED,.22)
             .add(Attributes.STEP_HEIGHT,1));
@@ -76,18 +83,67 @@ public class JakLeaper extends Animal {
 
     @Override protected void registerGoals(){
         goalSelector.addGoal(0,new FloatGoal(this));
-        goalSelector.addGoal(1,new WaterAvoidingRandomStrollGoal(this,1));
+        goalSelector.addGoal(1,new WaterAvoidingRandomStrollGoal(this,1){
+            @Override public boolean canUse(){return patrolStart==null&&super.canUse();}
+            @Override public boolean canContinueToUse(){return patrolStart==null&&super.canContinueToUse();}
+        });
         goalSelector.addGoal(2,new RandomLookAroundGoal(this));
     }
 
     public int riderId(){return entityData.get(RIDER);}
     public void reserve(ServerPlayer rider){
+        if(getFirstPassenger() instanceof net.minecraft.world.entity.npc.villager.Villager monk){
+            monk.stopRiding();
+            ((CitizenState)monk).citizenHit();
+        }
+        patrolStart=patrolEnd=null;
         entityData.set(RIDER,rider.getId());
         getNavigation().stop();
         setDeltaMovement(Vec3.ZERO);
         setPersistenceRequired();
     }
     public void release(){entityData.set(RIDER,-1);}
+
+    @Override protected void customServerAiStep(ServerLevel level){
+        super.customServerAiStep(level);
+        if(patrolStart==null||patrolEnd==null||riderId()>=0)return;
+        if(getFirstPassenger()==null){patrolStart=patrolEnd=null;getNavigation().stop();return;}
+        BlockPos goal=patrolReturn?patrolStart:patrolEnd;
+        if(position().distanceToSqr(Vec3.atBottomCenterOf(goal))<2.25){
+            patrolReturn=!patrolReturn;
+            getNavigation().stop();
+            patrolRetry=15;
+            return;
+        }
+        if(patrolRetry>0)patrolRetry--;
+        if(getNavigation().isDone()&&patrolRetry==0){
+            var path=getNavigation().createPath(goal,1);
+            if(path!=null){
+                // Validate the passenger envelope along a new path, then let Minecraft follow it.
+                for(int i=0;i<path.getNodeCount();i++){
+                    var step=path.getEntityPosAtNode(this,i).add(0,1.55,0);
+                    var riderBox=new net.minecraft.world.phys.AABB(step.x-.33,step.y,step.z-.33,step.x+.33,step.y+1.75,step.z+.33);
+                    if(!level.noCollision(riderBox)){path=null;break;}
+                }
+            }
+            if(path!=null)getNavigation().moveTo(path,1.25);
+            patrolRetry=20;
+        }
+    }
+
+    @Override protected void addAdditionalSaveData(ValueOutput out){
+        super.addAdditionalSaveData(out);
+        if(patrolStart!=null&&patrolEnd!=null){
+            out.putLong("JakPatrolStart",patrolStart.asLong());out.putLong("JakPatrolEnd",patrolEnd.asLong());
+            out.putBoolean("JakPatrolReturn",patrolReturn);
+        }
+    }
+    @Override protected void readAdditionalSaveData(ValueInput in){
+        super.readAdditionalSaveData(in);
+        long start=in.getLongOr("JakPatrolStart",Long.MIN_VALUE),end=in.getLongOr("JakPatrolEnd",Long.MIN_VALUE);
+        if(start!=Long.MIN_VALUE&&end!=Long.MIN_VALUE)patrol(BlockPos.of(start),BlockPos.of(end));
+        patrolReturn=in.getBooleanOr("JakPatrolReturn",false);
+    }
 
     @Override public void aiStep(){
         if(riderId()<0)super.aiStep();
@@ -114,9 +170,9 @@ public class JakLeaper extends Animal {
         return InteractionResult.SUCCESS;
     }
 
-    @Override protected SoundEvent getAmbientSound(){return riderId()<0?JakEnemySounds.find("jak1","flut-coo"):null;}
-    @Override protected SoundEvent getHurtSound(DamageSource source){return JakEnemySounds.find("jak1","flut-hit");}
-    @Override protected SoundEvent getDeathSound(){return JakEnemySounds.find("jak1","flut-death");}
+    @Override protected SoundEvent getAmbientSound(){return this instanceof JakFlutFlut&&riderId()<0?JakEnemySounds.find("jak1","flut-coo"):null;}
+    @Override protected SoundEvent getHurtSound(DamageSource source){return this instanceof JakFlutFlut?JakEnemySounds.find("jak1","flut-hit"):JakEnemySounds.find("jak3","dflut-bump");}
+    @Override protected SoundEvent getDeathSound(){return this instanceof JakFlutFlut?JakEnemySounds.find("jak1","flut-death"):JakEnemySounds.find("jak3","dflut-die");}
 
     @Override protected void tickDeath(){
         // The original Leaper stays in its death channel for three seconds.
