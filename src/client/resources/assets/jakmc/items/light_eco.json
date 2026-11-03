@@ -1,10 +1,28 @@
 {
   "model": {
-    "type": "minecraft:special",
-    "base": "jakmc:item/light_eco",
-    "model": {
-      "type": "jakmc:eco",
-      "light": true
+    "type": "minecraft:select",
+    "property": "minecraft:display_context",
+    "cases": [
+      {
+        "when": "gui",
+        "model": {
+          "type": "minecraft:special",
+          "base": "jakmc:item/light_eco",
+          "model": {
+            "type": "jakmc:eco",
+            "light": true,
+            "gui": true
+          }
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:special",
+      "base": "jakmc:item/light_eco",
+      "model": {
+        "type": "jakmc:eco",
+        "light": true
+      }
     }
   }
 }
