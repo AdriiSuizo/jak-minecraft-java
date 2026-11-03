@@ -126,7 +126,12 @@
       "wlander-male-shoot-turn1-end": 0.13333334028720856,
       "wlander-male-ragdoll": 0
     },
-    "game": "jak3"
+    "game": "jak3",
+    "shotMuzzle": [
+      -0.3729396,
+      1.9365289,
+      2.0219622
+    ]
   },
   {
     "model": "wlander-female",
@@ -157,7 +162,12 @@
       "wlander-female-ragdoll": 0,
       "wlander-female-shoot-idle": 0.7333333492279053
     },
-    "game": "jak3"
+    "game": "jak3",
+    "shotMuzzle": [
+      -0.2120256,
+      2.1074529,
+      1.1308174
+    ]
   },
   {
     "model": "monk",

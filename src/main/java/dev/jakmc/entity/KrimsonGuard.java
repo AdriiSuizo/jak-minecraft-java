@@ -1,9 +1,6 @@
 package dev.jakmc.entity;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import dev.jakmc.content.JakItems;
-import java.util.ArrayList;
 import java.util.Comparator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -13,21 +10,18 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 public final class KrimsonGuard {
     private static final String PREFIX="crimson-guard-";
-    private static final double SCALE=JakEnemyKind.SCALE, SHOT_SPEED=200*.64;
+    private static final double SCALE=JakEnemyKind.SCALE;
     private static final int BURST=4;
     private static final String[] STANDING={"idle-to-stab-idle","gun-attack","stab-idle-to-idle"};
     private static final String[] KNEELING={"attack-shoot-knee-start","attack-shoot-knee","attack-shoot-knee-end"};
     private final JakEnemy body;
-    private final ArrayList<Shot> shots=new ArrayList<>();
+    private final SettlementShots shots;
     private BlockPos start,end;
     private boolean toEnd;
     private long hostileUntil;
@@ -38,9 +32,8 @@ public final class KrimsonGuard {
     private boolean kneeling;
     private double miss,side;
     private Vec3 lastFoePosition,foeVelocity=Vec3.ZERO;
-    private record Shot(Vec3 head,Vec3 direction,int age,boolean againstPlayer){}
 
-    KrimsonGuard(JakEnemy body){this.body=body;}
+    KrimsonGuard(JakEnemy body){this.body=body;shots=new SettlementShots(body,2,"jak2","guard-shot-fire");}
     static double navigationSpeed(double guestMetresPerSecond){
         // Mob writes its speed into forward input as well as travel acceleration.
         // Solve the resulting squared input with Minecraft's standard ground drag.
@@ -52,7 +45,7 @@ public final class KrimsonGuard {
     private int length(String name){return Math.max(1,Math.round(body.kind.duration(PREFIX+name)*20));}
 
     void tick(ServerLevel level){
-        tickShots(level);
+        body.guardShot(shots.tick(level));
         ticks++;
         LivingEntity foe=body.getTarget();
         if(foe!=null&&(!foe.isAlive()||foe.isSpectator()||foe instanceof Player player&&player.isCreative()
@@ -172,42 +165,8 @@ public final class KrimsonGuard {
         Vec3 motion=foeVelocity;
         miss=Math.max(0,miss-(motion.length()<.01*.64?3:1)*SCALE);
         Vec3 offset=new Vec3(-forward.z,0,forward.x).scale(side*miss);
-        Vec3 predicted=aim.add(motion.scale(muzzle.distanceTo(aim)/SHOT_SPEED)).add(offset);
-        shots.add(new Shot(muzzle,predicted.subtract(muzzle).normalize(),0,foe instanceof Player));
-        cue(level,"guard-shot-fire",muzzle);
-    }
-
-    private void tickShots(ServerLevel level){
-        if(shots.isEmpty()){if(!body.guardShot().isEmpty())body.guardShot("");return;}
-        var frame=new JsonArray();
-        var it=shots.listIterator();
-        while(it.hasNext()){
-            Shot shot=it.next();
-            Vec3 at=shot.head(),dir=shot.direction(),dest=at.add(dir.scale(SHOT_SPEED/20));
-            if(!level.hasChunkAt(BlockPos.containing(dest))){it.remove();continue;}
-            var wall=level.clip(new ClipContext(at,dest,ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,body));
-            boolean blocked=wall.getType()!=HitResult.Type.MISS;
-            if(blocked)dest=wall.getLocation();
-            double closest=at.distanceToSqr(dest);
-            LivingEntity hit=null;
-            for(var target:level.getEntitiesOfClass(LivingEntity.class,new AABB(at,dest).inflate(.2*.64),
-                e->e!=body&&e.isAlive()&&(shot.againstPlayer()?e instanceof Player p&&!p.isCreative()&&!p.isSpectator():e==body.getTarget()))){
-                var bounds=target.getBoundingBox().inflate(.2*.64);
-                Vec3 intersection=bounds.contains(at)?at:bounds.clip(at,dest).orElse(null);
-                if(intersection==null||at.distanceToSqr(intersection)>=closest)continue;
-                closest=at.distanceToSqr(intersection);dest=intersection;hit=target;
-            }
-            Vec3 tail=dest.subtract(dir.scale(Math.min(9*.64,at.distanceTo(dest)+SHOT_SPEED/20*shot.age())));
-            var row=new JsonObject();
-            row.add("head",JakVehicle.jsonVector(dest));row.add("tail",JakVehicle.jsonVector(tail));
-            row.add("direction",JakVehicle.jsonVector(dir));row.addProperty("hit",blocked||hit!=null);
-            row.addProperty("actor",hit!=null);frame.add(row);
-            if(hit!=null)hit.hurtServer(level,body.damageSources().mobAttack(body),2);
-            if(blocked||hit!=null)cue(level,"guard-shot-hit",dest);
-            if(blocked||hit!=null||shot.age()>=9)it.remove();
-            else it.set(new Shot(dest,dir,shot.age()+1,shot.againstPlayer()));
-        }
-        body.guardShot(frame.isEmpty()?"":frame.toString());
+        Vec3 predicted=aim.add(motion.scale(muzzle.distanceTo(aim)/SettlementShots.SPEED)).add(offset);
+        shots.fire(level,muzzle,predicted,foe);
     }
 
     private static void cue(ServerLevel level,String name,Vec3 at){

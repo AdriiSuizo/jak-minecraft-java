@@ -73,6 +73,11 @@ public final class JakCitizenRenderer {
    if(a.kind.monk())motion=asset(0);
    suffix=switch(data.citizenPhase()){case 1->"knocked-back";case 2->"knocked-back-land";default->motion.kind.rise();};
    time=(dev.jakmc.player.JakEntityClock.time(entity.level())-data.citizenPhaseStart()+partial)/20f;
+  }else if(!data.citizenDefenseClip().isEmpty()){
+   if(a.kind.monk())motion=asset(CitizenKind.SPARGUS_FEMALE);
+   suffix=data.citizenDefenseClip();
+   float rate=suffix.equals("gun-takeout")?1.6f:1f;
+   time=(dev.jakmc.player.JakEntityClock.time(entity.level())-data.citizenDefenseStart()+partial)/20f*rate;
   }else if(entity.isInWater()){
    if(a.kind.monk()||a.kind.wastelander())motion=asset(0);
    suffix="tread-water";time=state.ageInTicks/20f%motion.kind.duration(suffix);
@@ -88,7 +93,7 @@ public final class JakCitizenRenderer {
    time=((state.ageInTicks/20f*rate)+(seed&255)*.01f)%java.lang.Math.max(.01f,a.kind.duration(suffix));
   }
   String clip=motion.kind.model()+"-"+suffix;
-  var posed=bed!=null?bed.pose:groundPose(a,motion,suffix,time);
+  var posed=bed!=null?bed.pose:data.citizenWeaponOut()&&motion==a?a.model.poseAtTime(clip,time):groundPose(a,motion,suffix,time);
   float scale=JakEnemyKind.SCALE*entity.getAgeScale()*entity.getScale();
   float floor=bed==null&&(data.citizenPhase()>=2||entity.deathTime>0)?java.lang.Math.max(0,-a.model.bounds(posed,new Matrix4f(),shown)[0].y):0;
   DRAW.put(state,new Draw(a,posed,shown,yaw,scale,bed,clip,floor));

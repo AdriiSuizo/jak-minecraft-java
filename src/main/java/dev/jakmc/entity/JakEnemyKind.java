@@ -27,12 +27,7 @@ public final class JakEnemyKind {
   model=d.get("model").getAsString();game=d.get("game").getAsString();asset=d.get("asset").getAsString();
   clips=strings(d.getAsJsonArray("clips"));jump=strings(d.getAsJsonArray("jumpClips"));
   run=f(d,"run");walk=f(d,"walk");sight=f(d,"sight");stop=f(d,"stop");reach=f(d,"reach");hp=f(d,"hp");damage=f(d,"damage");half=f(d,"half");height=f(d,"height");jumpMin=f(d,"jumpMin");jumpFactor=f(d,"jumpFactor");metalHead=d.get("metalHead").getAsBoolean();leaps=d.get("leaps").getAsBoolean();
-  var data=JsonParser.parseString(NativeJak.animationMetadata(root().toString(),model,game.equals("jak1"))).getAsJsonObject();
-  for(var e:data.entrySet()){
-   var a=e.getValue().getAsJsonObject();var cues=new ArrayList<Cue>();
-   for(var v:a.getAsJsonArray("events")){var c=v.getAsJsonObject();cues.add(new Cue(f(c,"frame"),c.get("name").getAsString(),f(c,"volume"),f(c,"pitch")));}
-   animations.put(e.getKey(),new Animation(a.get("frames").getAsInt(),f(a,"speed"),f(a,"artistBase"),f(a,"artistStep"),List.copyOf(cues)));
-  }
+  animations.putAll(readAnimations(root(),model,jak1()));
   // These are actual one-key static clips in the GLB; zero-speed .go entries
   // are intentionally absent from the moving-animation reader.
   if(model.equals("hopper"))animations.putIfAbsent("hopper-idle",new Animation(1,0,0,1,List.of()));
@@ -51,6 +46,16 @@ public final class JakEnemyKind {
    for(var v:JsonParser.parseReader(new InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8)).getAsJsonArray()){var k=new JakEnemyKind(v.getAsJsonObject());ALL.put(k.model,k);}
   }catch(IOException e){throw new UncheckedIOException(e);}
   JakMod.LOG.info("Loaded {} original enemy definitions and {} authored animations",ALL.size(),ALL.values().stream().mapToInt(k->k.animations.size()).sum());
+ }
+ static Map<String,Animation> readAnimations(Path root,String model,boolean jak1){
+  var animations=new HashMap<String,Animation>();
+  var data=JsonParser.parseString(NativeJak.animationMetadata(root.toString(),model,jak1)).getAsJsonObject();
+  for(var e:data.entrySet()){
+   var a=e.getValue().getAsJsonObject();var cues=new ArrayList<Cue>();
+   for(var v:a.getAsJsonArray("events")){var c=v.getAsJsonObject();cues.add(new Cue(f(c,"frame"),c.get("name").getAsString(),f(c,"volume"),f(c,"pitch")));}
+   animations.put(e.getKey(),new Animation(a.get("frames").getAsInt(),f(a,"speed"),f(a,"artistBase"),f(a,"artistStep"),List.copyOf(cues)));
+  }
+  return animations;
  }
  private static float f(JsonObject d,String k){return d.get(k).getAsFloat();}
  private static String[] strings(JsonArray a){var s=new String[a.size()];for(int i=0;i<s.length;i++)s[i]=a.get(i).getAsString();return s;}

@@ -79,7 +79,7 @@ def run():
             for shot in (ROOT/'run/screenshots').glob('hellcat-*.png'):
                 if shot.stat().st_mtime_ns>=capture_after:shutil.copyfile(shot,evidence/shot.name)
         if scene=='cities':
-            for name in ('cities-spargus.png','cities-guard.png'):
+            for name in ('cities-spargus.png','cities-guard.png','cities-wastelander.png'):
                 shot=ROOT/'run/screenshots'/name
                 if shot.exists() and shot.stat().st_mtime_ns>=capture_after:shutil.copyfile(shot,evidence/name)
         if scene=='track':

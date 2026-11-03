@@ -18,7 +18,7 @@ final class VehicleEffects {
     private static final float[] BASIS={1,0,0,0,1,0,0,0,1};
     private static final Gson JSON=new Gson();
     private static final Map<JakVehicle,JsonObject> SEEN=new WeakHashMap<>();
-    private static final Map<dev.jakmc.entity.JakEnemy,String> GUARD_FRAMES=new WeakHashMap<>();
+    private static final Map<net.minecraft.world.entity.Entity,String> GUARD_FRAMES=new WeakHashMap<>();
     private static final Map<JakVehicle,Map<Integer,Vec3>> GRENADE_LAST=new WeakHashMap<>();
     private static final double METRE=.64;
 
@@ -29,9 +29,10 @@ final class VehicleEffects {
                 if(entity instanceof JakVehicle car&&car.distanceToSqr(client.player)<96*96){
                     var frame=car.frame();
                     if(frame!=null&&SEEN.put(car,frame)!=frame)emit(car,frame);
-                }else if(entity instanceof dev.jakmc.entity.JakEnemy guard&&guard.kind.guard()){
-                    String shot=guard.guardShot();
-                    if(!shot.equals(GUARD_FRAMES.put(guard,shot))&&!shot.isEmpty())guardShots(guard,shot);
+                }else{
+                    String shot=entity instanceof dev.jakmc.entity.JakEnemy guard&&guard.kind.guard()?guard.guardShot()
+                        :entity instanceof dev.jakmc.entity.CitizenState resident?resident.citizenDefenseShot():null;
+                    if(shot!=null&&!shot.equals(GUARD_FRAMES.put(entity,shot))&&!shot.isEmpty())guardShots(entity,shot);
                 }
             }
         });
@@ -105,7 +106,7 @@ final class VehicleEffects {
         if(commands.size()>3)JakEffects.local(car.getId(),origin,commands);
     }
 
-    private static void guardShots(dev.jakmc.entity.JakEnemy guard,String frame){
+    private static void guardShots(net.minecraft.world.entity.Entity guard,String frame){
         var commands=new JsonArray();
         Vec3 origin=guard.position();
         for(var entry:com.google.gson.JsonParser.parseString(frame).getAsJsonArray()){

@@ -34,6 +34,11 @@ final class CityScene {
     private static volatile int guardFightId=-1;
     private static boolean sawGuardFire;
     private static int guardScreenshotAt;
+    private static volatile int defenderId=-1;
+    private static dev.jakmc.entity.JakEnemy spargusThreat;
+    private static volatile boolean wastelanderShot;
+    private static float threatHealth;
+    private static int spargusScreenshotAt;
     private static net.minecraft.world.Difficulty beforeDifficulty;
     private static float healthBeforeFight,absorptionBeforeFight,healthBefore;
     private static final java.util.Map<java.util.UUID,Vec3> guardStarts=new java.util.HashMap<>();
@@ -42,6 +47,20 @@ final class CityScene {
     static void initialize(){
         ClientTickEvents.END_CLIENT_TICK.register(client->{
             if(!ready||finished)return;
+            if(defenderId>=0){
+                if(client.level.getEntity(defenderId) instanceof dev.jakmc.entity.CitizenState resident
+                    &&!resident.citizenDefenseShot().isEmpty()&&!wastelanderShot){
+                    wastelanderShot=true;
+                    spargusScreenshotAt=ticks+1;
+                }
+                if(spargusScreenshotAt>0&&ticks==spargusScreenshotAt)
+                    Screenshot.grab(client.gameDirectory,"cities-wastelander.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
+                if(++ticks>=160){
+                    ready=false;
+                    onServer(client,p->finishSpargusFight(client,p));
+                }
+                return;
+            }
             if(guardFightId>=0){
                 if(client.level.getEntity(guardFightId) instanceof dev.jakmc.entity.JakEnemy guard&&!guard.guardShot().isEmpty()){
                     if(!sawGuardFire){
@@ -82,7 +101,8 @@ final class CityScene {
         pause=client.options.pauseOnLostFocus;
         client.options.pauseOnLostFocus=false;
         finished=ready=false;
-        ticks=index=0;guardFightId=-1;sawGuardFire=false;guardScreenshotAt=0;
+        ticks=index=0;guardFightId=defenderId=-1;spargusThreat=null;
+        sawGuardFire=wastelanderShot=false;guardScreenshotAt=spargusScreenshotAt=0;
         results.entrySet().clear();guardStarts.clear();
         onServer(client,p->{
             before=p.position();healthBefore=p.getHealth();absorptionBeforeFight=p.getAbsorptionAmount();
@@ -189,7 +209,7 @@ final class CityScene {
                 &&resident.citizenVariant()==dev.jakmc.entity.CitizenKind.MONK).count());
         }
         results.add(index==0?"haven":"spargus",report);
-        if(index==0&&startGuardFight(p))return;
+        if(index==0&&startGuardFight(p)||index==1&&startSpargusFight(p))return;
         next(client,p);
     }
     private static boolean startGuardFight(ServerPlayer p){
@@ -239,6 +259,50 @@ final class CityScene {
         p.getAbilities().flying=true;p.onUpdateAbilities();
         next(client,p);
     }
+    private static boolean startSpargusFight(ServerPlayer p){
+        var level=p.level();
+        var center=Vec3.atCenterOf(target);
+        for(var resident:level.getEntitiesOfClass(net.minecraft.world.entity.npc.villager.Villager.class,
+            new AABB(center,center).inflate(88),e->e.onGround()&&dev.jakmc.entity.CitizenKind.of(
+                ((dev.jakmc.entity.CitizenState)e).citizenVariant()).wastelander())){
+            for(var facing:net.minecraft.core.Direction.Plane.HORIZONTAL){
+                var point=resident.blockPosition().relative(facing,5);
+                if(!level.hasChunkAt(point)||!level.isEmptyBlock(point)||!level.isEmptyBlock(point.above())
+                    ||level.getBlockState(point.below()).getCollisionShape(level,point.below()).isEmpty())continue;
+                var at=Vec3.atBottomCenterOf(point);
+                var trace=level.clip(new net.minecraft.world.level.ClipContext(resident.position().add(0,1.08,0),at.add(0,1,0),
+                    net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,resident));
+                if(trace.getType()!=net.minecraft.world.phys.HitResult.Type.MISS)continue;
+                var threat=dev.jakmc.entity.JakEntities.TYPES.get("grunt").create(level,net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                if(threat==null)return false;
+                threat.setNoAi(true);
+                threat.snapTo(at.x,at.y,at.z,facing.getOpposite().toYRot(),0);
+                if(!level.addFreshEntity(threat))return false;
+                p.teleportTo(at.x,at.y+2,at.z);
+                Vec3 look=resident.position().add(0,1.1,0);
+                Vec3 eye=at.lerp(resident.position(),.39).add(0,1.5,0),d=look.subtract(eye);
+                view=new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),
+                    (float)-Math.toDegrees(Math.atan2(d.y,d.horizontalDistance())));
+                threatHealth=threat.getHealth();
+                spargusThreat=threat;defenderId=resident.getId();
+                ticks=0;ready=true;
+                return true;
+            }
+        }
+        return false;
+    }
+    private static void finishSpargusFight(Minecraft client,ServerPlayer p){
+        var result=results.getAsJsonObject("spargus");
+        result.addProperty("defenderShot",wastelanderShot);
+        if(spargusThreat!=null){
+            result.addProperty("defenderDamage",threatHealth-spargusThreat.getHealth());
+            result.addProperty("threatKilled",spargusThreat.isDeadOrDying());
+            if(!spargusThreat.isRemoved())spargusThreat.discard();
+            spargusThreat=null;
+        }
+        defenderId=-1;
+        next(client,p);
+    }
     private static void next(Minecraft client,ServerPlayer p){
         view=null;
         if(index++==0){locate(client,p);return;}
@@ -249,7 +313,9 @@ final class CityScene {
             &&haven.get("guardAmmoDrop").getAsInt()>=5&&haven.get("guardShotPresented").getAsBoolean()
             &&haven.get("guardShotDamage").getAsFloat()>0&&haven.get("altars").getAsInt()==1&&haven.get("rampCells").getAsInt()>20
             &&spargus.has("roadBlocks")&&spargus.get("roadBlocks").getAsInt()>100&&spargus.get("cars").getAsInt()==2
-            &&spargus.get("wastelanders").getAsInt()>0&&spargus.get("monkPatrols").getAsInt()==2;
+            &&spargus.get("wastelanders").getAsInt()>0&&spargus.get("monkPatrols").getAsInt()==2
+            &&spargus.has("defenderDamage")&&spargus.get("defenderDamage").getAsFloat()>0
+            &&spargus.get("defenderShot").getAsBoolean();
         results.addProperty("reason",ok?"complete":"Normal-world city acceptance failed");
         try{
             var path=client.gameDirectory.toPath().resolve("jakmc/evidence/cities");

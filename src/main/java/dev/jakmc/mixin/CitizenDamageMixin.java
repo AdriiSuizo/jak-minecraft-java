@@ -10,7 +10,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(LivingEntity.class)
 abstract class CitizenDamageMixin {
  @Inject(method="hurtServer",at=@At("RETURN"))private void jakmc$hurt(ServerLevel level,DamageSource source,float amount,CallbackInfoReturnable<Boolean> ci){if(ci.getReturnValue()&&amount>0&&(Object)this instanceof Villager v){
-   ((CitizenState)v).citizenHit();
+   var state=(CitizenState)v;
+   state.citizenHit();
+   if(source.getEntity() instanceof LivingEntity attacker)state.citizenAttacker(attacker);
    if(source.getEntity() instanceof net.minecraft.world.entity.player.Player player)
     dev.jakmc.entity.KrimsonGuard.witness(level,v,player);
   }}
