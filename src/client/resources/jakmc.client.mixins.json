@@ -1,15 +1,17 @@
 {
- "required": true,
- "package": "dev.jakmc.mixin.client",
- "compatibilityLevel": "JAVA_25",
- "client": [
-  "JakRenderMixin",
-  "JakDisconnectMixin",
-  "DevSceneCameraMixin",
-  "JakControllerCameraMixin",
-  "JakControllerUseMixin"
- ],
- "injectors": {
-  "defaultRequire": 1
- }
+  "required": true,
+  "package": "dev.jakmc.mixin.client",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "JakRenderMixin",
+    "JakDisconnectMixin",
+    "DevSceneCameraMixin",
+    "JakControllerCameraMixin",
+    "JakControllerUseMixin",
+    "GemItemRendererMixin",
+    "GemCollectMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
 }

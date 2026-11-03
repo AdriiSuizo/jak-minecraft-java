@@ -23,6 +23,7 @@ public final class JakEffects {
  private static final Set<Integer> MISSING=new HashSet<>();
  private static String[] names;
  private static final ByteBuffer VIEW=NativeJak.buffer(44),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
+ public static long gemCollectBursts;
  public static int drawnVertices,drawnLightningVertices,drawnDarkVertices;
  private static final class Owner implements AutoCloseable {
   final long handle=NativeJak.fxCreate();final Vec3 origin;long received=System.nanoTime(),lastDraw;

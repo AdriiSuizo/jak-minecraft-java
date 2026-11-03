@@ -36,7 +36,10 @@ public final class GltfModel {
     private final Map<Integer,float[]> accessors=new HashMap<>();
     private float[] defaultMorphs=new float[0];
     private record Node(Vector3f t,Quaternionf r,Vector3f s,int parent,String name){}
-    private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,boolean translucent,float[][] morphPositions,float[][] morphNormals){}
+    private static Identifier gemAtlas;
+    private static Identifier gemAtlas(){if(gemAtlas!=null)return gemAtlas;try{int[] pixels=SkullGemTexture.bake(dev.jakmc.RuntimeConfig.assets.resolve("textures/level-default-tfrag"));var image=new NativeImage(64,64*60,false);for(int y=0;y<64*60;y++)for(int x=0;x<64;x++)image.setPixel(x,y,pixels[y*64+x]);gemAtlas=JakData.id("local/skull_gem_animated");Minecraft.getInstance().getTextureManager().register(gemAtlas,new DynamicTexture(()->"Original skull gem layers",image));return gemAtlas;}catch(IOException e){throw new UncheckedIOException(e);}}
+    public static float materialSeconds(){var c=Minecraft.getInstance();return c.level==null?0:(c.level.getGameTime()+c.getDeltaTracker().getGameTimeDeltaPartialTick(false))/20f;}
+    private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals){}
     private record Channel(int node,String path,float[] times,float[] values,int components,boolean step){}
     private record Clip(List<Channel> channels,float duration){}
     public record Posed(Matrix4f[] globals,Matrix4f[] skin,float[] morphs,Vector3f[] translations,Quaternionf[] rotations,Vector3f[] scales){}
@@ -106,7 +109,7 @@ public final class GltfModel {
             for(int m=0;m<targetCount;m++){if(morphPositions[m]!=null)morphPositions[m]=select(morphPositions[m],3,used);if(morphNormals[m]!=null)morphNormals[m]=select(morphNormals[m],3,used);}
             int[] compactBones=bone==null?null:toInts(select(toFloats(bone),4,used));
             if(compactBones!=null)for(int vertex=0;vertex<used.length;vertex++)for(int k=0;k<4;k++)if(weight[used[vertex]*4+k]>0&&(compactBones[vertex*4+k]<0||compactBones[vertex*4+k]>=joints.length))throw new IOException("Indexed vertex uses missing skin joint in "+file);
-            surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),morphPositions,morphNormals));
+            surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals));
         }
         readAnimations(this);
         String originalName=file.getFileName().toString().replace("-lod0.glb","");
@@ -185,6 +188,7 @@ public final class GltfModel {
         Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,to.morphs,t,r,s);
     }
+    public Matrix4f jointAt(Posed pose,int originalIndex){return pose.globals[joints[originalIndex]];}
     public Matrix4f joint(Posed pose,String name){Integer node=namedNodes.get(name);if(node==null)throw new IllegalArgumentException("Required original joint missing: "+name);return pose.globals[node];}
     public Posed poseAtTime(String name,float seconds){Clip clip=clips.get(name);if(clip==null)throw new IllegalArgumentException("Required original clip missing: "+name);int frames=clip.channels.stream().mapToInt(c->c.times.length).max().orElse(1);return pose(name,clip.duration>0?Math.clamp(seconds/clip.duration,0,1)*(frames-1):0);}
     public Posed overlayUpper(Posed base,String name,float seconds){
@@ -245,14 +249,16 @@ public final class GltfModel {
                 if(total>0){p.div(total);if(n.lengthSquared()>0)n.normalize();}else{p.set(px,py,pz);n.set(nx,ny,nz);}
                 p.get(skinned,i*6);n.get(skinned,i*6+3);
             }
-            var renderType=surface.translucent||alpha<1?RenderTypes.entityTranslucent(surface.texture):RenderTypes.entityCutout(surface.texture);
+            Identifier texture=surface.skullGem?gemAtlas():surface.texture;
+            int gemFrame=Math.floorMod((int)Math.floor(materialSeconds()*60),60);
+            var renderType=surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
                 Vector3f v=new Vector3f(),normal=new Vector3f();
                 for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:new int[]{0,1,2,2}){
                     int i=surface.indices[triangle+corner];pose.pose().transformPosition(skinned[i*6],skinned[i*6+1],skinned[i*6+2],v);
                     pose.transformNormal(skinned[i*6+3],skinned[i*6+4],skinned[i*6+5],normal);
                     int color=Math.clamp(Math.round(surface.colors[i*4+3]*alpha*255),0,255)<<24;for(int c=0;c<3;c++)color|=Math.clamp((int)(surface.colors[i*4+c]*255),0,255)<<(16-c*8);
-                    buffer.addVertex(v.x,v.y,v.z,color,surface.uv[i*2],surface.uv[i*2+1],overlay,light,normal.x,normal.y,normal.z);
+                    buffer.addVertex(v.x,v.y,v.z,color,surface.uv[i*2],surface.skullGem?(gemFrame+(.5f+(surface.uv[i*2+1]-(float)Math.floor(surface.uv[i*2+1]))*63)/64)/60:surface.uv[i*2+1],overlay,light,normal.x,normal.y,normal.z);
                 }
             });
         }

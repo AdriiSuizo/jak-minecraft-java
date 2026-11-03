@@ -1,11 +1,27 @@
 {
   "model": {
-    "type": "minecraft:special",
-    "base": "jakmc:item/skull_gem",
-    "model": {
-      "type": "jakmc:gltf",
-      "file": "collectables-gem-lod0.glb",
-      "scale": 0.25
+    "type": "minecraft:select",
+    "property": "minecraft:display_context",
+    "cases": [
+      {
+        "when": "gui",
+        "model": {
+          "type": "minecraft:special",
+          "base": "jakmc:item/skull_gem",
+          "model": {
+            "type": "jakmc:skull_gem",
+            "gui": true
+          }
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:special",
+      "base": "jakmc:item/skull_gem",
+      "model": {
+        "type": "jakmc:skull_gem",
+        "gui": false
+      }
     }
   }
 }

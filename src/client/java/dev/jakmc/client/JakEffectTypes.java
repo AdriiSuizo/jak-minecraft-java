@@ -9,7 +9,7 @@ import net.minecraft.resources.Identifier;
 import java.util.*;
 
 /** Exact PS2 alpha equations, using Minecraft's backend and depth/fog uniforms. */
-final class JakEffectTypes {
+public final class JakEffectTypes {
  private static final RenderPipeline[] PIPELINES=new RenderPipeline[4];
  private static final OitPipelineSet[] OIT=new OitPipelineSet[4];
  private static final Map<String,RenderType> TYPES=new HashMap<>();
@@ -29,6 +29,6 @@ final class JakEffectTypes {
    OIT[i]=RenderPipelines.register(OitPipelineSet.builder("jakmc_effect_"+i,oit).build());
   }
  }
- static RenderType get(Identifier texture,int blend){return TYPES.computeIfAbsent(texture+"/"+blend,k->RenderType.create("jak_effect_"+blend,RenderSetup.builder(PIPELINES[blend]).setOitPipelines(OIT[blend]).withTexture("Sampler0",texture).sortOnUpload().createRenderSetup()));}
+ public static RenderType get(Identifier texture,int blend){return TYPES.computeIfAbsent(texture+"/"+blend,k->RenderType.create("jak_effect_"+blend,RenderSetup.builder(PIPELINES[blend]).setOitPipelines(OIT[blend]).withTexture("Sampler0",texture).sortOnUpload().createRenderSetup()));}
  static void initialize(){}
 }

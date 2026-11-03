@@ -45,6 +45,8 @@ public final class JakEnemyRenderer extends EntityRenderer<JakEnemy,JakEnemyRend
  @Override public void submit(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){
   super.submit(state,stack,collector,camera);if(state.isInvisible||state.pose==null)return;
   stack.pushPose();stack.rotateDegrees(Axis.YP,-state.yaw);stack.rotateDegrees(Axis.ZP,state.tilt);stack.scale(JakEnemyKind.SCALE,JakEnemyKind.SCALE,JakEnemyKind.SCALE);
-  model.submit(state.pose,stack,collector,state.lightCoords,1,OverlayTexture.pack(0,state.hurt),state.gem);stack.popPose();rendered++;seen.add(kind.model);
+  model.submit(state.pose,stack,collector,state.lightCoords,1,OverlayTexture.pack(0,state.hurt),state.gem);
+  if(state.gem){int joint=switch(kind.model){case "grunt"->5;case "flitter"->27;case "mantis"->6;default->-1;};if(joint>=0){var offset=switch(kind.model){case "grunt"->new org.joml.Vector3f(0,614.4f,-3276.8f).div(4096);case "flitter"->new org.joml.Vector3f(0,696.32f,1843.2f).div(4096);default->new org.joml.Vector3f(0,1286.144f,122.88f).div(4096);};var at=model.jointAt(state.pose,joint).transformPosition(offset);stack.pushPose();stack.translate(at.x,at.y,at.z);SkullGemRenderer.carrier(stack,collector);stack.popPose();}}
+  stack.popPose();rendered++;seen.add(kind.model);
  }
 }

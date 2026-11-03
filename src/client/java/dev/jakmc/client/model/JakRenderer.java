@@ -102,7 +102,9 @@ public final class JakRenderer {
         if(item.isEmpty())return;
         stack.pushPose();
         int kind=JakItems.GUNS.indexOf(item.getItem());
-        Matrix4f joint=body.joint(skeleton,kind>=0?"gun":right?"sk_rhand":"sk_lhand");stack.mulPose(rigid(joint));
+        Matrix4f joint=body.joint(skeleton,kind>=0?"gun":right?"sk_rhand":"sk_lhand");
+        if(item.is(JakItems.SKULL_GEM)){var palm=joint.getTranslation(new Vector3f()).add(body.joint(skeleton,right?"rmidA":"lmidA").getTranslation(new Vector3f())).mul(.5f);joint=new Matrix4f(joint).setTranslation(palm);}
+        stack.mulPose(rigid(joint));
         if(kind>=0){
             String color=new String[]{"red","yellow","blue","dark"}[kind/3];String clip="gun-idle-"+color+(kind%3==0?"":String.valueOf(kind%3+1));float age=0;
             var source=JakPoses.get(state.id);var g=source.raw().getAsJsonObject("gun");
@@ -110,6 +112,7 @@ public final class JakRenderer {
                 if(fire>=0&&fire<.45f){clip=FIRE_GUN[kind];age=fire;}else age=(g.get("time").getAsFloat()+elapsed)%Math.max(.001f,gun.duration(clip));}
             gun.submit(gun.poseAtTime(clip,age),stack,collector,state.lightCoords);
         }
+        else if(item.is(JakItems.SKULL_GEM)){stack.scale(1/bodyScale,1/bodyScale,1/bodyScale);SkullGemRenderer.held(stack,collector,state.lightCoords);}
         else {
             stack.scale(1/bodyScale,1/bodyScale,1/bodyScale);stack.rotateDegrees(Axis.XP,-90);stack.rotateDegrees(Axis.YP,180);
             held.submit(stack,collector,state.lightCoords,OverlayTexture.NO_OVERLAY,state.outlineColor);
