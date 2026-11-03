@@ -37,6 +37,10 @@ def run():
         shutil.copyfile(result,evidence/'result.json')
         if scene in ('weapons','rings','input','input_actions','gems','gems_visual','collision_perf','citizens','powers','leaper','flut','hellcat','hellcat_crossing','materials') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
         shutil.copyfile(image,evidence/'screen.png')
+        if scene=='materials':
+            assemblies=ROOT/'run/screenshots/jak-assemblies.png'
+            if assemblies.exists() and assemblies.stat().st_mtime_ns>=capture_after:
+                shutil.copyfile(assemblies,evidence/assemblies.name)
         if scene in ('gems','gems_visual'):
             for capture in (ROOT/'run/screenshots').glob('gems-*.png'):shutil.copyfile(capture,evidence/capture.name)
         if scene in ('input','input_actions'):

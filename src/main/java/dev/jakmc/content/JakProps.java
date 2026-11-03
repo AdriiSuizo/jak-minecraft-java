@@ -135,16 +135,19 @@ public final class JakProps {
         @Override public BlockEntity newBlockEntity(BlockPos pos,BlockState state){return new FireBarrel(pos,state);}
     }
 
-    private static class PropBlock extends HorizontalDirectionalBlock {
-        private final VoxelShape[] shapes=new VoxelShape[4];
+    static class PropBlock extends HorizontalDirectionalBlock {
+        private final VoxelShape[] shapes;
         PropBlock(Properties properties,JsonObject cell){
             super(properties);
             registerDefaultState(stateDefinition.any().setValue(FACING,Direction.NORTH));
+            shapes=gridShapes(cell.getAsJsonArray("boxes"));
+        }
+        static VoxelShape[] gridShapes(JsonArray boxes){
             // Rasterize source collision onto Minecraft's 1/16 grid once. Keeping every
             // floating-point subdivision makes vanilla's boolean shape union explode in size.
             var voxels=new BitSetDiscreteVoxelShape[4];
             for(int i=0;i<4;i++)voxels[i]=new BitSetDiscreteVoxelShape(16,16,16);
-            for(var row:cell.getAsJsonArray("boxes")){
+            for(var row:boxes){
                 var box=row.getAsJsonArray();
                 int minX=edge(box,0,false),minY=edge(box,1,false),minZ=edge(box,2,false);
                 int maxX=edge(box,3,true),maxY=edge(box,4,true),maxZ=edge(box,5,true);
@@ -155,7 +158,9 @@ public final class JakProps {
                     voxels[3].fill(z,y,15-x);
                 }
             }
+            var shapes=new VoxelShape[4];
             for(int i=0;i<4;i++)shapes[i]=new CubeVoxelShape(voxels[i]);
+            return shapes;
         }
         private static int edge(JsonArray values,int index,boolean upper){
             double scaled=Math.clamp(values.get(index).getAsDouble(),0,1)*16;

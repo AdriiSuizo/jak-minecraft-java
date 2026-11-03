@@ -98,8 +98,11 @@ def decorations(catalog):
     (catalog/'decorations.json').write_text(json.dumps(supported),encoding='utf-8')
     items=DEST/'assets/jak/items'
     models=DEST/'assets/jak/models/item'
+    # The anchor is the supported base cell, including the actual palm trunk.
+    assemblies={88:[0,0,0],93:[3,0,2]}
+    (catalog/'assemblies.json').write_text(json.dumps(assemblies),encoding='utf-8')
     rows=[]
-    for id in supported:
+    for id in (*supported,*assemblies):
         source=json.loads((SOURCE/'objects'/f'{id}.json').read_text(encoding='utf-8'))
         path=source['path']
         sprite=source['cells'][0]['triangles'][0]['texture']

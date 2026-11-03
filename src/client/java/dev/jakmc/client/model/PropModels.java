@@ -7,6 +7,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.jakmc.JakData;
 import dev.jakmc.content.JakProps;
+import dev.jakmc.content.JakAssemblies;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +37,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import org.joml.Vector3f;
@@ -51,14 +53,31 @@ public final class PropModels {
 
     public static void initialize(){
         for(var entry:JakProps.MODELS.values())GEOMETRY.put(entry.id(),geometry(entry.triangles()));
-        ModelLoadingPlugin.register(context->{
-            for(var model:JakProps.MODELS.values()){
-                var unbaked=new Root(model.path(),GEOMETRY.get(model.id()));
-                context.registerBlockStateResolver(model.block(),states->{
-                    for(BlockState state:states.block().getStateDefinition().getPossibleStates())states.setModel(state,unbaked);
-                });
+        Map<Block,Root> roots=new LinkedHashMap<>();
+        for(var model:JakProps.MODELS.values())roots.put(model.block(),new Root(model.path(),GEOMETRY.get(model.id())));
+        for(var model:JakAssemblies.MODELS.values()){
+            var item=new ArrayList<Triangle>();
+            for(var part:model.parts()){
+                Geometry geometry=geometry(part.triangles());
+                roots.put(part.block(),new Root(model.path(),geometry));
+                for(var triangle:geometry.triangles()){
+                    var points=new Point[3];
+                    for(int i=0;i<points.length;i++){
+                        var point=triangle.points()[i];
+                        points[i]=new Point((point.x+part.offset().getX())/model.extent(),
+                            (point.y+part.offset().getY())/model.extent(),(point.z+part.offset().getZ())/model.extent(),
+                            point.u,point.v,point.color);
+                    }
+                    item.add(new Triangle(points,triangle.texture(),triangle.blended()));
+                }
             }
-        });
+            GEOMETRY.put(model.id(),new Geometry(List.copyOf(item)));
+        }
+        ModelLoadingPlugin.register(context->roots.forEach((block,root)->
+            context.registerBlockStateResolver(block,states->{
+                for(BlockState state:block.getStateDefinition().getPossibleStates())states.setModel(state,root);
+            })
+        ));
         SpecialModelRenderers.ID_MAPPER.put(JakData.id("prop"),ItemModel.CODEC);
     }
 
@@ -76,7 +95,11 @@ public final class PropModels {
                 points[i]=new Point(p.get(0).getAsFloat(),p.get(1).getAsFloat(),p.get(2).getAsFloat(),
                     uv.get(0).getAsFloat(),uv.get(1).getAsFloat(),color);
             }
-            tris.add(new Triangle(points,Identifier.fromNamespaceAndPath("jak","block/"+row.get("texture").getAsString()),blend));
+            String texture=row.get("texture").getAsString();
+            var material=Identifier.fromNamespaceAndPath("jak","block/"+texture);
+            tris.add(new Triangle(points,material,blend));
+            if(texture.equals("waspala-palmplant-leaf-02"))
+                tris.add(new Triangle(new Point[]{points[2],points[1],points[0]},material,blend));
         }
         return new Geometry(List.copyOf(tris));
     }

@@ -24,6 +24,7 @@ final class MaterialScene {
     private static int captureTicks;
     private static volatile JsonObject result;
     private static volatile Vec3 subject;
+    private static Vec3 assemblySubject;
     private static Runnable cleanup;
     private static Runnable hitProjector;
     private static volatile boolean thirdHitChecked;
@@ -40,7 +41,9 @@ final class MaterialScene {
             }
             if(captureTicks==68||captureTicks==76||captureTicks==84)
                 client.getSingleplayerServer().execute(hitProjector);
+            if(captureTicks==95)subject=assemblySubject;
             if(captureTicks<110||!thirdHitChecked)return;
+            Screenshot.grab(client.gameDirectory,"jak-assemblies.png",client.gameRenderer.mainRenderTarget(),1,_->{});
             result.getAsJsonObject("actions").addProperty("projector_break_effect",burstDrawn&&JakEffects.drawnProjectorVertices==0);
             result.getAsJsonObject("actions").addProperty("original_fire_vertices",JakEffects.drawnBarrelVertices>0);
             boolean complete=result.getAsJsonObject("actions").entrySet().stream().allMatch(e->e.getValue().getAsBoolean());
@@ -59,7 +62,7 @@ final class MaterialScene {
 
     static InputScene.CameraView camera(){
         if(result==null||subject==null)return null;
-        Vec3 pos=subject.add(2.7,2.2,-3.6);
+        Vec3 pos=captureTicks>=95?subject.add(4.2,2.7,-6):subject.add(2.7,2.2,-3.6);
         Vec3 look=subject.subtract(pos);
         return new InputScene.CameraView(pos,(float)Math.toDegrees(Math.atan2(-look.x,look.z)),
             (float)-Math.toDegrees(Math.atan2(look.y,look.horizontalDistance())));
@@ -100,6 +103,14 @@ final class MaterialScene {
             var projectorPos=projectorFloor.above();
             var initialProjectorFloor=level.getBlockState(projectorFloor);
             var initialProjector=level.getBlockState(projectorPos);
+            var urnPos=base.west(3);
+            var palmPos=base.offset(0,0,8);
+            var assemblySnapshot=new java.util.LinkedHashMap<BlockPos,net.minecraft.world.level.block.state.BlockState>();
+            for(int x=-5;x<=5;x++)for(int z=3;z<=13;z++)for(int y=-1;y<=5;y++){
+                var cell=base.offset(x,y,z);
+                assemblySnapshot.put(cell,level.getBlockState(cell));
+            }
+            for(int y=-1;y<=1;y++)assemblySnapshot.put(urnPos.above(y),level.getBlockState(urnPos.above(y)));
             cleanup=()->{
                 level.setBlockAndUpdate(soil,initialFloor);
                 level.setBlockAndUpdate(base,initial);
@@ -109,6 +120,7 @@ final class MaterialScene {
                 level.setBlockAndUpdate(barrelPos,initialBarrel);
                 level.setBlockAndUpdate(projectorPos,initialProjector);
                 level.setBlockAndUpdate(projectorFloor,initialProjectorFloor);
+                assemblySnapshot.forEach(level::setBlockAndUpdate);
                 p.setItemInHand(hand,previous);
             };
             var layer=JakBlocks.BLOCKS.get("barrio_losa_capa");
@@ -162,6 +174,45 @@ final class MaterialScene {
                 level.setBlockAndUpdate(projectorPos,projector.defaultBlockState());
                 tests.addProperty("projector_grid",level.getBlockEntity(projectorPos) instanceof dev.jakmc.content.JakProps.Projector
                     &&level.getBlockState(projectorPos.above()).isAir());
+                var urn=JakBlocks.BLOCKS.get("objeto_spargus_urna_baja");
+                level.setBlockAndUpdate(urnPos.below(),Blocks.STONE.defaultBlockState());
+                level.setBlockAndUpdate(urnPos,Blocks.AIR.defaultBlockState());
+                level.setBlockAndUpdate(urnPos.above(),Blocks.STONE.defaultBlockState());
+                p.setItemInHand(hand,new ItemStack(urn,2));
+                tests.addProperty("assembly_rejects_obstruction",!use(p,urnPos.below(),1)&&p.getItemInHand(hand).getCount()==2
+                    &&level.getBlockState(urnPos).isAir()&&level.getBlockState(urnPos.above()).is(Blocks.STONE));
+                level.setBlockAndUpdate(urnPos.above(),Blocks.AIR.defaultBlockState());
+                boolean urnPlaced=use(p,urnPos.below(),1);
+                var upper=level.getBlockState(urnPos.above());
+                tests.addProperty("two_cell_urn",urnPlaced&&level.getBlockState(urnPos).is(urn)
+                    &&upper.getBlock().asItem()==urn.asItem()&&p.getItemInHand(hand).getCount()==1
+                    &&!upper.getCollisionShape(level,urnPos.above()).isEmpty());
+                level.destroyBlock(urnPos.above(),true,p);
+                var urnDrops=level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+                    new net.minecraft.world.phys.AABB(urnPos).inflate(2),item->item.getItem().is(urn.asItem()));
+                tests.addProperty("assembly_one_drop",level.getBlockState(urnPos).isAir()&&urnDrops.size()==1
+                    &&urnDrops.getFirst().getItem().getCount()==1);
+                urnDrops.forEach(net.minecraft.world.entity.Entity::discard);
+                for(int x=-4;x<=4;x++)for(int z=-4;z<=4;z++){
+                    level.setBlockAndUpdate(palmPos.offset(x,-1,z),Blocks.SANDSTONE.defaultBlockState());
+                    for(int y=0;y<5;y++)level.setBlockAndUpdate(palmPos.offset(x,y,z),Blocks.AIR.defaultBlockState());
+                }
+                var palm=JakBlocks.BLOCKS.get("objeto_spargus_palmera_completa");
+                p.setItemInHand(hand,new ItemStack(palm,2));
+                boolean palmPlaced=use(p,palmPos.below(),1);
+                int palmCells=0,softCells=0;
+                for(var at:assemblySnapshot.keySet()){
+                    var placedPalm=level.getBlockState(at);
+                    if(placedPalm.getBlock().asItem()!=palm.asItem())continue;
+                    ++palmCells;
+                    if(placedPalm.getCollisionShape(level,at).isEmpty()&&!placedPalm.getShape(level,at).isEmpty())++softCells;
+                }
+                tests.addProperty("palm_complete",palmPlaced&&palmCells==73&&p.getItemInHand(hand).getCount()==1);
+                tests.addProperty("palm_soft_leaf_solid_trunk",softCells>0
+                    &&!level.getBlockState(palmPos).getCollisionShape(level,palmPos).isEmpty());
+                p.setItemInHand(hand,new ItemStack(tray));
+                assemblySubject=Vec3.atBottomCenterOf(palmPos).add(0,2,0);
+
                 int[] hitCount={0};
                 hitProjector=()->{
                     var old=level.getBlockState(projectorPos);
