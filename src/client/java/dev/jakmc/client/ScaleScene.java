@@ -16,6 +16,8 @@ public final class ScaleScene {
     private static int frames;
     private static long lastRenderSerial;
     private static Path output;
+    private static InputScene.CameraView view;
+    static InputScene.CameraView camera(){return view;}
     public static boolean active(){return waiting;}
     public static void start(Minecraft client){
         if(client.player==null||client.getSingleplayerServer()==null)throw new IllegalStateException("Scale scene needs the existing normal dev world");
@@ -41,14 +43,36 @@ public final class ScaleScene {
             p.setAttached(JakData.ENABLED,true);JakPlayers.controlForProbe(p,true);
         });
         client.gui.setScreen(null);client.options.setCameraType(CameraType.THIRD_PERSON_FRONT);client.player.setXRot(0);
-        frames=0;lastRenderSerial=JakRenderer.renderSerial;waiting=true;
+        frames=0;view=null;lastRenderSerial=JakRenderer.renderSerial;waiting=true;
     }
     public static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(ScaleScene::tick);}
     private static void tick(Minecraft client){
         if(!waiting)return;
         if(client.player==null){waiting=false;return;}
-        if(++frames<30)return;
+        ++frames;
+        if(frames<30)return;
         var pose=JakPoses.get(client.player.getId());
+        if(frames==32&&pose!=null){
+            var head=pose.position().add(0,1.56,0);
+            var outward=net.minecraft.world.phys.Vec3.directionFromRotation(0,pose.yaw());
+            var eye=head.add(outward.scale(1.20)).add(0,.03,0);
+            var delta=head.subtract(eye);
+            view=new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-delta.x,delta.z)),
+                (float)-Math.toDegrees(Math.atan2(delta.y,delta.horizontalDistance())));
+        }
+        if(frames>=38){
+            Screenshot.grab(client.gameDirectory,"scale-forward-eyes.png",client.gameRenderer.mainRenderTarget(),1,
+                message->client.execute(client::stop));
+            var uuid=client.player.getUUID();
+            client.getSingleplayerServer().execute(()->{
+                var p=client.getSingleplayerServer().getPlayerList().getPlayer(uuid);
+                if(p!=null)JakPlayers.controlForProbe(p,false);
+            });
+            view=null;
+            waiting=false;
+            return;
+        }
+        if(frames!=30)return;
         boolean drawn=JakRenderer.lastEntityId==client.player.getId()&&JakRenderer.renderSerial>lastRenderSerial;
         var result=new JsonObject();result.addProperty("actor_id",client.player.getId());result.addProperty("actor_drawn",drawn);
         result.addProperty("camera",client.options.getCameraType().name());
@@ -61,12 +85,8 @@ public final class ScaleScene {
         boolean pass=drawn&&pose!=null&&pose.clip().contains("stance")&&roofPresent&&clearance>=0&&clearance<=.12&&client.options.getCameraType()==CameraType.THIRD_PERSON_FRONT;
         result.addProperty("mechanical_acceptance",pass);result.addProperty("visual_review","required");
         try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
-        Screenshot.grab(client.gameDirectory,"scale-two-block-ceiling.png",client.gameRenderer.mainRenderTarget(),1,message->{
-            JakMod.LOG.info("Scale scene screenshot: {}",message.getString());
-            client.execute(client::stop);
-        });
-        var uuid=client.player.getUUID();client.getSingleplayerServer().execute(()->{var p=client.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null)JakPlayers.controlForProbe(p,false);});
-        waiting=false;
+        Screenshot.grab(client.gameDirectory,"scale-two-block-ceiling.png",client.gameRenderer.mainRenderTarget(),1,
+            message->JakMod.LOG.info("Scale scene screenshot: {}",message.getString()));
         JakMod.LOG.info("Scale scene actor-visible result: {}",result);
     }
 }

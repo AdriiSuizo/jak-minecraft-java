@@ -13,7 +13,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import java.nio.file.*;
 import java.util.*;
 
-/** Replay through real SDL → normal client input → packets → server Jak; no probeInput. */
+/** Replay through real SDL â†’ normal client input â†’ packets â†’ server Jak; no probeInput. */
 public final class InputScene {
  private static boolean running,interactions,powers,leaper,hellcat;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
  private static long deviceDeadline;private static Vec3 start,ecoCenter;private static double peak,walk;private static float yawStart,yawAfter;
@@ -22,6 +22,7 @@ public final class InputScene {
  private static CameraView view;
  public static CameraView camera(){
   if(view!=null)return view;
+  if(ScaleScene.camera()!=null)return ScaleScene.camera();
   if(CityScene.camera()!=null)return CityScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
   var track=TrackScene.camera();

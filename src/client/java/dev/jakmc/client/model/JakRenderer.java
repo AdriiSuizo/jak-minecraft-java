@@ -121,7 +121,8 @@ public final class JakRenderer {
         float twist=aiming?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(pose.yaw()-lookYaw)),-1.6f,1.6f):0;
         skeleton=body.jakForm(skeleton,pose.dark(),twist);
         boolean luminous=pose.raw().has("lightInterp")&&pose.raw().get("lightInterp").getAsFloat()>0;
-        body.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous);
+        boolean asleep=actor instanceof net.minecraft.world.entity.LivingEntity living&&living.isSleeping();
+        body.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,asleep);
         var wingState=pose.raw().get("wings");
         if(wingState!=null&&wingState.isJsonObject()){
             var wing=wingState.getAsJsonObject();
@@ -145,7 +146,7 @@ public final class JakRenderer {
             var d=daxter.bounds(daxPose,new Matrix4f().translation(shoulder).scale(1/1.4f));
             currentTop=(Math.max(b[1].y,d[1].y)+floorOffset)*bodyScale;
         }
-        daxter.submit(daxPose,stack,collector,state.lightCoords);stack.popPose();
+        daxter.submitEyes(daxPose,stack,collector,state.lightCoords,asleep);stack.popPose();
         if(pose.board()){
             stack.pushPose();stack.mulPose(rigid(body.joint(skeleton,"board")));board.submit(board.poseAtTime("board-open",Float.MAX_VALUE),stack,collector,state.lightCoords);stack.popPose();
         }
@@ -172,7 +173,7 @@ public final class JakRenderer {
         stack.mulPose(new Matrix4f().rotation(attitude));
         stack.scale(bodyScale,bodyScale,bodyScale);
         stack.translate(0,floorOffset,0);
-        body.submitJakBody(skeleton,stack,collector,state.lightCoords,false,false);
+        body.submitJakBody(skeleton,stack,collector,state.lightCoords,false,false,false);
         Vector3f shoulder=body.joint(skeleton,"LshoulderPad").getTranslation(new Vector3f());
         stack.translate(shoulder.x,shoulder.y,shoulder.z);
         stack.scale(1/1.4f,1/1.4f,1/1.4f);

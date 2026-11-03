@@ -25,6 +25,7 @@ public final class GltfModel {
     private dev.jakmc.nativebridge.ModelSegments segments;
     private final Map<Identifier,Identifier> darkTextures=new HashMap<>(),lightTextures=new HashMap<>();
     private boolean jakBody;
+    private final ForwardEyes.Pair eyes;
     private final Map<Identifier,byte[]> pendingTextures=new LinkedHashMap<>();
     private final JsonObject json;
     private final ByteBuffer bin;
@@ -128,6 +129,11 @@ public final class GltfModel {
             if(compactBones!=null)for(int vertex=0;vertex<used.length;vertex++)for(int k=0;k<4;k++)if(weight[used[vertex]*4+k]>0&&(compactBones[vertex*4+k]<0||compactBones[vertex*4+k]>=joints.length))throw new IOException("Indexed vertex uses missing skin joint in "+file);
             surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("name")?material.get("name").getAsString():"",material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals));
         }
+        if(key.equals("jak")||key.equals("daxter")){
+            Path eyeTextures=file.getParent().getParent().getParent().resolve("textures");
+            eyes=ForwardEyes.build(eyeTextures,key,surfaces.stream().map(
+                surface->new ForwardEyes.Mesh(surface.positions,surface.uv,surface.indices,surface.material)).toList());
+        }else eyes=null;
         readAnimations(this,null);
         String originalName=file.getFileName().toString().replace("-lod0.glb","");
         if(Set.of("board","gun").contains(originalName)){
@@ -347,7 +353,7 @@ public final class GltfModel {
         for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,pose.morphs,pose.translations,pose.rotations,pose.scales);
     }
-    public void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous){
+    public void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous,boolean closedEyes){
         Vector3f[] rim=null;
         if(luminous){
             var camera=Minecraft.getInstance().gameRenderer.mainCamera();
@@ -360,7 +366,7 @@ public final class GltfModel {
                 new Vector3f(up).mul(.8944f).fma(.4472f,forward).normalize()
             };
         }
-        submit(pose,stack,collector,light,1,OverlayTexture.NO_OVERLAY,-1L,dark,rim,null,null);
+        submit(pose,stack,collector,light,1,OverlayTexture.NO_OVERLAY,-1L,dark,rim,null,null,closedEyes);
     }
     public boolean hasClip(String name){return clips.containsKey(name);}
     public float duration(String name){Clip clip=clips.get(name);return clip==null?0:clip.duration;}
@@ -385,16 +391,20 @@ public final class GltfModel {
     }
     public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,boolean gem){submit(posed,stack,collector,light,alpha,overlay,~(gem?4L:2L));}
     public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask){
-        submit(posed,stack,collector,light,alpha,overlay,shownMask,false,null,null,null);
+        submit(posed,stack,collector,light,alpha,overlay,shownMask,false,null,null,null,false);
     }
     void submitLightEffect(Posed posed,PoseStack stack,SubmitNodeCollector collector,
                            LightFormTexture.Form effect,float fade){
-        submit(posed,stack,collector,0xf000f0,fade,OverlayTexture.NO_OVERLAY,-1L,false,null,effect,null);
+        submit(posed,stack,collector,0xf000f0,fade,OverlayTexture.NO_OVERLAY,-1L,false,null,effect,null,false);
     }
+    void submitEyes(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean closed){
+        submit(pose,stack,collector,light,1,OverlayTexture.NO_OVERLAY,-1L,false,null,null,null,closed);
+    }
+
     void submitFlut(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,int overlay,FlutMaterial flut){
-        submit(pose,stack,collector,light,1,overlay,-1L,false,null,null,flut);
+        submit(pose,stack,collector,light,1,overlay,-1L,false,null,null,flut,false);
     }
-    private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut){
+    private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut,boolean closedEyes){
         if(!pendingTextures.isEmpty()){
             var manager=Minecraft.getInstance().getTextureManager();
             for(var entry:pendingTextures.entrySet()){
@@ -420,7 +430,14 @@ public final class GltfModel {
         for(Surface surface:surfaces){
             int index=surfaceNumber++;if(segments!=null&&!segments.shown(index,shownMask))continue;
             float[] skinned=ready==null?skin(surface,posed):ready.get(surfaceNumber-1);
-            Identifier eye=flut!=null&&surface.material.startsWith("programmer_eye")?flut.eyes():null;
+            Identifier eye=null;
+            if(surface.material.startsWith("programmer_eye")){
+                if(flut!=null)eye=flut.eyes();
+                else if(eyes!=null&&rim==null){
+                    var channel=surface.material.contains("right")?eyes.right():eyes.left();
+                    eye=closedEyes?channel.closed():channel.open();
+                }
+            }
             int tint=flut==null?0xffffff:flut.tint(surface.material);
             Identifier texture=eye!=null?eye:effect!=null?effect.texture():surface.skullGem?gemAtlas():rim!=null?lightTextures.get(surface.texture):
                 dark?darkTextures.getOrDefault(surface.texture,surface.texture):surface.texture;
