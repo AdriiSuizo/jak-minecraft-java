@@ -134,9 +134,11 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         for(int i=0;i<count;i++){
             int b=i*36;
             var at=state.attitude.transform(new Vector3f(SPRITES.getFloat(b),SPRITES.getFloat(b+4),SPRITES.getFloat(b+8)));
+            Vec3 point=origin.add(at.x,at.y,at.z);
+            float fade=(float)Math.clamp((point.distanceTo(camera.pos)-.4)/1.9,0,1);
             Batch batch=SPRITES.getFloat(b+32)==0?core:glow;
             batch.quad(at,right,up,SPRITES.getFloat(b+12),
-                rgba(SPRITES.getFloat(b+16),SPRITES.getFloat(b+20),SPRITES.getFloat(b+24),SPRITES.getFloat(b+28)));
+                rgba(SPRITES.getFloat(b+16),SPRITES.getFloat(b+20),SPRITES.getFloat(b+24),SPRITES.getFloat(b+28)*fade*fade));
         }
         if(state.lamps>0){
             lamps(state,HEAD,true,origin,camera.pos,right,up,head);

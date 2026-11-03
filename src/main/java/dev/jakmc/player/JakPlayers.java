@@ -212,7 +212,8 @@ public final class JakPlayers {
             channel.add("throttle",flight.get("throttle"));
             channel.add("lean",flight.get("lean"));
             channel.add("lamps",flight.get("lamps"));
-            channel.add("engine",flight.get("engine"));
+            channel.addProperty("speed",vector(flight.getAsJsonArray("velocity")).length());
+            channel.add("boost",flight.get("boost"));
             for(var event:flight.getAsJsonArray("events")){
                 if(event.getAsJsonObject().get("kind").getAsString().equals("fire"))channel.addProperty("fired",true);
             }
@@ -242,7 +243,13 @@ public final class JakPlayers {
                 }
             }else s.releaseMount();
         }
-        p.setPos(position);p.setDeltaMovement(Vec3.ZERO);p.setOnGround((pose.get("status").getAsInt()&2)!=0);p.resetFallDistance();
+        p.setPos(position);
+        // The native solver owns movement and cancels the vanilla move packet.
+        // Publish its section changes through the same server chunk tracker.
+        if(!p.getLastSectionPos().equals(net.minecraft.core.SectionPos.of(p))){
+            p.level().getChunkSource().move(p);
+        }
+        p.setDeltaMovement(Vec3.ZERO);p.setOnGround((pose.get("status").getAsInt()&2)!=0);p.resetFallDistance();
         p.setYRot(input.yaw());p.setXRot(input.pitch());p.setYBodyRot(pose.get("yaw").getAsFloat());s.last=position;s.pressed=0;
         if(controlled)probeInput(p,input.held(),0,input.forward());
         setEco(p,JakData.DARK_ECO,pose.get("darkEco").getAsFloat());setEco(p,JakData.LIGHT_ECO,pose.get("lightEco").getAsFloat());

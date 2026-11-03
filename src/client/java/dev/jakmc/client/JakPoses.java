@@ -17,6 +17,7 @@ public final class JakPoses {
         return from.lerp(pose.position(),Math.clamp((now-pose.received())/50_000_000.0,0,1));
     }
     public static void beginFrame(Minecraft client){
+        InputScene.crossingFrame();
         var player=client.player;
         var pose=player==null?null:get(player.getId());
         presented=pose!=null&&from!=null&&dev.jakmc.player.JakPlayers.active(player)&&!player.isSleeping()

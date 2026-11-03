@@ -181,8 +181,10 @@ public final class JakHellcat extends Entity {
         controls.putFloat(0).putFloat(0);
         controls.putFloat(input==null?0:input.brake()).putFloat(input==null?0:input.throttle());
         actorBuffers.reset();
-        ByteBuffer actors=pilot!=null||shots?MinecraftCollision.actors(server,this,origin,
-            getBoundingBox().inflate(110),actorBuffers,e->e!=pilot):noActors;
+        boolean aiming=pilot!=null&&(edges&64)!=0;
+        boolean firing=pilot!=null&&(edges&16)!=0;
+        ByteBuffer actors=aiming||firing||shots?MinecraftCollision.actors(server,this,origin,
+            getBoundingBox().inflate(aiming?260:110),actorBuffers,e->e!=pilot):noActors;
         float hour=(server.getDefaultClockTime()%24000+6000)%24000/1000f;
         var frame=JsonParser.parseString(NativeJak.hellcatStep(handle,controls,actors,
             (float)shift.x,(float)shift.y,(float)shift.z,hour,commands|(start?1:0),ready?3:0)).getAsJsonObject();

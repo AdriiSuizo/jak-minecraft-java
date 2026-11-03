@@ -23,11 +23,12 @@ public final class InputScene {
  public static CameraView camera(){return view;}
  public static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(InputScene::tick);}
  public static void start(Minecraft c){start(c,false);}
- private static void start(Minecraft c,boolean outdoor){
+ private static void start(Minecraft c,boolean outdoor){start(c,outdoor,c.player.position());}
+ private static void start(Minecraft c,boolean outdoor,Vec3 seed){
   if(running||c.player==null||c.getSingleplayerServer()==null)throw new IllegalStateException("Open the isolated dev world");
   output=c.gameDirectory.toPath().resolve("jakmc/evidence/input");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
   interactions=powers=leaper=hellcat=false;ACTIONS.entrySet().clear();VIEWS.clear();
-  start=c.player.position().add(7,0,0);tick=0;peak=0;walk=0;STATES.clear();ITEMS.clear();view=null;ecoCenter=null;
+  start=seed.add(7,0,0);tick=0;peak=0;walk=0;STATES.clear();ITEMS.clear();view=null;ecoCenter=null;
   c.gui.setScreen(null);c.options.setCameraType(CameraType.THIRD_PERSON_BACK);c.player.setYRot(0);c.player.setXRot(10);yawStart=0;yawAfter=0;
   pad=new SdlVirtualPad();deviceDeadline=System.nanoTime()+5_000_000_000L;running=true;var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{
    var server=c.getSingleplayerServer();var p=server.getPlayerList().getPlayer(uuid);if(p==null)return;
@@ -45,19 +46,50 @@ public final class InputScene {
     p.level().setBlock(base.offset(x,-1,z),net.minecraft.world.level.block.Blocks.SMOOTH_STONE.defaultBlockState(),3);
     for(int y=0;y<=7;y++)p.level().setBlock(base.offset(x,y,z),net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
    }
-   JakPlayers.controlForProbe(p,false);p.setPos(start);p.setYRot(0);p.setXRot(10);p.setGameMode(net.minecraft.world.level.GameType.CREATIVE);p.setAttached(JakData.ENABLED,true);p.setAttached(JakData.BOARD,new ItemStack(JakItems.BOARD));p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,ItemStack.EMPTY);
+   JakPlayers.controlForProbe(p,false);
+   if(p.position().distanceToSqr(start)>16*16)p.teleportTo(start.x,start.y,start.z);
+   else p.setPos(start);
+   p.level().getChunkSource().move(p);p.setYRot(0);p.setXRot(10);p.setGameMode(net.minecraft.world.level.GameType.CREATIVE);p.setAttached(JakData.ENABLED,true);p.setAttached(JakData.BOARD,new ItemStack(JakItems.BOARD));p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,ItemStack.EMPTY);
   });
  }
  public static void startInteractions(Minecraft c){start(c);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
  private static volatile int hellcatId;
+ private static boolean crossing,crossingSample;
+ private static final long[] crossingFrames=new long[40000];
+ private static int crossingFrameCount;
+ private static long crossingLastFrame;
+ private static final Set<String> crossingBiomes=new TreeSet<>(),crossingChunks=new HashSet<>();
+ private static double crossingLowestClearance;
+ private static Vec3 crossingLastPosition;
+ private static int crossingStalledTicks,crossingStreak,crossingLongestStall;
+ public static void crossingFrame(){
+  if(!running||!crossingSample)return;
+  long now=System.nanoTime();
+  if(crossingLastFrame!=0&&crossingFrameCount<crossingFrames.length)crossingFrames[crossingFrameCount++]=now-crossingLastFrame;
+  crossingLastFrame=now;
+ }
+ public static void startHellcatCrossing(Minecraft c,Vec3 origin){
+  startHellcat(c,true,origin);
+  crossingSample=false;
+  crossingFrameCount=crossingStalledTicks=crossingStreak=crossingLongestStall=0;
+  crossingLastFrame=0;
+  crossingLastPosition=null;
+  crossingBiomes.clear();
+  crossingChunks.clear();
+  crossingLowestClearance=Double.POSITIVE_INFINITY;
+ }
+
  private static int hellcatBoardPress,hellcatMountedAt,hellcatEntryImage,hellcatOffAt;
  private static boolean hellcatBoarding,hellcatNight,hellcatLeftPowered,hellcatKickedOff,hellcatShot;
  private static volatile boolean hellcatPlaced,hellcatSaved;
  private static Vec3 hellcatStart;
  private static double hellcatClimb,hellcatHalfThrottle,hellcatFullThrottle;
- public static void startHellcat(Minecraft c){
-  start(c,true);
+ public static void startHellcat(Minecraft c){startHellcat(c,false,c.player.position());}
+ private static void startHellcat(Minecraft c,boolean acrossBiomes,Vec3 origin){
+  start(c,true,origin);
   hellcat=true;
+  crossing=acrossBiomes;
+  crossingSample=false;
   hellcatId=-1;
   hellcatBoardPress=hellcatMountedAt=hellcatEntryImage=hellcatOffAt=0;
   hellcatBoarding=hellcatNight=hellcatLeftPowered=hellcatKickedOff=hellcatShot=false;
@@ -65,11 +97,19 @@ public final class InputScene {
   hellcatStart=null;
   hellcatClimb=hellcatHalfThrottle=hellcatFullThrottle=0;
   pauseOnLostFocus=c.options.pauseOnLostFocus;c.options.pauseOnLostFocus=false;
-  output=c.gameDirectory.toPath().resolve("jakmc/evidence/hellcat");
+  output=c.gameDirectory.toPath().resolve("jakmc/evidence/"+(crossing?"hellcat_crossing":"hellcat"));
   try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
   onServer(c,p->{
    var server=p.level().getServer();
-   server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"time set midnight");
+   server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),crossing?"time set noon":"time set midnight");
+   if(crossing){
+    var craft=dev.jakmc.entity.JakHellcat.TYPE.create(p.level(),net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+    craft.setPos(start.add(0,1.28,4.2));
+    if(p.level().addFreshEntity(craft)){
+     ITEMS.add(craft.getUUID());hellcatId=craft.getId();
+    }
+    return;
+   }
    var hand=net.minecraft.world.InteractionHand.MAIN_HAND;
    var floor=net.minecraft.core.BlockPos.containing(start).offset(0,-1,4);
    var at=Vec3.atBottomCenterOf(floor.above());
@@ -95,7 +135,7 @@ public final class InputScene {
   var pose=JakPoses.get(c.player.getId());
   var channel=pose!=null&&pose.raw().get("hellcat") instanceof JsonObject flight?flight:null;
   if(t==14)c.gui.hud.getChat().clearMessages(false);
-  if(t==16)capture(c,"hellcat-idle.png");
+  if(t==16)capture(c,crossing?"hellcat_crossing-idle.png":"hellcat-idle.png");
   if(t>=20&&channel==null&&hellcatMountedAt==0){
    aimAt(c,cat.position().add(0,.55,0));
    if((hellcatBoardPress==0||t>hellcatBoardPress+10)&&t<90
@@ -111,6 +151,8 @@ public final class InputScene {
    }
   }
   int ride=hellcatMountedAt==0?-1:t-hellcatMountedAt;
+  if(crossing&&ride>=0){hellcatCrossingActions(c,cat,channel,ride);return;}
+  if(crossing&&t>=120){finish(c,"HellCat did not board");return;}
   if(ride>=65&&channel==null&&hellcatOffAt==0)hellcatOffAt=t;
   int off=hellcatOffAt==0?-1:t-hellcatOffAt;
   if(t==hellcatEntryImage)capture(c,"hellcat-entry.png");
@@ -175,6 +217,62 @@ public final class InputScene {
    STATES.add("half="+hellcatHalfThrottle);
    STATES.add("full="+hellcatFullThrottle);
    finish(c,ACTIONS.entrySet().stream().allMatch(a->a.getValue().getAsBoolean())?"complete":"HellCat assertion failed");
+  }
+ }
+ private static void hellcatCrossingActions(Minecraft c,dev.jakmc.entity.JakHellcat cat,JsonObject channel,int ride){
+  if(channel==null){finish(c,"Lost the HellCat during the crossing");return;}
+  if(ride==0){
+   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,false);
+   c.gui.hud.getChat().clearMessages(false);
+  }
+  var pos=cat.position();
+  var world=c.level;
+  var heightType=net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES;
+  var bp=cat.blockPosition();
+  int floor=world.getHeight(heightType,bp.getX(),bp.getZ());
+  int nextFloor=world.getHeight(heightType,bp.getX(),bp.getZ()+25);
+  var heading=cat.attitude().transform(new org.joml.Vector3f(0,0,1));
+  double target=Math.max(117,Math.max(floor,nextFloor)+31);
+  float desired=(float)Math.clamp((target-pos.y)*.024,-.25,.31);
+  float error=desired-heading.y;
+  pad.axis(1,Math.abs(error)<.025f?0:Math.copySign(Math.clamp(.3f+Math.abs(error)*2,0,.9f),error));
+  pad.axis(5,1);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,ride>=65&&ride<580);
+  if(ride==65){crossingSample=true;crossingLastFrame=0;}
+  if(ride>65){
+   crossingLowestClearance=Math.min(crossingLowestClearance,pos.y-floor);
+   if(crossingLastPosition!=null&&pos.distanceToSqr(crossingLastPosition)<.0004){
+    crossingStalledTicks++;
+    crossingLongestStall=Math.max(crossingLongestStall,++crossingStreak);
+   }else crossingStreak=0;
+   crossingLastPosition=pos;
+   walk=Math.max(walk,pos.subtract(hellcatStart).horizontalDistance());
+   if(ride%4==0&&world.hasChunkAt(bp)){
+    crossingChunks.add((bp.getX()>>4)+","+(bp.getZ()>>4));
+    var ground=new net.minecraft.core.BlockPos(bp.getX(),floor+4,bp.getZ());
+    world.getBiome(ground).unwrapKey().ifPresent(key->crossingBiomes.add(key.identifier().toString()));
+   }
+  }
+  if(ride==360||ride==620)capture(c,"hellcat_crossing-"+ride+".png");
+  if(ride>=680){
+   crossingSample=false;
+   java.util.Arrays.sort(crossingFrames,0,crossingFrameCount);
+   if(crossingFrameCount>0){
+    STATES.add("frame_p50_ms="+crossingFrames[crossingFrameCount/2]/1e6);
+    STATES.add("frame_p95_ms="+crossingFrames[(int)((crossingFrameCount-1)*.95)]/1e6);
+    STATES.add("frame_p99_ms="+crossingFrames[(int)((crossingFrameCount-1)*.99)]/1e6);
+    STATES.add("frame_max_ms="+crossingFrames[crossingFrameCount-1]/1e6);
+   }
+   STATES.add("biomes="+String.join("|",crossingBiomes));
+   STATES.add("chunks="+crossingChunks.size());
+   STATES.add("lowest_clearance="+crossingLowestClearance);
+   STATES.add("stationary_ticks="+crossingStalledTicks);
+   STATES.add("longest_stall_ticks="+crossingLongestStall);
+   ACTIONS.addProperty("kept_flight",walk>900&&crossingLongestStall<35);
+   ACTIONS.addProperty("multiple_biomes",crossingBiomes.size()>=3);
+   ACTIONS.addProperty("crossed_chunks",crossingChunks.size()>=50);
+   ACTIONS.addProperty("stayed_above_surface",crossingLowestClearance>0);
+   finish(c,ACTIONS.entrySet().stream().allMatch(a->a.getValue().getAsBoolean())?"complete":"Crossing assertion failed");
   }
  }
  public static void observeHellcatEvent(String kind){
@@ -388,7 +486,7 @@ public final class InputScene {
  private static UUID aimTarget,freezeTarget;
  private static volatile int slowStart,slowEnd,resumeStart,resumeEnd;
  private static boolean freezeSeen,pauseOnLostFocus;
- static boolean backgroundPad(int id){return running&&(powers||leaper)&&pad!=null&&pad.id==id;}
+ static boolean backgroundPad(int id){return running&&(powers||leaper||hellcat)&&pad!=null&&pad.id==id;}
  private static int darkScreenshot,shieldScreenshot,wingsScreenshot,betweenPackets,flightJump;
  private static Vec3 lastCamera;
  private static long cameraSnapshot;
@@ -601,7 +699,7 @@ public final class InputScene {
  private static void look(Vec3 at,Vec3 target){Vec3 d=target.subtract(at);view=new CameraView(at,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),(float)Math.toDegrees(Math.atan2(-d.y,d.horizontalDistance())));}
  private static void capture(Minecraft c,String file){Screenshot.grab(c.gameDirectory,file,c.gameRenderer.mainRenderTarget(),1,m->{});}
  private static void finish(Minecraft c,String reason){
-  if(powers||leaper)c.options.pauseOnLostFocus=pauseOnLostFocus;
+  if(powers||leaper||hellcat)c.options.pauseOnLostFocus=pauseOnLostFocus;
   running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper||hellcat){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason",reason.equals("complete")?"interaction assertion failed":reason);}
   result.addProperty("jak_actions_reached",STATES.containsAll(Set.of("double-jump","roll","attack","board-stance")));
   try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}

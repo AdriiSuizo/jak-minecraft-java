@@ -66,6 +66,10 @@ public final class DevBridge {
                 case "input_actions_scene" -> {InputScene.startInteractions(client);out.addProperty("scheduled",true);}
                 case "flut_scene" -> {InputScene.startFlut(client);out.addProperty("scheduled",true);}
                 case "hellcat_scene" -> {InputScene.startHellcat(client);out.addProperty("scheduled",true);}
+                case "hellcat_crossing_scene" -> {
+                    var at=request.has("origin")?dev.jakmc.player.JakPlayers.vector(request.getAsJsonArray("origin")):client.player.position();
+                    InputScene.startHellcatCrossing(client,at);out.addProperty("scheduled",true);
+                }
                 case "leaper_scene" -> {InputScene.startLeaper(client);out.addProperty("scheduled",true);}
                 case "powers_scene" -> {InputScene.startPowers(client);out.addProperty("scheduled",true);}
                 case "input_scene" -> {InputScene.start(client);out.addProperty("scheduled",true);}

@@ -25,6 +25,10 @@ abstract class JakControllerCameraMixin {
     @Unique private float jakmc$aim;
     @Unique private float jakmc$mountHeight;
 
+    @Unique private float jakmc$flightWeight,jakmc$pull,jakmc$speed;
+    @Unique private float jakmc$flightYaw,jakmc$flightPitch,jakmc$manualYaw,jakmc$manualPitch;
+    @Unique private float jakmc$lastPlayerYaw,jakmc$lastPlayerPitch;
+    @Unique private Vec3 jakmc$flightPivot,jakmc$lastFlightTarget,jakmc$trail=Vec3.ZERO;
     @Inject(method="update",at=@At("HEAD"))
     private void jakmc$prepareFrame(DeltaTracker deltaTracker,CallbackInfo ci){
         var client=Minecraft.getInstance();
@@ -34,6 +38,7 @@ abstract class JakControllerCameraMixin {
         JakInput.frame(client);
         JakPoses.beginFrame(client);
         var pose=entity==null?null:JakPoses.get(entity.getId());
+        jakmc$prepareFlight(client,pose);
         boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
         jakmc$mountHeight+=((mounted?.8f:0)-jakmc$mountHeight)*(1-(float)Math.exp(-9*jakmc$dt));
         if(!jakmc$active()||client.options.getCameraType().isFirstPerson()||client.options.getCameraType().isMirrored()){
@@ -42,6 +47,70 @@ abstract class JakControllerCameraMixin {
         }else{
             float target=JakInput.aiming()?1:0;
             jakmc$aim+=(target-jakmc$aim)*(1-(float)Math.exp(-10*jakmc$dt));
+        }
+    }
+
+    @Unique private void jakmc$prepareFlight(Minecraft client,JakPoses.Pose pose){
+        var player=client.player;
+        var flight=pose!=null&&pose.raw().get("hellcat") instanceof com.google.gson.JsonObject channel?channel:null;
+        boolean chasing=jakmc$active()&&flight!=null&&flight.get("boarding").getAsFloat()<0
+            &&client.options.getCameraType()==CameraType.THIRD_PERSON_BACK;
+        float ease=1-(float)Math.exp(-8*jakmc$dt);
+        jakmc$flightWeight+=((chasing?1:0)-jakmc$flightWeight)*ease;
+        if(!chasing||player==null){
+            jakmc$lastFlightTarget=null;
+            jakmc$trail=Vec3.ZERO;
+            jakmc$flightPivot=null;
+            jakmc$manualYaw=jakmc$manualPitch=0;
+            return;
+        }
+        float yaw=player.getYRot(),pitch=player.getXRot();
+        var hull=JakPoses.presented().add(dev.jakmc.player.JakPlayers.vector(flight.getAsJsonArray("offset")));
+        var rotation=flight.getAsJsonArray("rotation");
+        var q=new org.joml.Quaternionf(rotation.get(0).getAsFloat(),rotation.get(1).getAsFloat(),
+            rotation.get(2).getAsFloat(),rotation.get(3).getAsFloat());
+        var nose=q.transform(new org.joml.Vector3f(0,0,1));
+        float nosePitch=(float)Math.toDegrees(Math.asin(Math.clamp(nose.y,-1,1)));
+        float targetYaw=(float)Math.toDegrees(Math.atan2(-nose.x,nose.z));
+        float targetPitch=Math.clamp(11.46f-nosePitch,-62,70);
+        Vec3 from=hull.add(0,.32,0),target=hull.add(0,2.048,0);
+        var overhead=entity.level().clip(new ClipContext(from,target,ClipContext.Block.VISUAL,ClipContext.Fluid.NONE,entity));
+        if(overhead.getType()!=HitResult.Type.MISS){
+            target=from.add(0,Math.max(0,overhead.getLocation().y-from.y-.12),0);
+        }
+        if(jakmc$lastFlightTarget==null||target.distanceToSqr(jakmc$lastFlightTarget)>25){
+            jakmc$flightYaw=yaw;
+            jakmc$flightPitch=pitch;
+            jakmc$trail=Vec3.ZERO;
+        }else{
+            Vec3 trail=jakmc$trail.add(jakmc$lastFlightTarget.subtract(target)).scale(Math.exp(-7*jakmc$dt));
+            jakmc$trail=trail.lengthSqr()>1.92*1.92?trail.normalize().scale(1.92):trail;
+            float yawDelta=net.minecraft.util.Mth.wrapDegrees(yaw-jakmc$lastPlayerYaw);
+            float pitchDelta=pitch-jakmc$lastPlayerPitch;
+            if(Math.abs(yawDelta)+Math.abs(pitchDelta)>.001f){
+                jakmc$manualYaw=net.minecraft.util.Mth.wrapDegrees(jakmc$manualYaw+yawDelta);
+                jakmc$manualPitch=Math.clamp(jakmc$manualPitch+pitchDelta,-65,65);
+            }else{
+                float decay=(float)Math.exp(-1.8*jakmc$dt);
+                jakmc$manualYaw*=decay;
+                jakmc$manualPitch*=decay;
+            }
+        }
+        jakmc$lastPlayerYaw=yaw;
+        jakmc$lastPlayerPitch=pitch;
+        jakmc$lastFlightTarget=target;
+        jakmc$flightPivot=target.add(jakmc$trail);
+        float swing=1-(float)Math.exp(-5*jakmc$dt);
+        jakmc$flightYaw=net.minecraft.util.Mth.rotLerp(swing,jakmc$flightYaw,targetYaw+jakmc$manualYaw);
+        jakmc$flightPitch+=(Math.clamp(targetPitch+jakmc$manualPitch,-70,75)-jakmc$flightPitch)*swing;
+        jakmc$pull+=((flight.get("boost").getAsBoolean()?1:0)-jakmc$pull)*(1-(float)Math.exp(-2*jakmc$dt));
+        jakmc$speed=Math.clamp(flight.get("speed").getAsFloat()/19.2f,0,1);
+    }
+
+    @Inject(method="calculateFov",at=@At("RETURN"),cancellable=true)
+    private void jakmc$flightFov(float partial,org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Float> cir){
+        if(jakmc$flightPivot!=null){
+            cir.setReturnValue(net.minecraft.util.Mth.lerp(jakmc$flightWeight,cir.getReturnValue(),80+8*jakmc$speed));
         }
     }
 
@@ -67,13 +136,19 @@ abstract class JakControllerCameraMixin {
             height+=hit.getType()==HitResult.Type.MISS?jakmc$mountHeight:
                 Math.max(0,hit.getLocation().y-height-.12);
         }
-        args.set(1,height);
-        args.set(2,feet.z);
+        Vec3 target=new Vec3(feet.x,height,feet.z);
+        if(jakmc$flightPivot!=null)target=target.lerp(jakmc$flightPivot,jakmc$flightWeight);
+        args.set(0,target.x);args.set(1,target.y);args.set(2,target.z);
     }
 
     @ModifyArg(method="alignWithEntity",at=@At(value="INVOKE",target="Lnet/minecraft/client/Camera;getMaxZoom(F)F"))
     private float jakmc$aimDistance(float distance){
         if(!jakmc$active())return distance;
+        if(jakmc$flightPivot!=null){
+            setRotation(jakmc$flightYaw,jakmc$flightPitch);
+            float chase=15.4f*.64f*(1-.25f*jakmc$speed)*(1+.3f*jakmc$pull);
+            return net.minecraft.util.Mth.lerp(jakmc$flightWeight,distance,chase);
+        }
         if(jakmc$aim>.001f){
             Camera camera=(Camera)(Object)this;
             Vec3 pivot=position();
