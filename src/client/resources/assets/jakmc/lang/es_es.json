@@ -61,5 +61,8 @@
   "entity.jakmc.predator": "Predator",
   "item.jakmc.predator_spawn_egg": "Generar Predator",
   "death.attack.jak_morph": "%1$s fue alcanzado por una ecoarma",
-  "death.attack.jak_morph.player": "%1$s fue alcanzado por la ecoarma de %2$s"
+  "death.attack.jak_morph.player": "%1$s fue alcanzado por la ecoarma de %2$s",
+  "item.jakmc.citizen_norm_spawn_egg": "Generar Ciudadano de Villa Refugio",
+  "item.jakmc.citizen_fat_spawn_egg": "Generar Ciudadano corpulento de Villa Refugio",
+  "item.jakmc.citizen_chick_spawn_egg": "Generar Ciudadana de Villa Refugio"
 }

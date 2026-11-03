@@ -34,6 +34,10 @@ public final class GltfModel {
     private final Map<String,Matrix4f[]> prejoints=new HashMap<>();
     private final Map<String,Integer> namedNodes=new HashMap<>();
     private final Map<Integer,float[]> accessors=new HashMap<>();
+    private static final int[] QUAD_CORNERS={0,1,2,2};
+    private final Map<Posed,List<float[]>> prepared=new IdentityHashMap<>();
+    private final Map<String,Posed> terminalPoses=new HashMap<>();
+    public long skinnedVertices;
     private float[] defaultMorphs=new float[0];
     private record Node(Vector3f t,Quaternionf r,Vector3f s,int parent,String name){}
     private static Identifier gemAtlas;
@@ -127,6 +131,8 @@ public final class GltfModel {
             if(segments==null)throw new IOException("Original segment table did not match GLB: "+originalName);
         }
     }
+    public void loadSegments(Path art,String lod)throws IOException{segments=dev.jakmc.nativebridge.ModelSegments.read(art,lod,surfaces.stream().mapToInt(s->s.indices.length/3).toArray());if(segments==null)throw new IOException("Source segment table mismatch: "+lod);}
+    public void prepare(Posed pose){prepared.computeIfAbsent(pose,p->{var geometry=new ArrayList<float[]>();for(Surface surface:surfaces)geometry.add(skin(surface,p));return List.copyOf(geometry);});}
     public void animationsFrom(GltfModel source){readAnimations(source);}
     private void readAnimations(GltfModel source){
         if(!source.json.has("animations"))return;
@@ -144,7 +150,8 @@ public final class GltfModel {
             clips.put(a.get("name").getAsString(),new Clip(channels,duration));
         }
     }
-    public Posed pose(String name,float frame){
+    public Posed pose(String name,float frame){return pose(name,frame,false);}
+    public Posed pose(String name,float frame,boolean preserveAlign){
         Clip clip=clips.get(name);Vector3f[] t=new Vector3f[nodes.length],s=new Vector3f[nodes.length];Quaternionf[] r=new Quaternionf[nodes.length];float[] morphs=defaultMorphs.clone();
         for(int i=0;i<nodes.length;i++){t[i]=new Vector3f(nodes[i].t);s[i]=new Vector3f(nodes[i].s);r[i]=new Quaternionf(nodes[i].r);}
         if(clip!=null)for(Channel c:clip.channels){
@@ -167,7 +174,7 @@ public final class GltfModel {
                 s[preNode].set(a.getScale(new Vector3f()).lerp(b.getScale(new Vector3f()),w));
             }
         }
-        if(compensateScale&&namedNodes.containsKey("align")){int i=namedNodes.get("align");t[i].set(nodes[i].t);r[i].set(nodes[i].r);s[i].set(nodes[i].s);}
+        if(!preserveAlign&&compensateScale&&namedNodes.containsKey("align")){int i=namedNodes.get("align");t[i].set(nodes[i].t);r[i].set(nodes[i].r);s[i].set(nodes[i].s);}
         Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);
         Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,morphs,t,r,s);
@@ -190,7 +197,7 @@ public final class GltfModel {
     }
     public Matrix4f jointAt(Posed pose,int originalIndex){return pose.globals[joints[originalIndex]];}
     public Matrix4f joint(Posed pose,String name){Integer node=namedNodes.get(name);if(node==null)throw new IllegalArgumentException("Required original joint missing: "+name);return pose.globals[node];}
-    public Posed poseAtTime(String name,float seconds){Clip clip=clips.get(name);if(clip==null)throw new IllegalArgumentException("Required original clip missing: "+name);int frames=clip.channels.stream().mapToInt(c->c.times.length).max().orElse(1);return pose(name,clip.duration>0?Math.clamp(seconds/clip.duration,0,1)*(frames-1):0);}
+    public Posed poseAtTime(String name,float seconds){Clip clip=clips.get(name);if(clip==null)throw new IllegalArgumentException("Required original clip missing: "+name);if(seconds==Float.MAX_VALUE)return terminalPoses.computeIfAbsent(name,k->{Posed p=pose(k,frames(k)-1);prepare(p);return p;});int frames=clip.channels.stream().mapToInt(c->c.times.length).max().orElse(1);return pose(name,clip.duration>0?Math.clamp(seconds/clip.duration,0,1)*(frames-1):0);}
     public Posed overlayUpper(Posed base,String name,float seconds){
         Posed upper=poseAtTime(name,seconds);Integer root=namedNodes.get("upper_body");if(root==null)throw new IllegalArgumentException("Original upper_body joint missing");
         for(int i=0;i<nodes.length;i++)for(int ancestor=i;ancestor>=0;ancestor=nodes[ancestor].parent)if(ancestor==root){base.translations[i].set(upper.translations[i]);base.rotations[i].set(upper.rotations[i]);base.scales[i].set(upper.scales[i]);break;}
@@ -204,14 +211,11 @@ public final class GltfModel {
     public float height(Posed posed){
         Vector3f[] b=bounds(posed,new Matrix4f());return b[1].y-b[0].y;
     }
-    public Vector3f[] bounds(Posed posed,Matrix4f root){
-        Vector3f low=new Vector3f(Float.POSITIVE_INFINITY),high=new Vector3f(Float.NEGATIVE_INFINITY),p=new Vector3f(),v=new Vector3f();
-        for(Surface s:surfaces)for(int i=0;i<s.positions.length/3;i++){
-            p.zero();float total=0;
-            if(s.weights!=null)for(int k=0;k<4;k++){float w=s.weights[i*4+k];if(w==0)continue;posed.skin[s.joints[i*4+k]].transformPosition(s.positions[i*3],s.positions[i*3+1],s.positions[i*3+2],v);p.fma(w,v);total+=w;}
-            if(total>0)p.div(total);else p.set(s.positions[i*3],s.positions[i*3+1],s.positions[i*3+2]);
-            root.transformPosition(p);low.min(p);high.max(p);
-        }return new Vector3f[]{low,high};
+    public Vector3f[] bounds(Posed posed,Matrix4f root){return bounds(posed,root,-1L);}
+    public Vector3f[] bounds(Posed posed,Matrix4f root,long shownMask){
+        Vector3f low=new Vector3f(Float.POSITIVE_INFINITY),high=new Vector3f(Float.NEGATIVE_INFINITY),p=new Vector3f();var ready=prepared.get(posed);int index=0;
+        for(Surface surface:surfaces){int s=index++;if(segments!=null&&!segments.shown(s,shownMask))continue;float[] geometry=ready==null?skin(surface,posed):ready.get(s);for(int i=0;i<geometry.length;i+=6){root.transformPosition(geometry[i],geometry[i+1],geometry[i+2],p);low.min(p);high.max(p);}}
+        return new Vector3f[]{low,high};
     }
     public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light){
         submit(posed,stack,collector,light,1);
@@ -222,39 +226,22 @@ public final class GltfModel {
     public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay){
         submit(posed,stack,collector,light,alpha,overlay,true);
     }
-    public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,boolean gem){
+    public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,boolean gem){submit(posed,stack,collector,light,alpha,overlay,~(gem?4L:2L));}
+    public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask){
         if(!pendingTextures.isEmpty()){
             for(var image:pendingTextures.entrySet())try{String label=image.getKey().toString();Minecraft.getInstance().getTextureManager().register(image.getKey(),new DynamicTexture(()->label,NativeImage.read(new ByteArrayInputStream(image.getValue()))));}catch(IOException e){throw new UncheckedIOException(e);}
             pendingTextures.clear();
         }
-        int surfaceNumber=0;
+        int surfaceNumber=0;var ready=prepared.get(posed);
         for(Surface surface:surfaces){
-            if(segments!=null&&!segments.shown(surfaceNumber++,~(gem?4L:2L)))continue;
-            int count=surface.positions.length/3;float[] skinned=new float[count*6];
-            Vector3f p=new Vector3f(),n=new Vector3f(),temp=new Vector3f();
-            for(int i=0;i<count;i++){
-                float px=surface.positions[i*3],py=surface.positions[i*3+1],pz=surface.positions[i*3+2];
-                float nx=surface.normals[i*3],ny=surface.normals[i*3+1],nz=surface.normals[i*3+2];
-                for(int m=0;m<Math.min(posed.morphs.length,surface.morphPositions.length);m++){
-                    float w=posed.morphs[m];if(w==0)continue;
-                    if(surface.morphPositions[m]!=null){px+=w*surface.morphPositions[m][i*3];py+=w*surface.morphPositions[m][i*3+1];pz+=w*surface.morphPositions[m][i*3+2];}
-                    if(surface.morphNormals[m]!=null){nx+=w*surface.morphNormals[m][i*3];ny+=w*surface.morphNormals[m][i*3+1];nz+=w*surface.morphNormals[m][i*3+2];}
-                }
-                p.zero();n.zero();float total=0;
-                if(surface.weights!=null)for(int k=0;k<4;k++){
-                    float w=surface.weights[i*4+k];int joint=surface.joints[i*4+k];if(w==0)continue;
-                    posed.skin[joint].transformPosition(px,py,pz,temp);p.fma(w,temp);
-                    posed.skin[joint].transformDirection(nx,ny,nz,temp);n.fma(w,temp);total+=w;
-                }
-                if(total>0){p.div(total);if(n.lengthSquared()>0)n.normalize();}else{p.set(px,py,pz);n.set(nx,ny,nz);}
-                p.get(skinned,i*6);n.get(skinned,i*6+3);
-            }
+            int index=surfaceNumber++;if(segments!=null&&!segments.shown(index,shownMask))continue;
+            float[] skinned=ready==null?skin(surface,posed):ready.get(surfaceNumber-1);
             Identifier texture=surface.skullGem?gemAtlas():surface.texture;
             int gemFrame=Math.floorMod((int)Math.floor(materialSeconds()*60),60);
             var renderType=surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
                 Vector3f v=new Vector3f(),normal=new Vector3f();
-                for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:new int[]{0,1,2,2}){
+                for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
                     int i=surface.indices[triangle+corner];pose.pose().transformPosition(skinned[i*6],skinned[i*6+1],skinned[i*6+2],v);
                     pose.transformNormal(skinned[i*6+3],skinned[i*6+4],skinned[i*6+5],normal);
                     int color=Math.clamp(Math.round(surface.colors[i*4+3]*alpha*255),0,255)<<24;for(int c=0;c<3;c++)color|=Math.clamp((int)(surface.colors[i*4+c]*255),0,255)<<(16-c*8);
@@ -262,6 +249,28 @@ public final class GltfModel {
                 }
             });
         }
+    }
+    private float[] skin(Surface surface,Posed posed){
+        int count=surface.positions.length/3;skinnedVertices+=count;float[] skinned=new float[count*6];
+        Vector3f p=new Vector3f(),n=new Vector3f(),temp=new Vector3f();
+        for(int i=0;i<count;i++){
+            float px=surface.positions[i*3],py=surface.positions[i*3+1],pz=surface.positions[i*3+2];
+            float nx=surface.normals[i*3],ny=surface.normals[i*3+1],nz=surface.normals[i*3+2];
+            for(int m=0;m<Math.min(posed.morphs.length,surface.morphPositions.length);m++){
+                float w=posed.morphs[m];if(w==0)continue;
+                if(surface.morphPositions[m]!=null){px+=w*surface.morphPositions[m][i*3];py+=w*surface.morphPositions[m][i*3+1];pz+=w*surface.morphPositions[m][i*3+2];}
+                if(surface.morphNormals[m]!=null){nx+=w*surface.morphNormals[m][i*3];ny+=w*surface.morphNormals[m][i*3+1];nz+=w*surface.morphNormals[m][i*3+2];}
+            }
+            p.zero();n.zero();float total=0;
+            if(surface.weights!=null)for(int k=0;k<4;k++){
+                float w=surface.weights[i*4+k];int joint=surface.joints[i*4+k];if(w==0)continue;
+                posed.skin[joint].transformPosition(px,py,pz,temp);p.fma(w,temp);
+                posed.skin[joint].transformDirection(nx,ny,nz,temp);n.fma(w,temp);total+=w;
+            }
+            if(total>0){p.div(total);if(n.lengthSquared()>0)n.normalize();}else{p.set(px,py,pz);n.set(nx,ny,nz);}
+            p.get(skinned,i*6);n.get(skinned,i*6+3);
+        }
+        return skinned;
     }
     private float[] accessor(int id){
         if(accessors.containsKey(id))return accessors.get(id);

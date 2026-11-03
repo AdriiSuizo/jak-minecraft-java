@@ -9,7 +9,8 @@
     "JakControllerCameraMixin",
     "JakControllerUseMixin",
     "GemItemRendererMixin",
-    "GemCollectMixin"
+    "GemCollectMixin",
+    "CitizenRenderStateMixin"
   ],
   "injectors": {
     "defaultRequire": 1

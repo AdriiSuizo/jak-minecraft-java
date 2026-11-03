@@ -34,7 +34,7 @@ public final class JakEntities {
    var eggKey=ResourceKey.create(Registries.ITEM,JakData.id(k.model.replace('-','_')+"_spawn_egg"));
    EGGS.add(Registry.register(BuiltInRegistries.ITEM,eggKey,new SpawnEggItem(new Item.Properties().setId(eggKey).spawnEgg(type))));
   }
-  Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,JakData.id("creatures"),FabricCreativeModeTab.builder().title(Component.translatable("tab.jakmc.creatures")).icon(()->new ItemStack(EGGS.get(0))).displayItems((context,out)->EGGS.forEach(out::accept)).build());
+  Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,JakData.id("creatures"),FabricCreativeModeTab.builder().title(Component.translatable("tab.jakmc.creatures")).icon(()->new ItemStack(EGGS.get(0))).displayItems((context,out)->{EGGS.forEach(out::accept);JakCitizens.EGGS.forEach(out::accept);}).build());
  }
  private static boolean habitat(String model,String biome){
   boolean ocean=biome.contains("ocean")||biome.contains("river"),snow=biome.contains("snow")||biome.contains("frozen")||biome.equals("grove")||biome.equals("jagged_peaks"),beach=biome.endsWith("beach")||biome.equals("stony_shore"),swamp=biome.contains("swamp"),jungle=biome.contains("jungle"),badlands=biome.contains("badlands"),cave=biome.endsWith("caves")||biome.equals("deep_dark"),nether=Set.of("nether_wastes","basalt_deltas","soul_sand_valley","crimson_forest","warped_forest").contains(biome);

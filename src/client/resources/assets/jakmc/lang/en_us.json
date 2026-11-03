@@ -61,5 +61,8 @@
   "entity.jakmc.predator": "Predator",
   "item.jakmc.predator_spawn_egg": "Spawn Predator",
   "death.attack.jak_morph": "%1$s was hit by a Morph Gun",
-  "death.attack.jak_morph.player": "%1$s was hit by %2$s’s Morph Gun"
+  "death.attack.jak_morph.player": "%1$s was hit by %2$s’s Morph Gun",
+  "item.jakmc.citizen_norm_spawn_egg": "Spawn Haven citizen",
+  "item.jakmc.citizen_fat_spawn_egg": "Spawn Haven heavy citizen",
+  "item.jakmc.citizen_chick_spawn_egg": "Spawn Haven female citizen"
 }

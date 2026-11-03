@@ -90,3 +90,14 @@ Continued full Jak port, same native-Minecraft-content route; original Rust/Open
 This checkpoint closes the implemented skull-gem path. Full remaining integration stays visible in docs/CURRENT-PORT-HANDOFF.md; city exports are still not installed generation, and vehicles/citizens/mounts remain substantial work.
 
 Final Gradle build: .local/gems-final-build2.log, success 28s. Final source-derived .05s pickup sound coalescing was added after the accepted mechanics/visual takes; no scene repeated for that one-tick voice gate. Artifact receipt .local/gems-build-receipt.json verifies packaged DLL unchanged/equal, required classes/shader present, unique JAR paths and no owned media/DLL in sources archive.
+
+
+## 2026-11-03 — collision allocations and native Haven citizens
+
+Live collision CPU/allocation comparison: 203101 to 61408 ns/query (-69.77%), 75275 to 2122 Java bytes/query (-97.18%). Six region CRCs and 9715200 geometry bytes identical. Exact direct slices, independent within a tick, bounded reuse and full oversize requests. Static item/terminal/bed skin caches, no dynamic pose retention. No Rust/ABI change; whole-game FPS is not established by these metrics.
+
+Three original Haven models/outfits/clocks on the actual native Villager, including babies, beds and native commerce. Original movement, water and hit/land/get-up/death presentation; civilian voices/dialogue remain. Three citizen egg models; preserve existing enemy icons and native offspring mechanics. Variant-only offspring hook preserves requested skin without changing baby age. Preserve name and leash submission with guest geometry.
+
+Actual-game acceptance `.local/evidence/citizens-20261103-173335`, reviewed screenshots, normal save/exit. Collision metrics `.local/collision-performance-comparison.json`. Failures, source paths, and exact scope in docs/CURRENT-PORT-HANDOFF.md. Backup `.local/backups/pre-performance-citizens-20261103-164632.zip`; original exports, other projects and personal saves untouched.
+
+Final build passed in 28s; package receipt `.local/citizens-build-receipt.json`. Runtime archive has unique paths and unchanged JNI; source archive contains no private media/binaries.

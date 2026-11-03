@@ -23,7 +23,7 @@ public final class SkullGemRenderer implements SpecialModelRenderer<Void> {
  SkullGemRenderer(boolean gui){this.gui=gui;}
  public static void initialize(){SpecialModelRenderers.ID_MAPPER.put(JakData.id("skull_gem"),Unbaked.CODEC);}
  private static void load(){if(model!=null)return;try{
-  model=new GltfModel(RuntimeConfig.assets.resolve("levels/common/collectables-gem-lod0.glb"),"skull_gem");rest=model.pose("",0);var b=model.bounds(rest,new Matrix4f());center=new Vector3f(b[0]).add(b[1]).mul(.5f);height=b[1].y-b[0].y;
+  model=new GltfModel(RuntimeConfig.assets.resolve("levels/common/collectables-gem-lod0.glb"),"skull_gem");rest=model.pose("",0);model.prepare(rest);var b=model.bounds(rest,new Matrix4f());center=new Vector3f(b[0]).add(b[1]).mul(.5f);height=b[1].y-b[0].y;
  }catch(IOException e){throw new UncheckedIOException(e);}}
  private static void glowTexture(){if(glow!=null)return;try{glow=JakData.id("local/gem_glow");try(var in=java.nio.file.Files.newInputStream(RuntimeConfig.assets.resolve("textures/level-default-sprite/glow-soft.png"))){Minecraft.getInstance().getTextureManager().register(glow,new DynamicTexture(()->"Original gem glow-soft",NativeImage.read(in)));}}catch(IOException e){throw new UncheckedIOException(e);}}
  public Void extractArgument(ItemStack item){return null;}

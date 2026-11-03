@@ -60,6 +60,8 @@ public final class DevBridge {
                     Screenshot.grab(client.gameDirectory,name,client.gameRenderer.mainRenderTarget(),1,message->JakMod.LOG.info("Bridge screenshot: {}",message.getString()));out.addProperty("file",client.gameDirectory.toPath().resolve("screenshots").resolve(name).toString());
                 }
                 case "gems_visual_scene" -> {GemScene.startVisual(client);out.addProperty("scheduled",true);}
+                case "citizens_scene" -> {CitizenScene.start(client);out.addProperty("scheduled",true);}
+                case "collision_perf_scene" -> {CollisionPerfScene.start(client);out.addProperty("scheduled",true);}
                 case "gems_scene" -> {GemScene.start(client);out.addProperty("scheduled",true);}
                 case "input_actions_scene" -> {InputScene.startInteractions(client);out.addProperty("scheduled",true);}
                 case "input_scene" -> {InputScene.start(client);out.addProperty("scheduled",true);}

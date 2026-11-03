@@ -6,7 +6,10 @@
     "PlayerTravelMixin",
     "ServerMovementMixin",
     "JakPickupMixin",
-    "GemPhysicsMixin"
+    "GemPhysicsMixin",
+    "CitizenMixin",
+    "CitizenDamageMixin",
+    "CitizenEggMixin"
   ],
   "injectors": {
     "defaultRequire": 1
