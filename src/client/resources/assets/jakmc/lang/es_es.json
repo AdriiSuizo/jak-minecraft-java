@@ -1,4 +1,11 @@
 {
+  "entity.jakmc.flut_flut": "Flut Flut",
+  "entity.jakmc.flut_egg": "Huevo de Flut Flut",
+  "item.jakmc.flut_flut_spawn_egg": "Generador de Flut Flut",
+  "item.jakmc.flut_egg": "Huevo de Flut Flut",
+  "message.jakmc.flut_tame_first": "Primero tienes que domar al Flut Flut.",
+  "message.jakmc.flut_saddle": "Ponle una montura al Flut Flut.",
+  "message.jakmc.flut_resists": "El Flut Flut se resiste. Dale semillas y vuelve a intentarlo.",
   "hint.jakmc.leaper_mouse": "Clic derecho · Montar",
   "hint.jakmc.leaper_pad": "△ Montar",
   "entity.jakmc.leaper": "Lagarto saltador",

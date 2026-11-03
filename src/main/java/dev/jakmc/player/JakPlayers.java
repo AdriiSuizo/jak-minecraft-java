@@ -56,7 +56,7 @@ public final class JakPlayers {
     }
     public static boolean mount(ServerPlayer player,JakLeaper mount){
         if(!active(player)||player.isSleeping()||player.isSpectator()||mount.riderId()>=0||
-            !mount.isAlive()||mount.level()!=player.level()||player.distanceToSqr(mount)>16||
+            !mount.isAlive()||!mount.readyToMount()||mount.level()!=player.level()||player.distanceToSqr(mount)>16||
             !player.hasLineOfSight(mount))return false;
         var session=LIVE.computeIfAbsent(player.getUUID(),id->new Session(player));
         if(session.mount!=null)return false;
@@ -173,6 +173,7 @@ public final class JakPlayers {
             if(ride.isJsonObject()){
                 var channel=ride.getAsJsonObject();
                 channel.addProperty("entity",s.mount.getId());
+                channel.addProperty("flut",s.mount instanceof dev.jakmc.entity.JakFlutFlut);
                 if(s.mountReleased)channel.addProperty("fixed",true);
                 if(!s.mountReleased&&!channel.get("fixed").getAsBoolean()){
                     updateMount(s.mount,position,pose.get("yaw").getAsFloat(),(pose.get("status").getAsInt()&2)!=0);

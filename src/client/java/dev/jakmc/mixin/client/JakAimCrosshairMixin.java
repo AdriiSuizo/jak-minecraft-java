@@ -21,7 +21,7 @@ abstract class JakAimCrosshairMixin {
         var player=client.player;
         if(player==null||player.isSpectator()||!dev.jakmc.player.JakPlayers.active(player)||
             !(client.hitResult instanceof EntityHitResult hit)||
-            !(hit.getEntity() instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()>=0||
+            !(hit.getEntity() instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()>=0||!mount.readyToMount()||
             player.distanceToSqr(mount)>16)return;
         var pose=dev.jakmc.client.JakPoses.get(player.getId());
         if(pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject)return;

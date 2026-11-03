@@ -196,7 +196,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
     }));
    }
   }
-  let ride_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-"))
+  let ride_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-"))
    .map(|(name,art)|(name.clone(),art.clone())).collect();
   RIDE_ART.set(ride_art).map_err(|_|"riding art configuration raced")?;
   let rows:Vec<_>=authored.iter().filter_map(|(name,a)|{

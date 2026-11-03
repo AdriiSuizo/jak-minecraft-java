@@ -50,6 +50,9 @@ public final class InputScene {
  }
  public static void startInteractions(Minecraft c){start(c);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
  private static UUID leaperId;
+ private static boolean flut;
+ private static volatile boolean tameSaddle,eggPlaced,eggHatched;
+ private static Vec3 eggCenter;
  private static volatile int leaperEntity;
  private static boolean mountSeen,offSeen;
  private static int rideStart,jumpStart,offPress,slamImage,mountPress;
@@ -58,12 +61,16 @@ public final class InputScene {
  private static net.minecraft.core.BlockPos gate;
  private static double rideTravel;
  private static Vec3 mountStart;
- public static void startLeaper(Minecraft c){
+ public static void startLeaper(Minecraft c){startLeaper(c,false);}
+ public static void startFlut(Minecraft c){startLeaper(c,true);}
+ private static void startLeaper(Minecraft c,boolean flutTest){
   start(c,true);
   leaper=true;
+  flut=flutTest;
+  tameSaddle=eggPlaced=eggHatched=false;
   pauseOnLostFocus=c.options.pauseOnLostFocus;
   c.options.pauseOnLostFocus=false;
-  output=c.gameDirectory.toPath().resolve("jakmc/evidence/leaper");
+  output=c.gameDirectory.toPath().resolve("jakmc/evidence/"+(flut?"flut":"leaper"));
   try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
   mountSeen=offSeen=false;
   rideStart=jumpStart=offPress=slamImage=mountPress=0;
@@ -72,7 +79,8 @@ public final class InputScene {
   leaperEntity=-1;
   leaperId=null;
   onServer(c,p->{
-   var mount=dev.jakmc.entity.JakLeaper.TYPE.create(p.level(),net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+   var type=flut?dev.jakmc.entity.JakFlutFlut.TYPE:dev.jakmc.entity.JakLeaper.TYPE;
+   var mount=type.create(p.level(),net.minecraft.world.entity.EntitySpawnReason.COMMAND);
    mount.setNoAi(true);
    mount.setPos(start.add(0,0,2.5));
    mount.setYRot(0);mount.setYBodyRot(0);mount.setYHeadRot(0);
@@ -94,8 +102,14 @@ public final class InputScene {
   view=null;
   var target=c.level.getEntity(leaperEntity);
   if(t>=22&&t<=25&&target!=null)mountView(target.position());
-  if(t==25)capture(c,"leaper-idle.png");
-  if(t>25&&t<85&&!mountSeen&&target!=null){
+  if(t==25)mountCapture(c,"idle");
+  if(flut&&t==36)onServer(c,p->flutSetup(p));
+  if(flut&&eggCenter!=null&&(t>=53&&t<=56||t>=118&&t<=121)){
+   look(eggCenter.add(1.8,1.35,1.5),eggCenter.add(0,.35,0));
+   if(t==56)mountCapture(c,"egg");
+   if(t==121)mountCapture(c,"chick");
+  }
+  if(t>(flut?42:25)&&t<85&&!mountSeen&&target!=null){
    aimAt(c,target.position().add(0,1.25,0));
    if(mountPress==0&&c.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit&&hit.getEntity()==target){
     mountPress=t+2;
@@ -106,7 +120,7 @@ public final class InputScene {
   if(state.startsWith("target-flut-"))STATES.add(state);
   if(!mountSeen&&mounted){
    mountSeen=true;
-   capture(c,"leaper-mount.png");
+   mountCapture(c,"mount");
   }
   if(rideStart==0&&state.equals("target-flut-stance")){
    rideStart=t;
@@ -114,7 +128,7 @@ public final class InputScene {
   }
   int rideAge=rideStart==0?-1:t-rideStart;
   if(rideAge>=15&&rideAge<=18)mountView(pose.position());
-  if(rideAge==18)capture(c,"leaper-riding.png");
+  if(rideAge==18)mountCapture(c,"riding");
   if(rideAge>=19&&rideAge<=23)aimAt(c,Vec3.atBottomCenterOf(gate).add(0,.65,0));
   if(rideAge==24){
    onServer(c,p->gateOpened=p.level().getBlockState(gate).getValue(net.minecraft.world.level.block.FenceGateBlock.OPEN));
@@ -126,7 +140,7 @@ public final class InputScene {
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,jumpAge>=0&&jumpAge<8||jumpAge>=12&&jumpAge<17);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,jumpAge>=21&&jumpAge<24);
   if(jumpAge>=17&&jumpAge<=19&&mounted)mountView(pose.position());
-  if(jumpAge==19)capture(c,"leaper-jump.png");
+  if(jumpAge==19)mountCapture(c,"jump");
   if(pose!=null&&mounted&&mountStart!=null)rideTravel=Math.max(rideTravel,pose.position().subtract(mountStart).horizontalDistance());
   if(!hitRequested&&jumpAge>=38&&state.equals("target-flut-stance")){
    hitRequested=true;
@@ -143,14 +157,8 @@ public final class InputScene {
    offPress=t+4;
   }
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,mountPress>0&&t>=mountPress&&t<mountPress+4||rideAge>=21&&rideAge<23||offPress>0&&t>=offPress&&t<offPress+4);
-  if(pose!=null)for(var event:pose.raw().getAsJsonArray("events")){
-   if(event.getAsJsonObject().get("kind").getAsString().equals("flut_slam")&&!ACTIONS.has("ground_attack")){
-    ACTIONS.addProperty("ground_attack",true);
-    slamImage=t+3;
-   }
-  }
   if(slamImage>0&&t>=slamImage-1&&t<=slamImage&&target!=null)mountView(target.position());
-  if(t==slamImage)capture(c,"leaper-slam.png");
+  if(t==slamImage)mountCapture(c,"slam");
   if(offPress>0&&t>offPress&&!mounted&&mountSeen&&!offSeen){
    offSeen=true;
    onServer(c,p->{
@@ -158,15 +166,27 @@ public final class InputScene {
      var reporter=net.minecraft.util.ProblemReporter.DISCARDING;
      var output=net.minecraft.world.level.storage.TagValueOutput.createWithContext(reporter,mount.registryAccess());
      mount.saveWithoutId(output);
-     var copy=dev.jakmc.entity.JakLeaper.TYPE.create(p.level(),net.minecraft.world.entity.EntitySpawnReason.LOAD);
+     var copy=(flut?dev.jakmc.entity.JakFlutFlut.TYPE:dev.jakmc.entity.JakLeaper.TYPE).create(p.level(),net.minecraft.world.entity.EntitySpawnReason.LOAD);
      copy.load(net.minecraft.world.level.storage.TagValueInput.create(reporter,copy.registryAccess(),output.buildResult()));
-     mountSaved=copy.riderId()<0&&copy.getHealth()==mount.getHealth()&&copy.position().distanceToSqr(mount.position())<.001;
+     mountSaved=(!flut||copy instanceof dev.jakmc.entity.JakFlutFlut bird&&bird.tame()&&bird.saddled())&&copy.riderId()<0&&copy.getHealth()==mount.getHealth()&&copy.position().distanceToSqr(mount.position())<.001;
     }
    });
-   capture(c,"leaper-dismount.png");
+   mountCapture(c,"dismount");
   }
-  if(t>=265){
+  if(flut&&t==118)onServer(c,p->{
+   for(var chick:p.level().getEntitiesOfClass(dev.jakmc.entity.JakFlutFlut.class,
+       new net.minecraft.world.phys.AABB(eggCenter,eggCenter).inflate(2),mob->mob.isBaby())){
+    eggHatched=true;
+    ITEMS.add(chick.getUUID());
+   }
+  });
+  if(t>=(flut?325:265)){
    var entity=c.level.getEntity(leaperEntity);
+   if(flut){
+    ACTIONS.addProperty("taming_and_saddle",tameSaddle);
+    ACTIONS.addProperty("egg_item_placed",eggPlaced);
+    ACTIONS.addProperty("egg_hatched",eggHatched);
+   }
    ACTIONS.addProperty("mounted_via_interact",mountSeen&&rideStart>0);
    ACTIONS.addProperty("rode",rideTravel>4);
    ACTIONS.addProperty("interacted_while_mounted",gateOpened);
@@ -180,6 +200,47 @@ public final class InputScene {
    STATES.add("mount_input="+mountPress);
    walk=rideTravel;
    finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"leaper assertion failed");
+  }
+ }
+ public static void observeMountEvents(int entity,JsonObject pose){
+  var client=Minecraft.getInstance();
+  if(!running||!leaper||client.player==null||entity!=client.player.getId()||ACTIONS.has("ground_attack"))return;
+  for(var event:pose.getAsJsonArray("events")){
+   if(event.getAsJsonObject().get("kind").getAsString().equals("flut_slam")){
+    ACTIONS.addProperty("ground_attack",true);
+    slamImage=tick+3;
+    return;
+   }
+  }
+ }
+ private static void mountCapture(Minecraft c,String stage){capture(c,(flut?"flut":"leaper")+"-"+stage+".png");}
+ private static void flutSetup(net.minecraft.server.level.ServerPlayer p){
+  var hand=net.minecraft.world.InteractionHand.MAIN_HAND;
+  if(!(p.level().getEntity(leaperId) instanceof dev.jakmc.entity.JakFlutFlut bird))return;
+  p.setItemInHand(hand,new ItemStack(net.minecraft.world.item.Items.WHEAT_SEEDS,34));
+  for(int i=0;i<34;i++)bird.mobInteract(p,hand);
+  p.setItemInHand(hand,ItemStack.EMPTY);
+  bird.mobInteract(p,hand);
+  p.setItemInHand(hand,new ItemStack(net.minecraft.world.item.Items.SADDLE));
+  bird.mobInteract(p,hand);
+  tameSaddle=bird.readyToMount();
+
+  var floor=net.minecraft.core.BlockPos.containing(start).offset(-3,-1,5);
+  eggCenter=Vec3.atBottomCenterOf(floor.above());
+  var hit=new net.minecraft.world.phys.BlockHitResult(eggCenter,net.minecraft.core.Direction.UP,floor,false);
+  p.setItemInHand(hand,new ItemStack(dev.jakmc.entity.JakFlutEgg.ITEM));
+  var context=new net.minecraft.world.item.context.UseOnContext(p,hand,hit);
+  eggPlaced=dev.jakmc.entity.JakFlutEgg.ITEM.useOn(context).consumesAction();
+  p.setItemInHand(hand,ItemStack.EMPTY);
+
+  for(var egg:p.level().getEntitiesOfClass(dev.jakmc.entity.JakFlutEgg.class,
+       new net.minecraft.world.phys.AABB(eggCenter,eggCenter).inflate(1),e->true)){
+   ITEMS.add(egg.getUUID());
+   var reporter=net.minecraft.util.ProblemReporter.DISCARDING;
+   var output=net.minecraft.world.level.storage.TagValueOutput.createWithContext(reporter,egg.registryAccess());
+   egg.saveWithoutId(output);
+   output.putInt("FlutIncubation",dev.jakmc.entity.JakFlutEgg.HATCH-55);
+   egg.load(net.minecraft.world.level.storage.TagValueInput.create(reporter,egg.registryAccess(),output.buildResult()));
   }
  }
  private static void aimAt(Minecraft client,Vec3 target){

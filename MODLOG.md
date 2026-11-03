@@ -109,3 +109,7 @@ Shared presentation for local avatar and camera, per-frame SDL look, native shou
 ## 2026-11-03 — Jak 3 desert Leaper
 
 Native Minecraft creature and desert spawn, original mounted physics, Jak/Daxter/Leaper clips and original hit/landing/audio presentation. Native gate interaction while riding, mount prompt, dismount, damage and native entity data round trip verified. Evidence and remaining related work in docs/CURRENT-PORT-HANDOFF.md.
+
+## 2026-11-03 — Jak 1 Flut Flut
+
+Added the native wild creature, taming, saddle, plumage, laying and incubation, plus the original bare and saddled meshes, retargeted rider animation and original eye layers. Verified the mount and hatch paths in the real game. Exact acceptance and limitations in docs/CURRENT-PORT-HANDOFF.md.

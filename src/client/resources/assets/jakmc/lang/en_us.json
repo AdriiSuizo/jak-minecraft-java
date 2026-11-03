@@ -1,4 +1,11 @@
 {
+  "entity.jakmc.flut_flut": "Flut Flut",
+  "entity.jakmc.flut_egg": "Flut Flut Egg",
+  "item.jakmc.flut_flut_spawn_egg": "Flut Flut Spawn Egg",
+  "item.jakmc.flut_egg": "Flut Flut Egg",
+  "message.jakmc.flut_tame_first": "Tame the Flut Flut first.",
+  "message.jakmc.flut_saddle": "Equip the Flut Flut with a saddle.",
+  "message.jakmc.flut_resists": "The Flut Flut resists. Feed it seeds and try again.",
   "hint.jakmc.leaper_mouse": "Right click · Mount",
   "hint.jakmc.leaper_pad": "△ Mount",
   "entity.jakmc.leaper": "Leaper",

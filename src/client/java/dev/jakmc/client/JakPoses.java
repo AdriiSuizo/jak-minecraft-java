@@ -40,6 +40,7 @@ public final class JakPoses {
         dev.jakmc.client.model.JakShotRenderer.receive(p.entityId(),origin,json);
         JakSounds.receive(p.entityId(),origin,json);
         JakEffects.receive(p.entityId(),origin,json);
+        InputScene.observeMountEvents(p.entityId(),json);
         PortScene.observe(p.entityId(),json);
         if(client.player!=null&&client.player.getId()==p.entityId()){
             client.player.setPos(position);client.player.setDeltaMovement(Vec3.ZERO);

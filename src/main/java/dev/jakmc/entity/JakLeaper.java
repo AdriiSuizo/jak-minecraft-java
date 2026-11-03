@@ -23,7 +23,9 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
-import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.AgeableMob;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.entity.SpawnPlacementTypes;
 import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -38,7 +40,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
 /** The desert Leaper is a Minecraft mob. A reserved rider drives it through Jak's solver. */
-public final class JakLeaper extends PathfinderMob {
+public class JakLeaper extends Animal {
     private static final EntityDataAccessor<Integer> RIDER=
         SynchedEntityData.defineId(JakLeaper.class,EntityDataSerializers.INT);
     public static EntityType<JakLeaper> TYPE;
@@ -94,8 +96,14 @@ public final class JakLeaper extends PathfinderMob {
 
     @Override public boolean isPushable(){return riderId()<0&&super.isPushable();}
 
-    @Override protected InteractionResult mobInteract(Player player,InteractionHand hand){
-        if(hand!=InteractionHand.MAIN_HAND||riderId()>=0||!JakPlayers.active(player))return InteractionResult.PASS;
+    @Override protected boolean canBeABaby(){return false;}
+    @Override public boolean isFood(ItemStack stack){return false;}
+    @Override public AgeableMob getBreedOffspring(ServerLevel level,AgeableMob partner){return null;}
+    public boolean readyToMount(){return true;}
+
+    @Override public InteractionResult mobInteract(Player player,InteractionHand hand){
+        if(isFood(player.getItemInHand(hand)))return super.mobInteract(player,hand);
+        if(hand!=InteractionHand.MAIN_HAND||riderId()>=0||!readyToMount()||!JakPlayers.active(player))return InteractionResult.PASS;
         if(player instanceof ServerPlayer server){
             if(!NativeJak.mountReady()){
                 server.sendSystemMessage(Component.translatable("message.jakmc.mount_assets"));

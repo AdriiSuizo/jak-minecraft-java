@@ -45,7 +45,7 @@ public final class GltfModel {
     private static Identifier gemAtlas;
     private static Identifier gemAtlas(){if(gemAtlas!=null)return gemAtlas;try{int[] pixels=SkullGemTexture.bake(dev.jakmc.RuntimeConfig.assets.resolve("textures/level-default-tfrag"));var image=new NativeImage(64,64*60,false);for(int y=0;y<64*60;y++)for(int x=0;x<64;x++)image.setPixel(x,y,pixels[y*64+x]);gemAtlas=JakData.id("local/skull_gem_animated");Minecraft.getInstance().getTextureManager().register(gemAtlas,new DynamicTexture(()->"Original skull gem layers",image));return gemAtlas;}catch(IOException e){throw new UncheckedIOException(e);}}
     public static float materialSeconds(){var c=Minecraft.getInstance();return c.level==null?0:(c.level.getGameTime()+c.getDeltaTracker().getGameTimeDeltaPartialTick(false))/20f;}
-    private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals){}
+    private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,String material,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals){}
     private record Channel(int node,String path,float[] times,float[] values,int components,boolean step){}
     private record Clip(List<Channel> channels,float duration){}
     public record Posed(Matrix4f[] globals,Matrix4f[] skin,float[] morphs,Vector3f[] translations,Quaternionf[] rotations,Vector3f[] scales){}
@@ -126,7 +126,7 @@ public final class GltfModel {
             for(int m=0;m<targetCount;m++){if(morphPositions[m]!=null)morphPositions[m]=select(morphPositions[m],3,used);if(morphNormals[m]!=null)morphNormals[m]=select(morphNormals[m],3,used);}
             int[] compactBones=bone==null?null:toInts(select(toFloats(bone),4,used));
             if(compactBones!=null)for(int vertex=0;vertex<used.length;vertex++)for(int k=0;k<4;k++)if(weight[used[vertex]*4+k]>0&&(compactBones[vertex*4+k]<0||compactBones[vertex*4+k]>=joints.length))throw new IOException("Indexed vertex uses missing skin joint in "+file);
-            surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals));
+            surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("name")?material.get("name").getAsString():"",material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals));
         }
         readAnimations(this,null);
         String originalName=file.getFileName().toString().replace("-lod0.glb","");
@@ -237,6 +237,62 @@ public final class GltfModel {
         if(compensateScale)return g[i]=new Matrix4f().translationRotateScale(parent.transformPosition(new Vector3f(t[i])),rotation.mul(r[i]),s[i]);
         return g[i]=new Matrix4f().translationRotate(parent.getTranslation(new Vector3f()),rotation).mul(local);
     }
+    /** Transfer a bone's model-space rotation delta from the source standing pose. */
+    Posed retargetRider(GltfModel source,Posed sourceRest,Posed motion,Posed targetRest){
+        Vector3f[] t=new Vector3f[nodes.length],s=new Vector3f[nodes.length];
+        Quaternionf[] r=new Quaternionf[nodes.length],world=new Quaternionf[nodes.length];
+        for(int i=0;i<nodes.length;i++){
+            t[i]=new Vector3f(targetRest.translations[i]);s[i]=new Vector3f(targetRest.scales[i]);
+            r[i]=new Quaternionf(targetRest.rotations[i]);
+        }
+        for(int j=2;j<joints.length;j++){
+            int node=joints[j];
+            Integer from=source.namedNodes.get(nodes[node].name);
+            if(from==null)continue;
+            if(nodes[node].name.equals("main")||nodes[node].name.equals("hips")){
+                t[node].add(motion.translations[from]).sub(sourceRest.translations[from]);
+            }
+            var delta=motion.globals[from].getUnnormalizedRotation(new Quaternionf())
+                .mul(sourceRest.globals[from].getUnnormalizedRotation(new Quaternionf()).invert());
+            world[node]=delta.mul(targetRest.globals[node].getUnnormalizedRotation(new Quaternionf())).normalize();
+        }
+        for(int node:joints){
+            if(world[node]==null)continue;
+            int parent=nodes[node].parent;
+            if(parent<0)r[node].set(world[node]);
+            else r[node].set(retargetRotation(parent,world,r)).invert().mul(world[node]).normalize();
+        }
+        return compose(t,r,s,targetRest.morphs);
+    }
+    private Quaternionf retargetRotation(int node,Quaternionf[] world,Quaternionf[] local){
+        if(world[node]!=null)return world[node];
+        int parent=nodes[node].parent;
+        return world[node]=parent<0?new Quaternionf(local[node])
+            :new Quaternionf(retargetRotation(parent,world,local)).mul(local[node]);
+    }
+    Posed retargetBird(GltfModel source,Posed sourceRest,Posed motion,Posed rest){
+        Matrix4f[] globals=rest.globals.clone(),skin=new Matrix4f[joints.length];
+        for(int j=0;j<joints.length;j++){
+            int node=joints[j];
+            Integer from=source.namedNodes.get(nodes[node].name);
+            if(from!=null){
+                var active=motion.globals[from];
+                var rotation=active.getUnnormalizedRotation(new Quaternionf())
+                    .mul(sourceRest.globals[from].getUnnormalizedRotation(new Quaternionf()).invert())
+                    .mul(rest.globals[node].getUnnormalizedRotation(new Quaternionf())).normalize();
+                globals[node]=new Matrix4f().translationRotateScale(active.getTranslation(new Vector3f()),
+                    rotation,active.getScale(new Vector3f()));
+            }
+            skin[j]=new Matrix4f(globals[node]).mul(inverseBind[j]);
+        }
+        return new Posed(globals,skin,rest.morphs,rest.translations,rest.rotations,rest.scales);
+    }
+    private Posed compose(Vector3f[] t,Quaternionf[] r,Vector3f[] s,float[] morphs){
+        Matrix4f[] globals=new Matrix4f[nodes.length],skin=new Matrix4f[joints.length];
+        for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);
+        for(int i=0;i<joints.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
+        return new Posed(globals,skin,morphs,t,r,s);
+    }
     public Posed blend(Posed from,Posed to,float weight){
         weight=Math.clamp(weight,0,1);Vector3f[] t=new Vector3f[nodes.length],s=new Vector3f[nodes.length];Quaternionf[] r=new Quaternionf[nodes.length];
         for(int i=0;i<nodes.length;i++){t[i]=new Vector3f(from.translations[i]).lerp(to.translations[i],weight);s[i]=new Vector3f(from.scales[i]).lerp(to.scales[i],weight);r[i]=new Quaternionf(from.rotations[i]).slerp(to.rotations[i],weight);}
@@ -285,7 +341,7 @@ public final class GltfModel {
                 new Vector3f(up).mul(.8944f).fma(.4472f,forward).normalize()
             };
         }
-        submit(pose,stack,collector,light,1,OverlayTexture.NO_OVERLAY,-1L,dark,rim,null);
+        submit(pose,stack,collector,light,1,OverlayTexture.NO_OVERLAY,-1L,dark,rim,null,null);
     }
     public boolean hasClip(String name){return clips.containsKey(name);}
     public float duration(String name){Clip clip=clips.get(name);return clip==null?0:clip.duration;}
@@ -310,13 +366,16 @@ public final class GltfModel {
     }
     public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,boolean gem){submit(posed,stack,collector,light,alpha,overlay,~(gem?4L:2L));}
     public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask){
-        submit(posed,stack,collector,light,alpha,overlay,shownMask,false,null,null);
+        submit(posed,stack,collector,light,alpha,overlay,shownMask,false,null,null,null);
     }
     void submitLightEffect(Posed posed,PoseStack stack,SubmitNodeCollector collector,
                            LightFormTexture.Form effect,float fade){
-        submit(posed,stack,collector,0xf000f0,fade,OverlayTexture.NO_OVERLAY,-1L,false,null,effect);
+        submit(posed,stack,collector,0xf000f0,fade,OverlayTexture.NO_OVERLAY,-1L,false,null,effect,null);
     }
-    private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect){
+    void submitFlut(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,int overlay,FlutMaterial flut){
+        submit(pose,stack,collector,light,1,overlay,-1L,false,null,null,flut);
+    }
+    private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut){
         if(!pendingTextures.isEmpty()){
             var manager=Minecraft.getInstance().getTextureManager();
             for(var entry:pendingTextures.entrySet()){
@@ -342,7 +401,9 @@ public final class GltfModel {
         for(Surface surface:surfaces){
             int index=surfaceNumber++;if(segments!=null&&!segments.shown(index,shownMask))continue;
             float[] skinned=ready==null?skin(surface,posed):ready.get(surfaceNumber-1);
-            Identifier texture=effect!=null?effect.texture():surface.skullGem?gemAtlas():rim!=null?lightTextures.get(surface.texture):
+            Identifier eye=flut!=null&&surface.material.startsWith("programmer_eye")?flut.eyes():null;
+            int tint=flut==null?0xffffff:flut.tint(surface.material);
+            Identifier texture=eye!=null?eye:effect!=null?effect.texture():surface.skullGem?gemAtlas():rim!=null?lightTextures.get(surface.texture):
                 dark?darkTextures.getOrDefault(surface.texture,surface.texture):surface.texture;
             int gemFrame=Math.floorMod((int)Math.floor(seconds*60),60);
             var renderType=effect!=null?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?RenderTypes.entityTranslucentEmissive(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
@@ -351,7 +412,7 @@ public final class GltfModel {
                 for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
                     int i=surface.indices[triangle+corner];pose.pose().transformPosition(skinned[i*6],skinned[i*6+1],skinned[i*6+2],v);
                     pose.transformNormal(skinned[i*6+3],skinned[i*6+4],skinned[i*6+5],normal);
-                    int color=Math.clamp(Math.round(surface.colors[i*4+3]*alpha*255),0,255)<<24;for(int c=0;c<3;c++)color|=Math.clamp((int)(surface.colors[i*4+c]*255),0,255)<<(16-c*8);
+                    int color=Math.clamp(Math.round(surface.colors[i*4+3]*alpha*255),0,255)<<24;for(int c=0;c<3;c++)color|=Math.clamp((int)(surface.colors[i*4+c]*((tint>>>(16-c*8))&255)),0,255)<<(16-c*8);
                     if(rim!=null){
                         float illumination=0;
                         if(normal.lengthSquared()>0)normal.normalize();

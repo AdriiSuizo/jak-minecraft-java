@@ -20,6 +20,8 @@ public final class JakRenderer {
     private static float bodyScale;
     private static float floorOffset;
     private static boolean ridingLoaded;
+    private static GltfModel flutRider;
+    private static GltfModel.Posed flutRiderRest,jakRest;
     public static long renderSerial;
     public static int lastEntityId=-1;
     public static float standingHeight;
@@ -63,9 +65,12 @@ public final class JakRenderer {
         float frame=pose.frame()+(pose.raw().has("frameRate")?pose.raw().get("frameRate").getAsFloat()*elapsed:0);
         var ride=pose.raw().get("ride");
         boolean mounted=ride!=null&&ride.isJsonObject();
-        if(mounted)loadRide();
         int frames=body.frames(pose.clip());if(pose.raw().has("loop")&&pose.raw().get("loop").getAsBoolean())frame%=frames;
-        var skeleton=mounted?JakLeaperRenderer.ridePose(body,"jakb-",pose,elapsed):body.pose(pose.clip(),frame);
+        boolean flut=mounted&&ride.getAsJsonObject().has("flut")&&ride.getAsJsonObject().get("flut").getAsBoolean();
+        if(mounted)loadRide(flut);
+        var skeleton=flut?body.retargetRider(flutRider,flutRiderRest,
+                JakLeaperRenderer.ridePose(flutRider,"jakb1-",pose,elapsed),jakRest):
+            mounted?JakLeaperRenderer.ridePose(body,"jakb-",pose,elapsed):body.pose(pose.clip(),frame);
         int gunKind=JakItems.GUNS.indexOf(state.getMainHandItemStack().getItem());
         var gunState=pose.raw().getAsJsonObject("gun");
         boolean gunOut=gunState!=null&&gunState.get("out").getAsBoolean();
@@ -126,15 +131,29 @@ public final class JakRenderer {
         if(!mounted){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
         stack.popPose();return true;
     }
-    private static void loadRide(){
-        if(ridingLoaded)return;
+    private static void loadRide(boolean flut){
+        if(ridingLoaded&&(!flut||flutRider!=null))return;
         var art=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ridingAnimations()).getAsJsonObject();
-        body.originalAnimations(art,"jakb-flut-");
-        daxter.originalAnimations(art,"daxter-flut-");
-        if(!body.hasClip("jakb-flut-get-on")||!daxter.hasClip("daxter-flut-get-on")){
-            throw new IllegalStateException("Original riding joint count did not match the Jak and Daxter rigs");
+        if(!ridingLoaded){
+            body.originalAnimations(art,"jakb-flut-");
+            daxter.originalAnimations(art,"daxter-flut-");
+            if(!body.hasClip("jakb-flut-get-on")||!daxter.hasClip("daxter-flut-get-on")){
+                throw new IllegalStateException("Original riding joint count did not match the Jak and Daxter rigs");
+            }
+            ridingLoaded=true;
         }
-        ridingLoaded=true;
+        if(flut&&flutRider==null){
+            try{
+                var model=new GltfModel(FlutMaterial.jak1().resolve("levels/common/eichar-lod0.glb"),"original_flut_rider");
+                model.originalAnimations(art,"jakb1-flut-");
+                if(!model.hasClip("jakb1-flut-get-on")){
+                    throw new IllegalStateException("Original Flut Flut riding animations are unavailable");
+                }
+                flutRiderRest=model.pose("eichar-stance-loop",0);
+                jakRest=body.pose("jakb-stance-loop",0);
+                flutRider=model;
+            }catch(IOException failure){throw new java.io.UncheckedIOException(failure);}
+        }
     }
     private record ShieldTiming(boolean open,float changed){}
     private static final java.util.Map<net.minecraft.world.entity.Entity,ShieldTiming> SHIELDS=new java.util.WeakHashMap<>();

@@ -42,3 +42,10 @@ Los aldeanos de Minecraft muestran tres apariencias de ciudadanos de Villa Refug
 ## Lagarto saltador de Spargus
 
 Aparece en el desierto y también está disponible en la pestaña de criaturas del creativo. Mira a un lagarto libre y pulsa Triángulo/Y o clic derecho para montar. Usa el stick izquierdo para conducir, X/A para saltar y vuelve a pulsarlo en el aire para el doble salto. Cuadrado/X hace el ataque terrestre o el picado según la altura. Triángulo/Y interactúa con puertas, vallas y otros objetivos de Minecraft al apuntarlos. Con la vista despejada, desmonta. Con teclado, F desmonta y G ejecuta el ataque.
+
+
+## Flut Flut y lagarto
+
+El lagarto aparece en desiertos. El Flut Flut aparece en pantanos y manglares. Ambos tienen su huevo generador en la pestaña de criaturas de Jak.
+
+Alimenta al Flut Flut con semillas, inténtalo domar con Triángulo o clic derecho con la mano vacía y colócale una montura. Los huevos que ponen los adultos se pueden recoger y colocar para incubarlos. Al montar, X salta y vuelve a saltar en el aire, Cuadrado ejecuta el golpe de la montura en el aire y Triángulo permite usar una puerta o desmontar. Con teclado, usa Espacio para saltar, G para el golpe y F para interactuar o desmontar.
