@@ -11,5 +11,5 @@ abstract class DevSceneCameraMixin {
  @Shadow protected abstract void setPosition(Vec3 position);
  @Shadow protected abstract void setRotation(float yaw,float pitch);
  @Inject(method="alignWithEntity",at=@At("RETURN"))
- private void jakmc$sceneCamera(float partialTicks,CallbackInfo ci){var at=WeaponScene.cameraPosition();if(at!=null){setPosition(at);setRotation(32,20);}}
+ private void jakmc$sceneCamera(float partialTicks,CallbackInfo ci){var at=WeaponScene.cameraPosition();if(at!=null){setPosition(at);setRotation(32,20);}else{var input=dev.jakmc.client.InputScene.camera();if(input!=null){setPosition(input.position());setRotation(input.yaw(),input.pitch());}}}
 }

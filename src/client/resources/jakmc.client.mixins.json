@@ -5,7 +5,9 @@
  "client": [
   "JakRenderMixin",
   "JakDisconnectMixin",
-  "DevSceneCameraMixin"
+  "DevSceneCameraMixin",
+  "JakControllerCameraMixin",
+  "JakControllerUseMixin"
  ],
  "injectors": {
   "defaultRequire": 1

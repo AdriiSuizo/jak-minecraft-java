@@ -18,7 +18,7 @@ public final class JakPlayers {
     private static final Set<UUID> CONTROLLED=new HashSet<>();
     private static final Map<UUID,JakPackets.Input> PROBE_INPUT=new HashMap<>();
     public static void controlForProbe(ServerPlayer player,boolean controlled){if(controlled){CONTROLLED.add(player.getUUID());probeInput(player,0,0,0);}else{CONTROLLED.remove(player.getUUID());PROBE_INPUT.remove(player.getUUID());}}
-    public static void probeInput(ServerPlayer p,int held,int pressed,float forward){PROBE_INPUT.put(p.getUUID(),new JakPackets.Input(0,held,pressed,0,forward,p.getYRot(),p.getXRot(),0,0));}
+    public static void probeInput(ServerPlayer p,int held,int pressed,float forward){PROBE_INPUT.put(p.getUUID(),new JakPackets.Input(0,held,pressed,0,forward,0,0,p.getYRot(),p.getXRot(),0,0));}
     private static final Map<UUID,Session> LIVE=new HashMap<>();
     private static final Map<net.minecraft.world.level.block.state.BlockState,Integer> FLOOR_SOUNDS=new IdentityHashMap<>();
     private static final class Session implements AutoCloseable {
@@ -27,7 +27,7 @@ public final class JakPlayers {
         Vec3 origin;
         String dimension;
         Vec3 last;
-        JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0);
+        JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0,0,0);
         int pressed;
         long lastInput;
         Session(ServerPlayer player){nativeId=NativeJak.create(player.getYRot());origin=player.position();last=origin;dimension=player.level().dimension().identifier().toString();collision=new MinecraftCollision.Query(player.level(),player,origin);NativeJak.bindWorld(nativeId,collision);}
@@ -67,7 +67,7 @@ public final class JakPlayers {
         ByteBuffer b=NativeJak.buffer(64);
         b.putInt(fresh?input.held():0).putInt(fresh?(controlled?input.pressed():s.pressed):0);
         b.putFloat(fresh?input.strafe():0).putFloat(fresh?input.forward():0);
-        b.putFloat(0).putFloat(0).putFloat(input.brake()).putFloat(input.throttle());
+        b.putFloat(fresh?input.rightX():0).putFloat(fresh?input.rightY():0).putFloat(fresh?input.brake():0).putFloat(fresh?input.throttle():0);
         b.putFloat(input.yaw()).putFloat(input.pitch());
         float water=waterSurface(p,s.origin);
         float speed=(float)(p.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED)/.1);
@@ -88,7 +88,7 @@ public final class JakPlayers {
         Vec3 position=vector(pose.getAsJsonArray("pos")).add(s.origin);
         if(!Double.isFinite(position.x)||!Double.isFinite(position.y)||!Double.isFinite(position.z))throw new IllegalStateException("Nonfinite Jak pose");
         p.setPos(position);p.setDeltaMovement(Vec3.ZERO);p.setOnGround((pose.get("status").getAsInt()&2)!=0);p.resetFallDistance();
-        p.setYBodyRot(pose.get("yaw").getAsFloat());s.last=position;s.pressed=0;
+        p.setYRot(input.yaw());p.setXRot(input.pitch());p.setYBodyRot(pose.get("yaw").getAsFloat());s.last=position;s.pressed=0;
         if(controlled)probeInput(p,input.held(),0,input.forward());
         setEco(p,JakData.DARK_ECO,pose.get("darkEco").getAsFloat());setEco(p,JakData.LIGHT_ECO,pose.get("lightEco").getAsFloat());
         for(int i=0;i<4;i++)setEco(p,JakData.AMMO.get(i),pose.getAsJsonArray("ammo").get(i).getAsFloat());
