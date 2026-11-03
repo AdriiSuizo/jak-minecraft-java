@@ -1,7 +1,7 @@
 package dev.jakmc.nativebridge;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
+import java.util.Arrays;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
@@ -16,35 +16,41 @@ public final class MinecraftCollision {
     public static final class Query {
         final Level level;final Entity actor;public Vec3 origin;
         long tick=Long.MIN_VALUE;
+        final DirectBufferArena arena=new DirectBufferArena(16*1024*1024);
+        final Boxes boxes=new Boxes();
         private record Region(int x,int y,int z,int X,int Y,int Z){}
         final java.util.Map<Region,ByteBuffer> cache=new java.util.LinkedHashMap<>();
         public Query(Level level,Entity actor,Vec3 origin){this.level=level;this.actor=actor;this.origin=origin;}
         public ByteBuffer triangles(float x,float y,float z,float X,float Y,float Z){
             if(!Float.isFinite(x)||!Float.isFinite(y)||!Float.isFinite(z)||!Float.isFinite(X)||!Float.isFinite(Y)||!Float.isFinite(Z))throw new IllegalArgumentException("Nonfinite collision query");
-            if(tick!=level.getGameTime()){cache.clear();tick=level.getGameTime();}
+            if(tick!=level.getGameTime()){cache.clear();arena.reset();tick=level.getGameTime();}
             Region r=new Region((int)Math.floor(origin.x+x-.01),(int)Math.floor(origin.y+y-.01),(int)Math.floor(origin.z+z-.01),(int)Math.ceil(origin.x+X+.01),(int)Math.ceil(origin.y+Y+.01),(int)Math.ceil(origin.z+Z+.01));
             return cache.computeIfAbsent(r,key->{
                 long volume=(long)(key.X-key.x+1)*(key.Y-key.y+1)*(key.Z-key.z+1);
                 if(volume<0||volume>262144)throw new IllegalArgumentException("Collision query volume exceeds native budget: "+volume);
-                return MinecraftCollision.triangles(level,actor,origin,new AABB(key.x,key.y,key.z,key.X,key.Y,key.Z));
+                return MinecraftCollision.triangles(level,actor,origin,new AABB(key.x,key.y,key.z,key.X,key.Y,key.Z),boxes,arena);
             });
         }
     }
-    public static ByteBuffer triangles(Level level, Entity actor, Vec3 origin, AABB region) {
-        var boxes=new ArrayList<AABB>();
-        for(BlockPos pos:BlockPos.betweenClosed(BlockPos.containing(region.minX,region.minY,region.minZ),BlockPos.containing(region.maxX,region.maxY,region.maxZ))) {
-            // An unloaded column is a temporary wall, never air beneath a fast vehicle.
-            if (!level.hasChunkAt(pos)) { boxes.add(new AABB(pos)); continue; }
-            var state=level.getBlockState(pos);
-            state.getCollisionShape(level,pos,CollisionContext.of(actor)).forAllBoxes((x0,y0,z0,x1,y1,z1)->
-                boxes.add(new AABB(x0+pos.getX(),y0+pos.getY(),z0+pos.getZ(),x1+pos.getX(),y1+pos.getY(),z1+pos.getZ())));
-        }
-        ByteBuffer data=NativeJak.buffer(Math.multiplyExact(boxes.size(),480));
-        for(AABB box:boxes)box(data,box.move(-origin.x,-origin.y,-origin.z));
-        return data;
+    private static final class Boxes {
+        float[] values=new float[384];int used;
+        void add(double x,double y,double z,double X,double Y,double Z){if(used+6>values.length)values=Arrays.copyOf(values,values.length*2);values[used++]=(float)x;values[used++]=(float)y;values[used++]=(float)z;values[used++]=(float)X;values[used++]=(float)Y;values[used++]=(float)Z;}
     }
-    private static void box(ByteBuffer b,AABB a) {
-        float x=(float)a.minX,y=(float)a.minY,z=(float)a.minZ,X=(float)a.maxX,Y=(float)a.maxY,Z=(float)a.maxZ;
+    public static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region){return triangles(level,actor,origin,region,new Boxes(),null);}
+    private static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region,Boxes boxes,DirectBufferArena arena){
+        boxes.used=0;var context=CollisionContext.of(actor);
+        for(BlockPos pos:BlockPos.betweenClosed(BlockPos.containing(region.minX,region.minY,region.minZ),BlockPos.containing(region.maxX,region.maxY,region.maxZ))){
+            double x=pos.getX(),y=pos.getY(),z=pos.getZ();
+            // A missing column remains solid, never air beneath fast-moving actors.
+            if(!level.hasChunkAt(pos)){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z);continue;}
+            var shape=level.getBlockState(pos).getCollisionShape(level,pos,context);
+            if(shape==net.minecraft.world.phys.shapes.Shapes.block()){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z);}
+            else if(!shape.isEmpty())shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->boxes.add(x0+x-origin.x,y0+y-origin.y,z0+z-origin.z,x1+x-origin.x,y1+y-origin.y,z1+z-origin.z));
+        }
+        int bytes=Math.multiplyExact(boxes.used/6,480);ByteBuffer data=arena==null?NativeJak.buffer(bytes):arena.acquire(bytes);
+        for(int i=0;i<boxes.used;i+=6)box(data,boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);return data;
+    }
+    private static void box(ByteBuffer b,float x,float y,float z,float X,float Y,float Z){
         face(b,0,x,Y,z,x,Y,Z,X,Y,Z,X,Y,z);
         face(b,1,x,y,z,X,y,z,X,y,Z,x,y,Z);
         face(b,1,x,y,z,x,y,Z,x,Y,Z,x,Y,z);
@@ -52,15 +58,12 @@ public final class MinecraftCollision {
         face(b,1,X,y,z,x,y,z,x,Y,z,X,Y,z);
         face(b,1,x,y,Z,X,y,Z,X,Y,Z,x,Y,Z);
     }
-    private static void face(ByteBuffer b,int flags,float... q) {
-        for(int i:new int[]{0,1,2,0,2,3}) {
-            b.putFloat(q[i*3]).putFloat(q[i*3+1]).putFloat(q[i*3+2]);
-            if(b.position()%40==36)b.putInt(flags);
-        }
-    }
-    public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region) {
+    private static void face(ByteBuffer b,int flags,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz,float dx,float dy,float dz){triangle(b,flags,ax,ay,az,bx,by,bz,cx,cy,cz);triangle(b,flags,ax,ay,az,cx,cy,cz,dx,dy,dz);}
+    private static void triangle(ByteBuffer b,int flags,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz){b.putFloat(ax).putFloat(ay).putFloat(az).putFloat(bx).putFloat(by).putFloat(bz).putFloat(cx).putFloat(cy).putFloat(cz).putInt(flags);}
+    public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region){return actors(level,owner,origin,region,null);}
+    public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region,DirectBufferArena arena) {
         var entities=level.getEntities(owner,region,e->e.isAlive()&&e.isPickable());
-        ByteBuffer data=NativeJak.buffer(entities.size()*32);
+        ByteBuffer data=arena==null?NativeJak.buffer(entities.size()*32):arena.acquire(entities.size()*32);
         for(Entity e:entities){AABB b=e.getBoundingBox().move(-origin.x,-origin.y,-origin.z);data.putLong(e.getId());
             data.putFloat((float)b.minX).putFloat((float)b.minY).putFloat((float)b.minZ);
             data.putFloat((float)b.maxX).putFloat((float)b.maxY).putFloat((float)b.maxZ);

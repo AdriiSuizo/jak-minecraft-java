@@ -24,6 +24,8 @@ public final class JakPlayers {
     private static final class Session implements AutoCloseable {
         final long nativeId;
         final MinecraftCollision.Query collision;
+        final ByteBuffer controls=NativeJak.buffer(64),noTriangles=NativeJak.buffer(0);
+        final DirectBufferArena actorBuffers=new DirectBufferArena(1024*1024);
         Vec3 origin;
         String dimension;
         Vec3 last;
@@ -64,7 +66,7 @@ public final class JakPlayers {
         boolean controlled=CONTROLLED.contains(p.getUUID());
         var input=controlled?PROBE_INPUT.get(p.getUUID()):s.input;
         boolean fresh=controlled||p.level().getGameTime()-s.lastInput<=5;
-        ByteBuffer b=NativeJak.buffer(64);
+        ByteBuffer b=s.controls.clear();
         b.putInt(fresh?input.held():0).putInt(fresh?(controlled?input.pressed():s.pressed):0);
         b.putFloat(fresh?input.strafe():0).putFloat(fresh?input.forward():0);
         b.putFloat(fresh?input.rightX():0).putFloat(fresh?input.rightY():0).putFloat(fresh?input.brake():0).putFloat(fresh?input.throttle():0);
@@ -81,8 +83,8 @@ public final class JakPlayers {
         b.putInt(flags).putFloat(p.getAttachedOrCreate(JakData.DARK_ECO)).putFloat(p.getAttachedOrCreate(JakData.LIGHT_ECO));
         b.putInt(JakItems.GUNS.indexOf(p.getMainHandItem().getItem()));
         AABB region=p.getBoundingBox().inflate(6,5,6);
-        var triangles=NativeJak.buffer(0); // Queries use the live Minecraft shape callback.
-        var actors=MinecraftCollision.actors(p.level(),p,s.origin,region.inflate(256));
+        var triangles=s.noTriangles; // Queries use the live Minecraft shape callback.
+        s.actorBuffers.reset();var actors=MinecraftCollision.actors(p.level(),p,s.origin,region.inflate(256),s.actorBuffers);
         NativeJak.setStats(s.nativeId,p.getHealth()/p.getMaxHealth(),p.getAttachedOrCreate(JakData.AMMO.get(0)),p.getAttachedOrCreate(JakData.AMMO.get(1)),p.getAttachedOrCreate(JakData.AMMO.get(2)),p.getAttachedOrCreate(JakData.AMMO.get(3)));
         JsonObject pose=JsonParser.parseString(NativeJak.step(s.nativeId,b,triangles,actors,3)).getAsJsonObject();
         Vec3 position=vector(pose.getAsJsonArray("pos")).add(s.origin);
