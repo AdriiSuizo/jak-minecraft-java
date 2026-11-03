@@ -176,6 +176,7 @@ def material_resources(definitions):
         else:tool='pickaxe'
         if tool:tags[tool].append('jak:'+path)
         translations['block.jak.'+path]=row.get('title',path.replace('_',' ').replace('-',' ').capitalize())
+    tags["pickaxe"].extend(f"jakmc:vent_{color}" for color in ("red","yellow","blue","green","dark","light"))
     # Optional entries allow the block catalogue to grow without invalidating the vanilla tool tags.
     target=DEST/'data/minecraft/tags/block/mineable'
     target.mkdir(parents=True,exist_ok=True)

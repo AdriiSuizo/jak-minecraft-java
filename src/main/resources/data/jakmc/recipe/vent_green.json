@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:iron_ingot",
+    "minecraft:iron_ingot",
+    "minecraft:iron_ingot",
+    "minecraft:emerald_block",
+    "jakmc:green_eco",
+    "jakmc:green_eco",
+    "jakmc:green_eco",
+    "jakmc:green_eco"
+  ],
+  "result": {
+    "id": "jakmc:vent_green"
+  }
+}

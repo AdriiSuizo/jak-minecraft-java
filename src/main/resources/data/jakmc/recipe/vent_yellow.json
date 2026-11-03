@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:iron_ingot",
+    "minecraft:iron_ingot",
+    "minecraft:iron_ingot",
+    "minecraft:gold_block",
+    "jakmc:yellow_ammo",
+    "jakmc:yellow_ammo",
+    "jakmc:yellow_ammo",
+    "jakmc:yellow_ammo"
+  ],
+  "result": {
+    "id": "jakmc:vent_yellow"
+  }
+}

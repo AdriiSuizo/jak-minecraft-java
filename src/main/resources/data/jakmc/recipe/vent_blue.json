@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:iron_ingot",
+    "minecraft:iron_ingot",
+    "minecraft:iron_ingot",
+    "minecraft:lapis_block",
+    "jakmc:blue_ammo",
+    "jakmc:blue_ammo",
+    "jakmc:blue_ammo",
+    "jakmc:blue_ammo"
+  ],
+  "result": {
+    "id": "jakmc:vent_blue"
+  }
+}

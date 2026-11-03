@@ -29,6 +29,16 @@ public final class JakItems {
         }
     });
     public static final Item SKULL_GEM=register("skull_gem",Item::new);
+    public static final Item GREEN_ECO=register("green_eco",p->new Item(p){
+        @Override public InteractionResult use(Level level,Player player,InteractionHand hand){
+            if(player.getHealth()>=player.getMaxHealth())return InteractionResult.PASS;
+            if(!level.isClientSide()){
+                player.setHealth(player.getMaxHealth());
+                player.getItemInHand(hand).consume(1,player);
+            }
+            return InteractionResult.SUCCESS;
+        }
+    });
     public static final Item DARK_ECO=eco("dark_eco",false);
     public static final Item LIGHT_ECO=eco("light_eco",true);
     public static final List<Item> AMMUNITION=List.of(ammo("red",0,50),ammo("yellow",1,100),ammo("blue",2,100),ammo("dark",3,20));

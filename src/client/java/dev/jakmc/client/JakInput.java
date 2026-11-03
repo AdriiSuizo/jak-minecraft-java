@@ -74,6 +74,7 @@ public final class JakInput {
             return state.getMenuProvider(c.level,hit.getBlockPos())!=null
                 ||block instanceof net.minecraft.world.level.block.DoorBlock
                 ||block instanceof net.minecraft.world.level.block.TrapDoorBlock
+                ||block instanceof dev.jakmc.content.JakEcoVent
                 ||block instanceof dev.jakmc.content.JakKrimsonGate
                 ||block instanceof net.minecraft.world.level.block.FenceGateBlock
                 ||block instanceof net.minecraft.world.level.block.ButtonBlock

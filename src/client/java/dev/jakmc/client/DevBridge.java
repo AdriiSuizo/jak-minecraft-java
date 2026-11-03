@@ -73,6 +73,8 @@ public final class DevBridge {
                 case "cars_scene" -> {CarScene.start(client,false);out.addProperty("scheduled",true);}
                 case "track_scene" -> {TrackScene.start(client);out.addProperty("scheduled",true);}
                 case "altar_scene" -> {AltarScene.start(client);out.addProperty("scheduled",true);}
+                case "weather_scene" -> {WeatherScene.start(client);out.addProperty("scheduled",true);}
+                case "vents_scene" -> {VentScene.start(client);out.addProperty("scheduled",true);}
                 case "materials_scene" -> {MaterialScene.start(client);out.addProperty("scheduled",true);}
                 case "hellcat_scene","helldog_scene" -> {InputScene.startHellcat(client,op.equals("helldog_scene"));out.addProperty("scheduled",true);}
                 case "hellcat_crossing_scene" -> {

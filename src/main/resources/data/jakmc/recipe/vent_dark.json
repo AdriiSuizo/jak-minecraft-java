@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:obsidian",
+    "minecraft:obsidian",
+    "minecraft:obsidian",
+    "minecraft:diamond",
+    "jakmc:dark_eco",
+    "jakmc:dark_eco",
+    "jakmc:dark_eco",
+    "jakmc:dark_eco"
+  ],
+  "result": {
+    "id": "jakmc:vent_dark"
+  }
+}

@@ -16,7 +16,9 @@
     "JakControllerUseMixin",
     "GemItemRendererMixin",
     "GemCollectMixin",
-    "CitizenRenderStateMixin"
+    "CitizenRenderStateMixin",
+    "JakAtmosphericFogMixin",
+    "JakAtmosphericSkyMixin"
   ],
   "injectors": {
     "defaultRequire": 1

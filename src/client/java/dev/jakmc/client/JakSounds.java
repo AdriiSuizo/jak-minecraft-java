@@ -15,12 +15,14 @@ import java.util.*;
 public final class JakSounds {
  private record Key(int owner,String name){}
  private static final Map<Key,Loop> LOOPS=new HashMap<>();
- private static final Map<BlockPos,BarrelLoop> BARRELS=new HashMap<>();
+ private static final Map<BlockPos,SceneryLoop> BARRELS=new HashMap<>(),VENTS=new HashMap<>();
+ private static WeatherLoop stormWind;
  public static long played;
  public static void initialize(){
   ClientTickEvents.END_CLIENT_TICK.register(c->{
    LOOPS.entrySet().removeIf(e->e.getValue().isStopped());
-   BARRELS.values().removeIf(BarrelLoop::isStopped);
+   BARRELS.values().removeIf(SceneryLoop::isStopped);
+   VENTS.values().removeIf(SceneryLoop::isStopped);
    if(c.level!=null&&c.player!=null)for(var entity:c.level.entitiesForRendering()){
     if(entity instanceof dev.jakmc.entity.JakHellcat cat&&cat.distanceToSqr(c.player)<64*64)vehicle(cat);
     if(entity instanceof dev.jakmc.entity.JakVehicle car&&car.distanceToSqr(c.player)<40*40){
@@ -33,7 +35,7 @@ public final class JakSounds {
   ClientPlayConnectionEvents.DISCONNECT.register((handler,c)->clear());
  }
  private static SoundEvent event(String name){
-  String path=name.startsWith("jak1:")?"sfx/jak1/"+name.substring(5):name.startsWith("jak2:")?"sfx/jak2/"+name.substring(5):"sfx/"+name;
+  String path=name.startsWith("jak1:")?"sfx/jak1/"+name.substring(5):name.startsWith("jak2:")?"sfx/jak2/"+name.substring(5):name.startsWith("jak3:")?"sfx/jak3/"+name.substring(5):"sfx/"+name;
   return SoundEvent.createVariableRangeEvent(JakData.id(path.toLowerCase(Locale.ROOT).replace('-','_')));
  }
  public static void receive(int owner,Vec3 origin,JsonObject packet){
@@ -72,29 +74,57 @@ public final class JakSounds {
  }
  static void barrel(BlockPos pos,Vec3 listener){
   if(Vec3.atCenterOf(pos).distanceToSqr(listener)>12*12||BARRELS.containsKey(pos))return;
-  var loop=new BarrelLoop(pos);
+  var loop=new SceneryLoop(pos,null);
   BARRELS.put(pos,loop);
   Minecraft.getInstance().getSoundManager().play(loop);
  }
+ static void vent(BlockPos pos,dev.jakmc.content.JakEcoVent.Color color,Vec3 listener){
+  if(Vec3.atCenterOf(pos).distanceToSqr(listener)>12.8*12.8||VENTS.containsKey(pos))return;
+  var loop=new SceneryLoop(pos,color);
+  VENTS.put(pos,loop);
+  Minecraft.getInstance().getSoundManager().play(loop);
+ }
+ static void stormWind(float gain){
+  var client=Minecraft.getInstance();
+  if(gain<.02f){
+   if(stormWind!=null){stormWind.end();stormWind=null;}
+  }else if(stormWind==null||stormWind.isStopped()){
+   stormWind=new WeatherLoop(gain);client.getSoundManager().play(stormWind);
+  }else stormWind.gain=gain;
+ }
+ private static final class WeatherLoop extends AbstractTickableSoundInstance {
+  float gain;
+  WeatherLoop(float gain){
+   super(event("jak3:desert1/storm_wind"),SoundSource.WEATHER,SoundInstance.createUnseededRandom());
+   this.gain=gain;volume=gain;looping=true;relative=true;attenuation=SoundInstance.Attenuation.NONE;
+  }
+  @Override public void tick(){volume+=(gain-volume)*.25f;}
+  void end(){stop();}
+ }
  public static void clear(){
+  stormWind(0);
   for(var loop:LOOPS.values())loop.end();LOOPS.clear();
   for(var loop:BARRELS.values())loop.end();BARRELS.clear();
+  for(var loop:VENTS.values())loop.end();VENTS.clear();
  }
- private static final class BarrelLoop extends AbstractTickableSoundInstance {
+ private static final class SceneryLoop extends AbstractTickableSoundInstance {
   final BlockPos position;
-  BarrelLoop(BlockPos pos){
-   super(SoundEvent.createVariableRangeEvent(JakData.id("sfx/jak3/genbamb/can_fire")),
+  final dev.jakmc.content.JakEcoVent.Color color;
+  SceneryLoop(BlockPos pos,dev.jakmc.content.JakEcoVent.Color color){
+   super(color==null?SoundEvent.createVariableRangeEvent(JakData.id("sfx/jak3/genbamb/can_fire")):event(color.ambient()),
        SoundSource.BLOCKS,SoundInstance.createUnseededRandom());
-   position=pos.immutable();looping=true;delay=0;
-   x=pos.getX()+.5;y=pos.getY()+.80;z=pos.getZ()+.5;
+   position=pos.immutable();this.color=color;looping=true;delay=0;
+   x=pos.getX()+.5;y=pos.getY()+(color==null?.80:.32);z=pos.getZ()+.5;
    volume=.24f;
   }
   void end(){stop();}
   @Override public void tick(){
    var client=Minecraft.getInstance();
    if(client.level==null||!client.level.hasChunkAt(position)
-       ||!(client.level.getBlockEntity(position) instanceof dev.jakmc.content.JakProps.FireBarrel)
-       ||Vec3.atCenterOf(position).distanceToSqr(client.gameRenderer.mainCamera().position())>16*16)stop();
+       ||Vec3.atCenterOf(position).distanceToSqr(client.gameRenderer.mainCamera().position())>16*16){stop();return;}
+   var entity=client.level.getBlockEntity(position);
+   if(color==null&&!(entity instanceof dev.jakmc.content.JakProps.FireBarrel)
+       ||color!=null&&(!(entity instanceof dev.jakmc.content.JakEcoVent.Vent vent)||vent.color()!=color||!vent.open()))stop();
   }
  }
  private static final class Loop extends AbstractTickableSoundInstance {

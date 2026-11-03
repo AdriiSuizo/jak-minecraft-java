@@ -24,6 +24,7 @@ public final class InputScene {
   if(view!=null)return view;
   if(ScaleScene.camera()!=null)return ScaleScene.camera();
   if(CityScene.camera()!=null)return CityScene.camera();
+  if(VentScene.camera()!=null)return VentScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
   var track=TrackScene.camera();
   if(track!=null)return track;

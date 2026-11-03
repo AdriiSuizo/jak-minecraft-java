@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/eco_vent",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "templed/dark-eco-vent-lod0.glb",
+      "clip": "dark-eco-vent-close-open",
+      "scale": 0.3
+    }
+  }
+}

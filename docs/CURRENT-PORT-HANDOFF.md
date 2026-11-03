@@ -1,6 +1,6 @@
 # Jak → real Minecraft Java: current implementation
 
-Updated 2026-11-03. Continue the full Jak port from the read-only original Rust mashup. Do not repeat recon or the accepted enemy/weapon takes without a relevant change. No MW2 content or Skate 3; Jak's JET-Board remains in scope. The user wants complete mechanics, effects, sound and normal Minecraft interaction, not only models.
+Updated 2026-11-04. Continue the full Jak port from the read-only original Rust mashup. Do not repeat recon or the accepted enemy/weapon takes without a relevant change. No MW2 content or Skate 3; Jak's JET-Board remains in scope. The user wants complete mechanics, effects, sound and normal Minecraft interaction, not only models.
 
 ## Projects and ownership
 
@@ -33,18 +33,13 @@ Read MODLOG.md for failures and exact receipts, not only successes.
 - `.local/evidence/rings-20261103-080639`: corrected soft continuous annuli visually reviewed, normal save/exit.
 - `tools/run_scene.py --scene ...` is bounded, bridge driven, uses no OS input. Its dev-only camera override is active only during WeaponScene or InputScene eco closeups. Movement checks use the real gameplay camera. Avoid leaving idle windows. DevBridge archives stale requests on startup.
 
-## Still substantial work — not delivered yet
+## Remaining parity work
 
-1. Three Haven citizen appearances now decorate canonical native villagers (see checkpoint below). Original civilian dialogue/voices and further civilian pose/behavior variants, guards/factions, fauna and mounts remain. Enemy special projectile attacks, articulated ragdolls, all original variants and source-specific responses are not complete.
-2. Zoomers and Jak 3 cars: host entities, controls, seats/entry/exit, collision streaming, wheels/suspension, lights, unlimited/air boost and save lifecycle. The blue HellCat is playable. Its longer flight profile, damage/destruction polish and remaining variants have separate acceptance. Zoom.rs is the gun camera zoom helper, not a zoomer vehicle implementation.
-3. World generation Haven/Spargus/tower/palace/bar/props and functional blocks. Catalog/JBP export exists, but JakBlocks is deliberately not initialized: shapes/doors/light semantics are incomplete, and layered stone currently derives SnowLayerBlock (would melt). Implement proper native MC mechanics before enabling. No normal-world city generation yet. Spargus desert-only and town surrounding the tower remain requirements.
-4. Skull-gem integration now has original animated layers, emissive material, attached halo, source deployment/bounce/suction and collect FX/cues; details and accepted takes below. Remaining pickup work includes other collectable/vent/crate families and eco-specific behaviors beyond current auto-pickup/rendering. Eco groups render, light eco scale .25; four dropped angles and hand variants previously reviewed. Original generic envmap rendering is still a broader material-system gap.
-5. Complete Wave mesh/scorch/warp, screen distortion/heat haze, terrain-projected gravity shadows, more source particle libraries. Current gravity rings are planar like the old adapter; original shadow projection is not implemented.
-6. Daxter eyes/cloth and full source pose selection, generic held item material/attachment refinements, host survival/knockback/portal/pressure-plate coherence, ladder/rail metadata for native movement.
-7. Controller GUI cursor/grid navigation and the user's vehicle R2 throttle/L2 brake-reverse/X height/HellCat action/Square handbrake layout remain. On-foot SDL control, both sticks, analog triggers, button edges, Triangle vanilla use, perspectives, inventory open/close and hotbar are integrated; see CONTROLES.md.
-8. Camera occlusion refinement, dialogue/music, long-biome vehicle profiling and 150 FPS target. Do not claim those from startup FPS or simulation unit checks.
-
-Continue with substantive integration, keeping source-oracle mechanics and actual Minecraft entity/block lifecycle together. Existing tests are evidence to reuse, not a reason to restart the audit.
+- Source-specific enemy behavior and recoveries, articulated falls, remaining creature variants and ambient cues. Krimson patrols and combat, Spargus inhabitants and monks, Leaper and Flut Flut are already integrated and have separate evidence below.
+- Original terrain/city catalogue and palette substitutions, more native interactable props and remaining crates. Haven/Spargus/tower/bar/garage, both HellCat variants, six Zoomers, Saltadunas, Arenatiburon, gate, altar and solid skate geometry already enter through the normal world and native game systems.
+- Wave presentation, material environment maps, cloth, screen distortion, projected shadows, original dialogue/music, precipitation and remaining particle libraries.
+- Controller navigation through native inventory, creative and trade screens. Vehicle analog controls, independent board equipment, R3 powers and L2 aim already work through SDL.
+- Final camera occlusion and long-distance terrain and tower LOD. Previous 12-biome HellCat traversal measured 128 median FPS. The 150 FPS target remains unverified.
 
 ## 2026-11-03 controller / eco checkpoint
 
@@ -215,3 +210,10 @@ Final Gradle build: `.local/citizens-final-build2.log` (28s), `.local/citizens-b
 - Wastelanders now defend themselves and nearby streets through the original takeout, raise, turn, aim, shoot, lower and melee clips. The female moves her gun between the original holster and firing attachment on art-group events. Monks use the authored kick retargeted to their own rig on foot. Minecraft retains health, damage attribution, trade and sleeping.
 - The shots share the original guard-projectile effect and swept native hit logic. Both Wastelander muzzle points are sampled from the source gunblast joint at event-shoot. The owned WASCITY1 bank supplies the individual Wastelander shots and movement cues, including the seven variants exposed by the WLANDER_FIRE alias.
 - Accepted .local/evidence/cities-20261104-001649. A resident in generated Spargus fired and eliminated a 12.5-health threat. The city retained its two mounted monk patrols. Haven's 12 guard routes, shots, retaliation and drops passed again. The visible shot was reviewed in the city capture.
+
+## 2026-11-04 eco vents and Wasteland weather
+
+- Six native craftable sources share Minecraft block placement, persistence, mining, and light. The four Jak I vents use the original particle launchers and collection effects. Light and dark use the original Jak 3 model and animated lid inside a single cell, with shallow solid collision. Triangle/right click toggles the flow. Three original Ground Pound impact events close and sink the source. The green icon uses the Rust port's procedural orb.
+- `.local/evidence/vents-20261104-004112`: all six placed with their BlockItems, five red rounds, light charge and close, green heal, three-hit dark removal and 6804 rendered effect vertices. The fixture invokes the Ground Pound event handler at the impact point. It does not replay the controller move itself. Normal save and shutdown. A prior fixture's short teleport occasionally collided with the guest's existing pose; repositioned its setup beyond the guest teleport threshold.
+- The original time-of-day palettes blend across neighbouring biomes using Minecraft's normal weather clock. Sandstorms use original desert launchers 1439/1443 with the authored wind and original DESERT1 audio. Close range keeps clear. Shelter reduces the wind and dust, and vanilla liquid, darkness, blindness and night vision retain their fog. Server lighting and spawning rules stay native. Vanilla rain/snow visuals still supply precipitation.
+- `.local/evidence/weather-20261104-004457`: real desert from a normal world. Fog distance scale 0.726 clear, 0.1008 during the storm and 0.72 after it cleared. Peak 208 sand vertices, storm image inspected and clean shutdown. Wind uses the locally imported source bank. This run did not capture audio or timed FPS.

@@ -26,15 +26,19 @@ public final class JakEffects {
  private record Decoration(BlockPos pos,int kind){}
  private static final Map<Decoration,Owner> DECORATIONS=new HashMap<>();
  private static final List<Owner> BURSTS=new ArrayList<>();
- private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2;
+ private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18;
+ private static Owner sandstorm;
+ private static net.minecraft.client.multiplayer.ClientLevel weatherWorld;
+ private static long lastDust;
  private static final Map<Integer,Identifier> TEXTURES=new HashMap<>();
  private static final Set<Integer> MISSING=new HashSet<>();
  private static String[] names;
  private static final ByteBuffer VIEW=NativeJak.buffer(44),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
  public static long gemCollectBursts;
- public static int drawnVertices,drawnLightningVertices,drawnDarkVertices,drawnBarrelVertices,drawnProjectorVertices,drawnBurstVertices;
+ public static int drawnVertices,drawnLightningVertices,drawnDarkVertices,drawnBarrelVertices,drawnProjectorVertices,drawnBurstVertices,drawnVentVertices,drawnSandVertices;
  private static final class Owner implements AutoCloseable {
   final long handle;final Vec3 origin;long received=System.nanoTime(),lastDraw;
+  int collector=-1;long pickupAt=Long.MIN_VALUE;boolean pickupStart;
   Owner(Vec3 origin,long handle){this.origin=origin;this.handle=handle;}
   public void close(){NativeJak.fxDestroy(handle);}
  }
@@ -66,7 +70,7 @@ public final class JakEffects {
   fx.received=System.nanoTime();
  }
  public static void local(int entity,Vec3 origin,JsonArray commands){JsonObject packet=new JsonObject();packet.add("effects",commands);receive(entity,origin,packet);}
- public static void clear(){for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
+ public static void clear(){closeSandstorm();weatherWorld=null;for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
  private static Identifier texture(int index){
   if(TEXTURES.containsKey(index))return TEXTURES.get(index);if(MISSING.contains(index))return null;
   String name=names[index];
@@ -137,15 +141,24 @@ public final class JakEffects {
     int kind,range;
     if(entry.getValue() instanceof JakProps.FireBarrel){kind=BARREL;range=24;}
     else if(entry.getValue() instanceof JakProps.Projector){kind=PROJECTOR;range=36;}
-    else continue;
+    else if(entry.getValue() instanceof dev.jakmc.content.JakEcoVent.Vent vent&&vent.open()){
+     int color=vent.color().ordinal();
+     kind=10+color+(vent.color().model()&&vent.touched()?2:0);
+     range=24;
+     JakSounds.vent(pos,vent.color(),focus);
+    }else continue;
     if(focus.distanceToSqr(Vec3.atCenterOf(pos))>range*range)continue;
     var key=new Decoration(pos,kind);
     visible.add(key);
     if(kind==BARREL)JakSounds.barrel(pos,focus);
-    DECORATIONS.computeIfAbsent(key,decoration->{
+    var fx=DECORATIONS.computeIfAbsent(key,decoration->{
      long handle=NativeJak.fxCreateDecor(decoration.kind());
-     return handle==0?null:new Owner(Vec3.atBottomCenterOf(pos).add(0,kind==BARREL?.94:1.01,0),handle);
+     return handle==0?null:new Owner(Vec3.atBottomCenterOf(pos).add(0,kind==BARREL?.94:kind==PROJECTOR?1.01:.30,0),handle);
     });
+    if(fx!=null&&kind>=10&&kind<=13&&entry.getValue() instanceof dev.jakmc.content.JakEcoVent.Vent vent
+        &&vent.pickupEntity>=0&&vent.pickupTime!=fx.pickupAt&&client.level.getGameTime()-vent.pickupTime<=15){
+     fx.collector=vent.pickupEntity;fx.pickupAt=vent.pickupTime;fx.pickupStart=true;
+    }
    }
   }
   DECORATIONS.entrySet().removeIf(entry->{
@@ -155,11 +168,31 @@ public final class JakEffects {
   });
  }
  private static void submit(LevelRenderContext context){
-  drawnVertices=0;drawnLightningVertices=0;drawnDarkVertices=0;drawnBarrelVertices=0;drawnProjectorVertices=0;drawnBurstVertices=0;
-  var client=Minecraft.getInstance();if(client.level==null||OWNERS.isEmpty()&&DECORATIONS.isEmpty()&&BURSTS.isEmpty())return;
+  drawnVertices=0;drawnLightningVertices=0;drawnDarkVertices=0;drawnBarrelVertices=0;drawnProjectorVertices=0;drawnBurstVertices=0;drawnVentVertices=0;
+  drawnSandVertices=0;
+  var client=Minecraft.getInstance();
+  if(client.level!=weatherWorld){closeSandstorm();weatherWorld=client.level;}
+  float dust=JakAtmosphere.dust();
+  if(client.level==null||OWNERS.isEmpty()&&DECORATIONS.isEmpty()&&BURSTS.isEmpty()&&sandstorm==null&&dust<=.01f)return;
   manifest();
   var camera=context.levelState().cameraRenderState;long now=System.nanoTime();drawnVertices=0;
   Vector3f forward=camera.orientation.transform(new Vector3f(0,0,-1)),up=camera.orientation.transform(new Vector3f(0,1,0));
+  if(dust>.01f){
+   lastDust=now;
+   if(sandstorm!=null&&sandstorm.origin.distanceToSqr(camera.pos)>80*80)closeSandstorm();
+   if(sandstorm==null){
+    long handle=NativeJak.fxCreateDecor(SANDSTORM);
+    if(handle!=0)sandstorm=new Owner(camera.pos,handle);
+   }
+  }
+  if(sandstorm!=null){
+   if(now-lastDust>6_000_000_000L)closeSandstorm();
+   else{
+    NativeJak.fxSandstorm(sandstorm.handle,dust);
+    drawOwner(context,client,sandstorm,forward,up,now);
+    drawnSandVertices=drawnVertices;
+   }
+  }
   var it=OWNERS.entrySet().iterator();
   while(it.hasNext()){
    var entry=it.next();Owner fx=entry.getValue();
@@ -168,9 +201,21 @@ public final class JakEffects {
   }
   for(var entry:DECORATIONS.entrySet()){
    int before=drawnVertices;
-   drawOwner(context,client,entry.getValue(),forward,up,now);
-   if(entry.getKey().kind()==BARREL)drawnBarrelVertices+=drawnVertices-before;
-   else drawnProjectorVertices+=drawnVertices-before;
+   var fx=entry.getValue();int kind=entry.getKey().kind();
+   if(fx.collector>=0){
+    var collector=client.level.getEntity(fx.collector);
+    if(collector!=null&&client.level.getGameTime()-fx.pickupAt<=20){
+     Vec3 position=collector==client.player?JakPoses.presented():null;
+     if(position==null)position=collector.position();
+     var target=position.add(0,collector.getBbHeight()*.57,0).subtract(fx.origin);
+     NativeJak.fxVentPickup(fx.handle,(float)target.x,(float)target.y,(float)target.z,kind-10,fx.pickupStart);
+     fx.pickupStart=false;
+    }else fx.collector=-1;
+   }
+   drawOwner(context,client,fx,forward,up,now);
+   if(kind==BARREL)drawnBarrelVertices+=drawnVertices-before;
+   else if(kind==PROJECTOR)drawnProjectorVertices+=drawnVertices-before;
+   else drawnVentVertices+=drawnVertices-before;
   }
   BURSTS.removeIf(fx->{
    if(now-fx.received>6_000_000_000L){fx.close();return true;}
@@ -180,6 +225,7 @@ public final class JakEffects {
    return false;
   });
  }
+ private static void closeSandstorm(){if(sandstorm!=null){sandstorm.close();sandstorm=null;}}
  private static void drawOwner(LevelRenderContext context,Minecraft client,Owner fx,Vector3f forward,Vector3f up,long now){
   var camera=context.levelState().cameraRenderState;
   Vec3 eye=camera.pos.subtract(fx.origin);

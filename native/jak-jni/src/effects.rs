@@ -2,19 +2,31 @@
 use super::*;
 use std::collections::VecDeque;
 use jak_core::glam::Mat3;
-use jak_core::particles::{Library,Particles,Sprite,journal::Command};
+use jak_core::particles::{Library,Overrides,Particles,Sprite,journal::Command};
 pub static LIBRARY:OnceLock<Arc<Library>>=OnceLock::new();
+static JAK1_VENTS:OnceLock<Arc<Library>>=OnceLock::new();
 static HAVEN:OnceLock<Arc<Library>>=OnceLock::new();
 const BARREL_FIRE:&str="group-ctysluma-barrel-fire";
 const PROPAGANDA:&str="group-ctywide-baron-propoganda-holo";
 const DISMANTLE:&str="group-vehicle-explosion";
 #[derive(Clone,Copy,PartialEq)]
-enum Decor { Barrel, Projector, Dismantle }
+enum Decor { Barrel, Projector, Dismantle, Vent(u8), Sandstorm }
 impl Decor {
- fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE}}
- fn scale(self)->f32{match self{Self::Barrel=>0.20,Self::Projector=>0.085,Self::Dismantle=>0.25}}
+ fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::Vent(index)=>VENT_GROUPS[index as usize],Self::Sandstorm=>unreachable!()}}
+ fn scale(self)->f32{match self{Self::Barrel=>0.20,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::Vent(0..=3)|Self::Sandstorm=>1.,Self::Vent(_)=>0.62}}
 }
 
+const VENT_GROUPS:[&str;8]=[
+ "group-part-vent-red-active","group-part-vent-yellow-active","group-part-vent-blue-active","group-part-vent-green-active",
+ "group-part-vent-dark-active","group-part-vent-light-active","group-part-vent-dark-touched","group-part-vent-light-touched"
+];
+
+const JAK1_VENT_PICKUPS:[[&str;2];4]=[
+ ["group-red-collect","group-eco-red-collect"],
+ ["group-yellow-collect","group-eco-yellow-collect"],
+ ["group-blue-collect","group-eco-blue-collect"],
+ ["group-green-collect","group-eco-green-collect"],
+];
 static TEXTURES:OnceLock<Vec<String>>=OnceLock::new();
 #[derive(serde::Serialize,serde::Deserialize)]
 #[serde(untagged)]
@@ -22,7 +34,9 @@ pub enum WireCommand {Particle(Command),Weapon(WeaponCommand)}
 #[derive(serde::Serialize,serde::Deserialize)]
 pub struct WeaponCommand {#[serde(rename="WeaponVisuals")]pub visual:jak_core::weapons::presentation::Visuals}
 impl WireCommand {fn is_step(&self)->bool{matches!(self,Self::Particle(Command::Step(_)))}}
-struct Fx {particles:Particles,weapons:jak_core::weapons::presentation::Presentation,queue:VecDeque<WireCommand>,carry:f64,decor:Option<Decor>,yaw:f32}
+#[derive(Default)]
+struct Sandstorm { strength:f32, carry:[f32;2], rng:u64 }
+struct Fx {particles:Particles,weapons:jak_core::weapons::presentation::Presentation,queue:VecDeque<WireCommand>,carry:f64,decor:Option<Decor>,yaw:f32,sandstorm:Sandstorm}
 #[derive(Default)]struct Effects {next:u64,live:HashMap<u64,Fx>}
 static EFFECTS:OnceLock<Mutex<Effects>>=OnceLock::new();
 fn effects()->&'static Mutex<Effects>{EFFECTS.get_or_init(||Mutex::new(Effects::default()))}
@@ -33,6 +47,8 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  let read=|name:&str|std::fs::read_to_string(source.join(name)).map_err(|e|format!("{}: {e}",source.join(name).display()));
  let mut library=Library::default();library.preserve_texture_pages();library.read_texture_names(&read("engine/data/tpages.gc")?,&read("engine/data/textures.gc")?);
  for file in ["engine/common-obs/particle-curves.gc","engine/target/gun/gun-part.gc","engine/target/gun/gun-dark-shot.gc","levels/factory/fac-part.gc","engine/common-obs/water-part.gc","engine/common-obs/water.gc","engine/target/board/board-part.gc","levels/city/traffic/vehicle/vehicle-part.gc","levels/desert/wvehicle/wvehicle-part.gc","engine/target/target-lightjak.gc","engine/common-obs/enemy-part.gc","engine/common-obs/guard-projectile.gc","engine/common-obs/collectables-part.gc"]{library.read(&read(file)?);}
+ let desert=read("levels/desert/desert-part.gc")?;
+ library.read(&crate::particle_subset::particle_subset(&desert,&[],&[1439,1443],&[]));
  let text=read("engine/target/target-part.gc")?;
  let subset=crate::particle_subset::particle_subset(&text,&["group-target-hit","group-lightning-glow","group-land-poof-stn"],&[157,173,187],&["lightning-darkjak-attack","lightning-darkjak-transform"]);
  library.read(&subset.replace("(sp-item 70 :period (seconds 0.5) :length (seconds 0.017))",""));
@@ -52,6 +68,15 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
    if !haven.unsupported_callbacks().is_empty(){return Err(format!("Unsupported Haven callbacks: {:?}",haven.unsupported_callbacks()));}
    HAVEN.set(Arc::new(haven)).map_err(|_|"Haven configuration raced")?;
   }
+  let vents=active.join("jak1/data/goal_src/jak1/engine/common-obs/collectables-part.gc");
+  if let Ok(text)=std::fs::read_to_string(vents){
+   let mut jak1=Library::default();
+   let groups:Vec<_>=VENT_GROUPS[..4].iter().copied().chain(JAK1_VENT_PICKUPS.into_iter().flatten()).collect();
+   jak1.read_jak1(&crate::particle_subset::particle_subset(&text,&groups,&[],&[]));
+   if VENT_GROUPS[..4].iter().all(|g|jak1.group(g).is_some()){
+    JAK1_VENTS.set(Arc::new(jak1)).map_err(|_|"Jak I vent configuration raced")?;
+   }
+  }
   let flut=active.join("jak1/data/goal_src/jak1/levels/flut_common/flut-part.gc");
   if let Ok(text)=std::fs::read_to_string(flut){
    let slam=crate::particle_subset::particle_subset(&text,&["group-flut-attack-strike-ground"],&[],&[]);
@@ -63,6 +88,7 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  if library.part_count()<150||library.group_count()<30{return Err("Incomplete original particle definitions".into());}
  let mut textures=library.textures();
  if let Some(haven)=HAVEN.get(){textures.extend(haven.textures());}
+ if let Some(vents)=JAK1_VENTS.get(){textures.extend(vents.textures());}
  // Arc Wielder's lightning-new appearances also reference the original page.
  for name in ["level-default-sprite/pal-lightning","level-default-sprite/lightning-tile","level-default-sprite/glow-soft"] {if !textures.iter().any(|s|s==name){textures.push(name.into());}}
  textures.sort();textures.dedup();TEXTURES.set(textures).map_err(|_|"texture configuration raced")?;
@@ -89,18 +115,69 @@ fn create(library:&OnceLock<Arc<Library>>,decor:Option<Decor>)->Result<jlong,Str
  let id=e.next;
  let mut particles=Particles::new(library);
  if decor==Some(Decor::Dismantle){particles.spawn(DISMANTLE,Vec3::ZERO,Mat3::IDENTITY);}
- e.live.insert(id,Fx{particles,weapons:Default::default(),queue:VecDeque::new(),carry:0.,decor,yaw:0.});
+ e.live.insert(id,Fx{particles,weapons:Default::default(),queue:VecDeque::new(),carry:0.,decor,yaw:0.,sandstorm:Sandstorm{rng:id,..Default::default()}});
  Ok(id as jlong)
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxCreate(mut env:JNIEnv,_:JClass)->jlong{
  protect(&mut env,||create(&LIBRARY,None))
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxCreateDecor(mut env:JNIEnv,_:JClass,kind:jint)->jlong{
- if HAVEN.get().is_none(){return 0;}
  protect(&mut env,||{
-  let decor=match kind{0=>Decor::Barrel,1=>Decor::Projector,2=>Decor::Dismantle,_=>return Err("Unknown Haven effect".into())};
-  create(&HAVEN,Some(decor))
+  let (library,decor)=match kind{
+   0=>(&HAVEN,Decor::Barrel),1=>(&HAVEN,Decor::Projector),2=>(&HAVEN,Decor::Dismantle),
+   10..=13=>(&JAK1_VENTS,Decor::Vent((kind-10)as u8)),
+   14..=17=>(&LIBRARY,Decor::Vent((kind-10)as u8)),
+   18=>(&LIBRARY,Decor::Sandstorm),
+   _=>return Err("Unknown world effect".into())
+  };
+  if library.get().is_none(){return Ok(0);}
+  create(library,Some(decor))
  })
+}
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxSandstorm(mut env:JNIEnv,_:JClass,id:jlong,strength:f32){
+ protect(&mut env,||{
+  let mut e=effects().lock().map_err(|e|e.to_string())?;
+  let f=e.live.get_mut(&(id as u64)).ok_or("Stale sandstorm FX session")?;
+  if f.decor!=Some(Decor::Sandstorm)||!strength.is_finite(){return Err("Invalid sandstorm FX session".into());}
+  f.sandstorm.strength=strength.clamp(0.,1.);
+  Ok(())
+ })
+}
+impl Sandstorm {
+ fn launch(&mut self,particles:&mut Particles,eye:Vec3){
+  if self.strength<=0.01{return;}
+  let wind=Vec3::new(1.,0.05,0.35).normalize()*12.*jak_core::METER/60.;
+  let rng=&mut self.rng;
+  let mut random=||{
+   let mut x=*rng;
+   x^=x>>12;x^=x<<25;x^=x>>27;
+   *rng=x;
+   (x.wrapping_mul(0x2545_F491_4F6C_DD1D)>>40) as f32/16_777_216.
+  };
+  for carry in &mut self.carry {
+   let at=eye+Vec3::new(random()-0.6,0.15*random()-0.05,random()-0.5)*50.*jak_core::METER;
+   particles.launch_var(1439,at,Mat3::IDENTITY,Overrides{num:Some(1.5*self.strength),vel:Some(wind),..Default::default()},carry);
+  }
+ }
+}
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut env:JNIEnv,_:JClass,id:jlong,x:f32,y:f32,z:f32,color:jint,start:jni::sys::jboolean){
+ protect(&mut env,||{
+  let mut e=effects().lock().map_err(|e|e.to_string())?;
+  let f=e.live.get_mut(&(id as u64)).ok_or("Stale vent FX session")?;
+  let groups=JAK1_VENT_PICKUPS.get(color as usize).ok_or("Unknown Jak I eco color")?;
+  let target=Vec3::new(x,y,z)*BLOCK;
+  if !target.is_finite(){return Err("Nonfinite vent collector".into());}
+  let source=Vec3::Y*BLOCK*0.33;
+  if start!=0{
+   f.particles.spawn_tagged(groups[0],target,Mat3::IDENTITY,1);
+   f.particles.spawn_tagged(groups[1],source,Mat3::IDENTITY,2);
+  }
+  f.particles.move_tagged(1,|_|target);
+  f.particles.move_tagged(2,|t|source.lerp(target,t));
+  Ok(())
+ });
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxDestroy(mut env:JNIEnv,_:JClass,id:jlong){protect(&mut env,||{effects().lock().map_err(|e|e.to_string())?.live.remove(&(id as u64));Ok(())});}
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxBacklog(mut env:JNIEnv,_:JClass,id:jlong)->jint{
@@ -142,7 +219,11 @@ fn create(library:&OnceLock<Arc<Library>>,decor:Option<Decor>)->Result<jlong,Str
   // behind its owner. Retain at most one Minecraft tick for interpolation.
   let steps=ordinary.max(queued.saturating_sub(3)).min(120);
   for _ in 0..steps {
-   if let Some(decor)=f.decor.filter(|&d|d!=Decor::Dismantle){f.particles.keep(0,decor.group(),Vec3::ZERO,Mat3::IDENTITY);}
+   match f.decor {
+    Some(Decor::Sandstorm)=>f.sandstorm.launch(&mut f.particles,eye),
+    Some(decor) if decor!=Decor::Dismantle=>f.particles.keep(0,decor.group(),Vec3::ZERO,Mat3::IDENTITY),
+    _=>{}
+   }
    let mut stepped=false;
    while let Some(c)=f.queue.pop_front(){stepped=c.is_step();match c{WireCommand::Particle(c)=>c.apply(&mut f.particles)?,WireCommand::Weapon(c)=>f.weapons.sync(c.visual)?}if stepped{break;}}
    // Effects keep aging after the authoritative producer disconnects/stops.

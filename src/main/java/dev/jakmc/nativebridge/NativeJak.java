@@ -33,6 +33,7 @@ public final class NativeJak {
     public static native void rebase(long session,float deltaX,float deltaY,float deltaZ);
     public static native void setGrindRails(long session,ByteBuffer rails);
     public static native void bindWorld(long session,Object collisionQuery);
+    public static native void ventPulse(long session,boolean blue,int reaction);
     public static native void setStats(long session,float healthFraction,float red,float yellow,float blue,float dark);
     public static native String step(long session, ByteBuffer input, ByteBuffer triangles, ByteBuffer actors, int steps);
     public static native long hoverCreate(Object world,int model,float yaw,float vx,float vy,float vz,
@@ -51,7 +52,9 @@ public final class NativeJak {
     public static native void relocate(long session,float x,float y,float z,float vx,float vy,float vz);
     public static native String fxManifest();
     public static native long fxCreate();
+    public static native void fxVentPickup(long owner,float x,float y,float z,int color,boolean start);
     public static native long fxCreateDecor(int kind);
+    public static native void fxSandstorm(long owner,float strength);
     public static native void fxDestroy(long session);
     public static native int fxBacklog(long session);
     public static native void fxPush(long session,String commands,float originX,float originY,float originZ);

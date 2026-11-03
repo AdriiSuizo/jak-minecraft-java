@@ -12,6 +12,8 @@ public final class JakClient implements ClientModInitializer {
       });
   net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(JakPoses::prune);
   JakSounds.initialize();
+  JakAtmosphere.initialize();
+  WeatherScene.initialize();
   JakEffects.initialize();
   JakCreatureWater.initialize();
   DevBridge.initialize();
@@ -24,6 +26,7 @@ public final class JakClient implements ClientModInitializer {
   CollisionPerfScene.initialize();
   CitizenScene.initialize();
   MaterialScene.initialize();
+  VentScene.initialize();
   AltarScene.initialize();
   TrackScene.initialize();
   CarScene.initialize();
@@ -33,6 +36,8 @@ public final class JakClient implements ClientModInitializer {
   dev.jakmc.client.model.PropModels.initialize();
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
       dev.jakmc.content.JakBoardAltar.TYPE,ctx->new dev.jakmc.client.model.BoardAltarRenderer());
+  net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
+      dev.jakmc.content.JakEcoVent.TYPE,ctx->new dev.jakmc.client.model.EcoVentRenderer());
   dev.jakmc.client.model.SkullGemRenderer.initialize();
   dev.jakmc.client.model.EcoItemRenderer.initialize();
   dev.jakmc.client.model.JakShotRenderer.initialize();

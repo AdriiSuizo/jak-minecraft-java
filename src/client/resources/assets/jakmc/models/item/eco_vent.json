@@ -1,0 +1,27 @@
+{
+  "gui_light": "front",
+  "display": {
+    "gui": {
+      "rotation": [
+        31,
+        135,
+        0
+      ],
+      "translation": [
+        0,
+        5,
+        0
+      ]
+    },
+    "ground": {
+      "scale": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  },
+  "textures": {
+    "particle": "minecraft:block/stone"
+  }
+}

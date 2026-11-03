@@ -92,6 +92,12 @@ public final class JakPlayers {
         if(session!=null&&session.mount==mount)session.mountHit=at;
     }
 
+    public static void ventPulse(ServerPlayer player,boolean blue,int reaction){
+        if(!active(player))return;
+        var session=LIVE.get(player.getUUID());
+        if(session!=null&&session.mount==null&&session.craft==null&&player.getVehicle()==null)
+            NativeJak.ventPulse(session.nativeId,blue,reaction);
+    }
     public static boolean onBoard(ServerPlayer player){
         Session session=LIVE.get(player.getUUID());
         return session!=null&&session.usingBoard;
@@ -325,6 +331,10 @@ public final class JakPlayers {
     public static Vec3 vector(JsonArray a){return new Vec3(a.get(0).getAsDouble(),a.get(1).getAsDouble(),a.get(2).getAsDouble());}
     private static void applyEvent(ServerPlayer p,Vec3 origin,JsonObject e){
         String kind=e.get("kind").getAsString();
+        if(kind.equals("ground_pound")){
+            dev.jakmc.content.JakEcoVent.groundPound(p.level(),p,vector(e.getAsJsonArray("pos")).add(origin));
+            return;
+        }
         if((kind.equals("strike")||kind.equals("impact"))&&e.has("actor")&&!e.get("actor").isJsonNull()){
             Entity victim=p.level().getEntity(e.get("actor").getAsInt());
             if(victim!=null&&victim!=p){

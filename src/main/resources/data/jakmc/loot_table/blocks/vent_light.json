@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "condition": "minecraft:tool/can_silk_touch",
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_light"
+        }
+      ]
+    }
+  ],
+  "random_sequence": "jakmc:blocks/vent_light"
+}

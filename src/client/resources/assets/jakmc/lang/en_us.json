@@ -109,5 +109,13 @@
   "item.jakmc.wlander_female_spawn_egg": "Spargus Wastelander Spawn Egg",
   "item.jakmc.monk_spawn_egg": "Spargus Monk Spawn Egg",
   "item.jakmc.helldog": "Hell Dog",
-  "entity.jakmc.helldog": "Hell Dog"
+  "entity.jakmc.helldog": "Hell Dog",
+  "tab.jakmc.eco_vents": "Eco Vents",
+  "item.jakmc.green_eco": "Green Eco",
+  "block.jakmc.vent_red": "Red Eco Vent",
+  "block.jakmc.vent_yellow": "Yellow Eco Vent",
+  "block.jakmc.vent_blue": "Blue Eco Vent",
+  "block.jakmc.vent_green": "Green Eco Vent",
+  "block.jakmc.vent_dark": "Dark Eco Vent",
+  "block.jakmc.vent_light": "Light Eco Vent"
 }

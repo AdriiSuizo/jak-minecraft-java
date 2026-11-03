@@ -265,6 +265,16 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_destroy(mut env:JNI
  protect(&mut env,||{let _=JVM.set(vm?);let mut sessions=lock_sessions()?;
   sessions.live.get_mut(&(id as u64)).ok_or("Stale session")?.world.query=Some(binding?);Ok(())});
 }
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_ventPulse(mut env:JNIEnv,_:JClass,id:jlong,blue:jni::sys::jboolean,reaction:jint){
+ protect(&mut env,||{
+  let mut sessions=lock_sessions()?;
+  let jak=&mut sessions.live.get_mut(&(id as u64)).ok_or("Stale Jak session")?.jak;
+  if blue!=0{jak.get_eco_power(jak_core::eco_power::EcoKind::Blue,jak_core::eco_power::FULL_INC);}
+  match reaction{0=>{},1=>{jak.eco_powerup();},2=>{jak.eco_powerup_light();},_=>return Err("Unknown vent reaction".into())}
+  Ok(())
+ });
+}
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_setStats(mut env:JNIEnv,_:JClass,id:jlong,health:f32,red:f32,yellow:f32,blue:f32,dark:f32){
  protect(&mut env,||{
   if [health,red,yellow,blue,dark].iter().any(|v|!v.is_finite()){return Err("Nonfinite Minecraft/Jak stats".into());}
