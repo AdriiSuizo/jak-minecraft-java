@@ -22,6 +22,7 @@ public final class InputScene {
  private static CameraView view;
  public static CameraView camera(){
   if(view!=null)return view;
+  if(CityScene.camera()!=null)return CityScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
   var track=TrackScene.camera();
   if(track!=null)return track;

@@ -1,0 +1,14 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:desert",
+    {
+      "id": "jak:wasteland",
+      "required": false
+    },
+    {
+      "id": "jak:spargus_desert",
+      "required": false
+    }
+  ]
+}

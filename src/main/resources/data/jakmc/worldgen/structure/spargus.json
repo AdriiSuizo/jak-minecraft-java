@@ -1,0 +1,8 @@
+{
+  "type": "jakmc:city",
+  "city": "spargus",
+  "biomes": "#jakmc:has_spargus",
+  "step": "surface_structures",
+  "spawn_overrides": {},
+  "terrain_adaptation": "none"
+}

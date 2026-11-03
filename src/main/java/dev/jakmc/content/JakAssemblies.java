@@ -41,7 +41,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 /** Native grid assemblies use one inventory item and an owned, bounded set of Minecraft block states. */
 public final class JakAssemblies {
     public record PartModel(Block block,BlockPos offset,JsonArray triangles){}
-    public record Model(int id,String path,int extent,List<PartModel> parts){}
+    public record Model(int id,String path,int extent,BlockPos size,List<PartModel> parts){}
     public static final Map<Integer,Model> MODELS=new LinkedHashMap<>();
 
     private record Removed(ServerLevel level,BlockPos origin,Assembly assembly){}
@@ -55,7 +55,7 @@ public final class JakAssemblies {
             int id=Integer.parseInt(entry.getKey());
             var source=JakBlocks.resource("/data/jakmc/catalog/objects/"+id+".json").getAsJsonObject();
             var assembly=new Assembly(source,position(entry.getValue().getAsJsonArray()));
-            MODELS.put(id,new Model(id,assembly.path,assembly.extent,List.copyOf(assembly.models)));
+            MODELS.put(id,new Model(id,assembly.path,assembly.extent,assembly.size,List.copyOf(assembly.models)));
             JakBlocks.BLOCKS.put(assembly.path,assembly.anchor);
             if(assembly.rail)railBlocks.add(assembly.anchor);
         }
@@ -71,6 +71,7 @@ public final class JakAssemblies {
         final String path;
         final BlockPos anchorOffset;
         final int extent;
+        final BlockPos size;
         final boolean wallMounted;
         final boolean track,rail;
         final List<Part> parts=new ArrayList<>();
@@ -82,7 +83,7 @@ public final class JakAssemblies {
         Assembly(JsonObject source,BlockPos anchorOffset){
             this.path=source.get("path").getAsString();
             this.anchorOffset=anchorOffset;
-            var size=position(source.getAsJsonArray("size"));
+            size=position(source.getAsJsonArray("size"));
             this.extent=Math.max(size.getY(),Math.max(size.getX(),size.getZ()));
             boolean palm=source.get("group").getAsString().equals("palmera");
             wallMounted=source.get("soft").getAsBoolean();

@@ -1,0 +1,18 @@
+{
+  "structures": [
+    {
+      "structure": "jakmc:haven",
+      "weight": 1
+    },
+    {
+      "structure": "jakmc:spargus",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "type": "minecraft:random_spread",
+    "spacing": 36,
+    "separation": 21,
+    "salt": 1827541391
+  }
+}

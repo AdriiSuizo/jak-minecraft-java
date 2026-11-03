@@ -26,7 +26,8 @@ NATIVE_MATERIALS={
 }
 
 def authored_boxes(path):
-    model=SOURCE/'source-pack/assets/jak/models/block'/f'{path}.json'
+    model=DEST/'assets/jak/models/block'/f'{path}.json'
+    if not model.is_file():return None
     elements=json.loads(model.read_text(encoding='utf-8')).get('elements',[])
     if not elements or any('rotation' in e or any(v<0 or v>16 for v in e['from']+e['to']) for e in elements):
         return None
@@ -34,6 +35,35 @@ def authored_boxes(path):
 
 GATE='krimson_porton_fence_gate'
 GATE_HEIGHT=4
+
+# Decorative parts with a single placement cell in the city plan. Keep their
+# original faces and UVs while fitting the occupied dimensions to that cell.
+FITTED_ARCHITECTURE={
+    'haven_canes','krimson_blindaje','krimson_franja','krimson_dintel',
+    'krimson_insignia','krimson_puesto','barrio_cartel','barrio_cartel_b',
+    'haven_estandarte','barrio_codo','barrio_desague','haven_chimenea_remate',
+    'sparg_costilla','sparg_columna',
+}
+
+def fit_architecture():
+    source=SOURCE/'source-pack/assets/jak/models/block'
+    target=DEST/'assets/jak/models/block'
+    for name in sorted(FITTED_ARCHITECTURE):
+        data=json.loads((source/(name+'.json')).read_text(encoding='utf-8'))
+        elements=data.get('elements',[])
+        if not elements or any('rotation' in e for e in elements):
+            continue
+        for axis in range(3):
+            low=min(e['from'][axis] for e in elements)
+            high=max(e['to'][axis] for e in elements)
+            if low>=0 and high<=16:
+                continue
+            scale=min(1,16/(high-low))
+            start=min(max(low,0),16-(high-low)*scale)
+            for element in elements:
+                for corner in ('from','to'):
+                    element[corner][axis]=round(min(16,max(0,(element[corner][axis]-low)*scale+start)),5)
+        (target/(name+'.json')).write_text(json.dumps(data,separators=(',',':')),encoding='utf-8')
 
 def gate_model(source,section,opened):
     out={'textures':source['textures'],'elements':[]}
@@ -202,8 +232,8 @@ def seal_track_meshes(catalog):
         path.write_text(json.dumps(data,separators=(',',':')),encoding='utf-8')
 
 def decorations(catalog):
-    # The minigame and mirror need their original runtime behavior.
-    supported=(86,87,89,90,91,92,94,95,96,97,98,99,100,103,104)
+    # The Rust city uses the arcade cabinet and mirror as authored furniture.
+    supported=(86,87,89,90,91,92,94,95,96,97,98,99,100,101,102,103,104)
     (catalog/'decorations.json').write_text(json.dumps(supported),encoding='utf-8')
     items=DEST/'assets/jak/items'
     models=DEST/'assets/jak/models/item'
@@ -249,6 +279,7 @@ def main():
     if not (SOURCE/'objects/104.json').is_file():raise RuntimeError('Source export is incomplete; run tools/content-exporter first')
     DEST.mkdir(parents=True,exist_ok=True)
     copy_models()
+    fit_architecture()
     catalog=DEST/'data/jakmc/catalog';catalog.mkdir(parents=True,exist_ok=True)
     definitions=json.loads((SOURCE/'blocks.json').read_text(encoding='utf-8'))
     configure_materials(definitions)

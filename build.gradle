@@ -89,4 +89,8 @@ jar {
 }
 
 
-loom.runs.client { vmArg "-Djakmc.devBridge=true"; programArgs "--width", "1280", "--height", "720", "--quickPlaySingleplayer", "New World (1)" }
+def devWorld = providers.gradleProperty("jakmcDevWorld").orElse("New World (1)")
+loom.runs.client {
+ vmArg "-Djakmc.devBridge=true"
+ programArgs "--width", "1280", "--height", "720", "--quickPlaySingleplayer", devWorld.get()
+}

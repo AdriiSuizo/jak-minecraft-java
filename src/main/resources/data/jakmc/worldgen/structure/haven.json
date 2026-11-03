@@ -1,0 +1,8 @@
+{
+  "type": "jakmc:city",
+  "city": "haven",
+  "biomes": "#jakmc:has_haven",
+  "step": "surface_structures",
+  "spawn_overrides": {},
+  "terrain_adaptation": "none"
+}

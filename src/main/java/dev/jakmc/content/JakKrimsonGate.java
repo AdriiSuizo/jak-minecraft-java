@@ -74,6 +74,10 @@ public final class JakKrimsonGate extends HorizontalDirectionalBlock {
         boxes.add(box);
     }
 
+    public static BlockState generationSection(BlockState base,int section,boolean left,boolean right){
+        return base.setValue(SECTION,section).setValue(LEFT,left).setValue(RIGHT,right);
+    }
+
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){
         builder.add(FACING,OPEN,POWERED,IN_WALL,SECTION,LEFT,RIGHT);
     }

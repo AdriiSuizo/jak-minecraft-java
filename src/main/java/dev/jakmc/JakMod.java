@@ -23,6 +23,7 @@ public final class JakMod implements ModInitializer {
   dev.jakmc.network.JakPackets.initialize();
   dev.jakmc.player.JakPlayers.initialize();
   dev.jakmc.commands.JakCommands.initialize();
+  dev.jakmc.worldgen.JakCityStructure.initialize();
   LOG.info("Jak Worlds: Minecraft host initialized");
  }
 }
