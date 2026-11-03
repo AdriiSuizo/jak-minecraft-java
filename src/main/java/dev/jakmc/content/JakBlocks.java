@@ -40,6 +40,7 @@ public final class JakBlocks {
             var properties=BlockBehaviour.Properties.ofLegacyCopy(base).setId(key).overrideLootTable(Optional.of(loot));
             if(path.contains("luz")||path.contains("luminosa")||path.contains("neon"))properties.lightLevel(state->15);
             Block block=switch(kind){
+                case "authored" -> new JakAuthoredBlock(properties.noOcclusion(),look.getAsJsonArray("boxes"));
                 case "slab" -> new SlabBlock(properties);
                 case "layers" -> path.equals("snow_layer")?
                     new SnowLayerBlock(BlockBehaviour.Properties.ofLegacyCopy(Blocks.SNOW).setId(key).overrideLootTable(Optional.of(loot))):

@@ -3,6 +3,9 @@ use super::*;
 use std::collections::VecDeque;
 use jak_core::particles::{Library,Particles,journal::Command};
 pub static LIBRARY:OnceLock<Arc<Library>>=OnceLock::new();
+static BARREL:OnceLock<Arc<Library>>=OnceLock::new();
+const BARREL_FIRE:&str="group-ctysluma-barrel-fire";
+const FIRE_SCALE:f32=0.20;
 static TEXTURES:OnceLock<Vec<String>>=OnceLock::new();
 #[derive(serde::Serialize,serde::Deserialize)]
 #[serde(untagged)]
@@ -10,7 +13,7 @@ pub enum WireCommand {Particle(Command),Weapon(WeaponCommand)}
 #[derive(serde::Serialize,serde::Deserialize)]
 pub struct WeaponCommand {#[serde(rename="WeaponVisuals")]pub visual:jak_core::weapons::presentation::Visuals}
 impl WireCommand {fn is_step(&self)->bool{matches!(self,Self::Particle(Command::Step(_)))}}
-struct Fx {particles:Particles,weapons:jak_core::weapons::presentation::Presentation,queue:VecDeque<WireCommand>,carry:f64}
+struct Fx {particles:Particles,weapons:jak_core::weapons::presentation::Presentation,queue:VecDeque<WireCommand>,carry:f64,barrel:bool}
 #[derive(Default)]struct Effects {next:u64,live:HashMap<u64,Fx>}
 static EFFECTS:OnceLock<Mutex<Effects>>=OnceLock::new();
 fn effects()->&'static Mutex<Effects>{EFFECTS.get_or_init(||Mutex::new(Effects::default()))}
@@ -25,6 +28,15 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  let subset=crate::particle_subset::particle_subset(&text,&["group-target-hit","group-lightning-glow","group-land-poof-stn"],&[157,173,187],&["lightning-darkjak-attack","lightning-darkjak-transform"]);
  library.read(&subset.replace("(sp-item 70 :period (seconds 0.5) :length (seconds 0.017))",""));
  if let Some(active)=root.ancestors().find(|p|p.file_name().is_some_and(|n|n=="active")){
+  let city=active.join("jak2/data/goal_src/jak2/levels/city/slums/ctysluma-part.gc");
+  if let Ok(text)=std::fs::read_to_string(city){
+   let mut barrel=Library::default();
+   barrel.read_jak2(&crate::particle_subset::particle_subset(&text,&[BARREL_FIRE],&[],&[]));
+   if barrel.group(BARREL_FIRE).is_none()||!barrel.unsupported_callbacks().is_empty(){
+    return Err("Invalid original Haven barrel fire definitions".into());
+   }
+   BARREL.set(Arc::new(barrel)).map_err(|_|"barrel configuration raced")?;
+  }
   let flut=active.join("jak1/data/goal_src/jak1/levels/flut_common/flut-part.gc");
   if let Ok(text)=std::fs::read_to_string(flut){
    let slam=crate::particle_subset::particle_subset(&text,&["group-flut-attack-strike-ground"],&[],&[]);
@@ -35,6 +47,7 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  }
  if library.part_count()<150||library.group_count()<30{return Err("Incomplete original particle definitions".into());}
  let mut textures=library.textures();
+ if let Some(barrel)=BARREL.get(){textures.extend(barrel.textures());textures.sort();textures.dedup();}
  // Arc Wielder's lightning-new appearances also reference the original page.
  for name in ["level-default-sprite/pal-lightning","level-default-sprite/lightning-tile","level-default-sprite/glow-soft"] {if !textures.iter().any(|s|s==name){textures.push(name.into());}}
  textures.sort();TEXTURES.set(textures).map_err(|_|"texture configuration raced")?;
@@ -54,8 +67,20 @@ fn translate(c:&mut Command,offset:Vec3){
  let report=LIBRARY.get().map(|l|json!({"parts":l.part_count(),"groups":l.group_count(),"textures":TEXTURES.get(),"unsupported":l.unsupported_callbacks()})).unwrap_or(json!(null));
  env.new_string(report.to_string()).map_or(std::ptr::null_mut(),|s|s.into_raw())
 }
+fn create(library:&OnceLock<Arc<Library>>,barrel:bool)->Result<jlong,String>{
+ let library=library.get().ok_or("Original particle library is not configured")?.clone();
+ let mut e=effects().lock().map_err(|e|e.to_string())?;
+ e.next+=1;
+ let id=e.next;
+ e.live.insert(id,Fx{particles:Particles::new(library),weapons:Default::default(),queue:VecDeque::new(),carry:0.,barrel});
+ Ok(id as jlong)
+}
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxCreate(mut env:JNIEnv,_:JClass)->jlong{
- protect(&mut env,||{let library=LIBRARY.get().ok_or("Particles not configured")?.clone();let mut e=effects().lock().map_err(|e|e.to_string())?;e.next+=1;let id=e.next;e.live.insert(id,Fx{particles:Particles::new(library),weapons:Default::default(),queue:VecDeque::new(),carry:0.});Ok(id as jlong)})
+ protect(&mut env,||create(&LIBRARY,false))
+}
+#[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxCreateBarrel(mut env:JNIEnv,_:JClass)->jlong{
+ if BARREL.get().is_none(){return 0;}
+ protect(&mut env,||create(&BARREL,true))
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxDestroy(mut env:JNIEnv,_:JClass,id:jlong){protect(&mut env,||{effects().lock().map_err(|e|e.to_string())?.live.remove(&(id as u64));Ok(())});}
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxBacklog(mut env:JNIEnv,_:JClass,id:jlong)->jint{
@@ -81,7 +106,8 @@ fn translate(c:&mut Command,offset:Vec3){
   let(a,n)=bytes(&sprites)?;let(b,m)=bytes(&bolts)?;if n%44!=0||m%44!=0{return Err("Invalid particle draw buffers".into());}
   let out=unsafe{std::slice::from_raw_parts_mut(a,n)};let bolt_out=unsafe{std::slice::from_raw_parts_mut(b,m)};
   let mut e=effects().lock().map_err(|e|e.to_string())?;let f=e.live.get_mut(&(id as u64)).ok_or("Stale FX session")?;
-  f.particles.set_camera(vec(view,0)*BLOCK);f.particles.set_view(vec(view,12),vec(view,24),read_f(view,36));
+  let scale=if f.barrel{FIRE_SCALE}else{1.};
+ f.particles.set_camera(vec(view,0)*BLOCK/scale);f.particles.set_view(vec(view,12),vec(view,24),read_f(view,36));
   f.carry+=(dt as f64).clamp(0.,0.1);
   let ordinary=(f.carry*60.).floor().min(6.) as usize;f.carry-=ordinary as f64/60.;
   let queued=f.queue.iter().filter(|c|c.is_step()).count();
@@ -89,6 +115,7 @@ fn translate(c:&mut Command,offset:Vec3){
   // behind its owner. Retain at most one Minecraft tick for interpolation.
   let steps=ordinary.max(queued.saturating_sub(3)).min(120);
   for _ in 0..steps {
+   if f.barrel{f.particles.keep(0,BARREL_FIRE,Vec3::ZERO,jak_core::glam::Mat3::IDENTITY);}
    let mut stepped=false;
    while let Some(c)=f.queue.pop_front(){stepped=c.is_step();match c{WireCommand::Particle(c)=>c.apply(&mut f.particles)?,WireCommand::Weapon(c)=>f.weapons.sync(c.visual)?}if stepped{break;}}
    // Effects keep aging after the authoritative producer disconnects/stops.
@@ -97,7 +124,8 @@ fn translate(c:&mut Command,offset:Vec3){
   let mut count=0;
   let eye=vec(view,0)*BLOCK;let forward=vec(view,12).normalize_or(Vec3::NEG_Z);let up=vec(view,24).normalize_or(Vec3::Y);let right=forward.cross(up).normalize_or(Vec3::X);
   let pixels=read_f(view,40)/(2.*(read_f(view,36).to_radians()*0.5).tan());
-  for s in f.particles.sprites(){let Some(tex)=texture(&s.texture).or_else(||texture(&format!("level-default-sprite/{}",s.texture)))else{continue};
+  for mut s in f.particles.sprites(){
+   s.pos*=scale;s.size=s.size.map(|v|v*scale);let Some(tex)=texture(&s.texture).or_else(||texture(&format!("level-default-sprite/{}",s.texture)))else{continue};
    let [w,h]=s.size;if (s.pos-eye).dot(forward) < -w.max(h){continue;}
    let axes=match(s.flat,s.stretch){
     (Some(normal),Some(dir))=>{let dir=dir.normalize_or_zero();let side=normal.cross(dir).normalize_or_zero();if side==Vec3::ZERO{continue;}(dir*w*0.5,side*h*0.5)},
@@ -112,6 +140,7 @@ fn translate(c:&mut Command,offset:Vec3){
    if (count+4)*44>out.len(){break;}
    for i in 0..4{write_vertex(out,&mut count,corners[i]/BLOCK,rgba,uv[i],tex,blend)?;}
   }
+  if f.barrel{return Ok(count as jlong);}
   let tex=texture("level-default-sprite/glow-soft").ok_or("Missing gravity ring texture")?;
   for quad in f.weapons.ring_quads(){if(count+4)*44>out.len(){break;}for v in quad{write_vertex(out,&mut count,v.pos/BLOCK,[0.,0.,0.,v.rgba[3]/255.],v.st,tex,0)?;}}
   let mut vertices=0;

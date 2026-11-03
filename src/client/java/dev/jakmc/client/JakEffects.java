@@ -11,6 +11,10 @@ import java.util.*;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.*;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
+import dev.jakmc.content.JakProps;
 import net.minecraft.client.renderer.texture.*;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
@@ -19,15 +23,16 @@ import org.joml.Vector3f;
 /** Launch commands cross the network; original physics, axes, UVs and blending run locally. */
 public final class JakEffects {
  private static final Map<Integer,Owner> OWNERS=new HashMap<>();
+ private static final Map<BlockPos,Owner> BARRELS=new HashMap<>();
  private static final Map<Integer,Identifier> TEXTURES=new HashMap<>();
  private static final Set<Integer> MISSING=new HashSet<>();
  private static String[] names;
  private static final ByteBuffer VIEW=NativeJak.buffer(44),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
  public static long gemCollectBursts;
- public static int drawnVertices,drawnLightningVertices,drawnDarkVertices;
+ public static int drawnVertices,drawnLightningVertices,drawnDarkVertices,drawnBarrelVertices;
  private static final class Owner implements AutoCloseable {
-  final long handle=NativeJak.fxCreate();final Vec3 origin;long received=System.nanoTime(),lastDraw;
-  Owner(Vec3 origin){this.origin=origin;}
+  final long handle;final Vec3 origin;long received=System.nanoTime(),lastDraw;
+  Owner(Vec3 origin,long handle){this.origin=origin;this.handle=handle;}
   public void close(){NativeJak.fxDestroy(handle);}
  }
  private static final class Batch {
@@ -37,18 +42,19 @@ public final class JakEffects {
  public static void initialize(){
   JakEffectTypes.initialize();
   LevelRenderEvents.COLLECT_SUBMITS.register(JakEffects::submit);
+  net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(JakEffects::findBarrels);
   ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->clear());
  }
  public static void receive(int entity,Vec3 origin,JsonObject packet){
   if(!packet.has("effects"))return;
   var fx=OWNERS.get(entity);
   if(fx!=null&&fx.origin.distanceToSqr(origin)>4096*4096){fx.close();OWNERS.remove(entity);fx=null;}
-  if(fx==null){fx=new Owner(origin);OWNERS.put(entity,fx);}
+  if(fx==null){fx=new Owner(origin,NativeJak.fxCreate());OWNERS.put(entity,fx);}
   Vec3 delta=origin.subtract(fx.origin);NativeJak.fxPush(fx.handle,packet.get("effects").toString(),(float)delta.x,(float)delta.y,(float)delta.z);
   fx.received=System.nanoTime();
  }
  public static void local(int entity,Vec3 origin,JsonArray commands){JsonObject packet=new JsonObject();packet.add("effects",commands);receive(entity,origin,packet);}
- public static void clear(){for(var fx:OWNERS.values())fx.close();OWNERS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
+ public static void clear(){for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:BARRELS.values())fx.close();BARRELS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
  private static Identifier texture(int index){
   if(TEXTURES.containsKey(index))return TEXTURES.get(index);if(MISSING.contains(index))return null;
   String name=names[index];
@@ -61,6 +67,12 @@ public final class JakEffects {
    name=name.substring(5);
    page="effects";
   }
+  boolean jak2=name.startsWith("jak2:");
+  if(jak2){
+   root=RuntimeConfig.assets.getParent().getParent().getParent().getParent()
+       .resolve("jak2/data/decompiler_out/jak2/textures");
+   name=name.substring(5);
+  }
   if(name.contains("/")){int split=name.indexOf('/');page=name.substring(0,split);name=name.substring(split+1);}
   Path file=root.resolve(page).resolve(name+".png");
   if(jak1&&!Files.isRegularFile(file)){
@@ -70,6 +82,13 @@ public final class JakEffects {
    if(!Files.isRegularFile(file)&&local!=null){
     file=Path.of(local,"iw4l-mashup/jak1-proj/decompiler_out/jak1/textures",page,name+".png");
    }
+  }
+  if(jak2&&!Files.isRegularFile(file)){
+   String override=System.getenv("JAKMC_JAK2_TEXTURES");
+   String local=System.getenv("LOCALAPPDATA");
+   if(override!=null)file=Path.of(override,page,name+".png");
+   if(!Files.isRegularFile(file)&&local!=null)
+    file=Path.of(local,"iw4l-mashup/jak2-city-effects/decompiler_out/jak2/textures",page,name+".png");
   }
   if(!Files.isRegularFile(file)){
    MISSING.add(index);JakMod.LOG.error("Original Jak particle texture unavailable: {}",file);return null;
@@ -91,9 +110,36 @@ public final class JakEffects {
    });
   }return drawn;
  }
+ private static void findBarrels(Minecraft client){
+  if(client.level==null||client.player==null||client.level.getGameTime()%5!=0)return;
+  var focus=client.gameRenderer.mainCamera().position();
+  var center=BlockPos.containing(focus);
+  int minX=SectionPos.blockToSectionCoord(center.getX()-24),maxX=SectionPos.blockToSectionCoord(center.getX()+24);
+  int minZ=SectionPos.blockToSectionCoord(center.getZ()-24),maxZ=SectionPos.blockToSectionCoord(center.getZ()+24);
+  Set<BlockPos> visible=new HashSet<>();
+  for(int x=minX;x<=maxX;x++)for(int z=minZ;z<=maxZ;z++){
+   var chunk=client.level.getChunkSource().getChunk(x,z,ChunkStatus.FULL,false);
+   if(chunk==null)continue;
+   for(var entry:chunk.getBlockEntities().entrySet()){
+    var pos=entry.getKey();
+    if(!(entry.getValue() instanceof JakProps.FireBarrel)||focus.distanceToSqr(Vec3.atCenterOf(pos))>24*24)continue;
+    visible.add(pos);
+    JakSounds.barrel(pos,focus);
+    BARRELS.computeIfAbsent(pos,key->{
+     long handle=NativeJak.fxCreateBarrel();
+     return handle==0?null:new Owner(Vec3.atBottomCenterOf(key).add(0,.94,0),handle);
+    });
+   }
+  }
+  BARRELS.entrySet().removeIf(entry->{
+   if(visible.contains(entry.getKey()))return false;
+   entry.getValue().close();
+   return true;
+  });
+ }
  private static void submit(LevelRenderContext context){
-  drawnVertices=0;drawnLightningVertices=0;drawnDarkVertices=0;
-  var client=Minecraft.getInstance();if(client.level==null||OWNERS.isEmpty())return;
+  drawnVertices=0;drawnLightningVertices=0;drawnDarkVertices=0;drawnBarrelVertices=0;
+  var client=Minecraft.getInstance();if(client.level==null||OWNERS.isEmpty()&&BARRELS.isEmpty())return;
   manifest();
   var camera=context.levelState().cameraRenderState;long now=System.nanoTime();drawnVertices=0;
   Vector3f forward=camera.orientation.transform(new Vector3f(0,0,-1)),up=camera.orientation.transform(new Vector3f(0,1,0));
@@ -101,27 +147,29 @@ public final class JakEffects {
   while(it.hasNext()){
    var entry=it.next();Owner fx=entry.getValue();
    if(client.level.getEntity(entry.getKey())==null||now-fx.received>2_000_000_000L){fx.close();it.remove();continue;}
-   Vec3 eye=camera.pos.subtract(fx.origin);
-   VIEW.clear();VIEW.putFloat((float)eye.x).putFloat((float)eye.y).putFloat((float)eye.z);
-   VIEW.putFloat(forward.x).putFloat(forward.y).putFloat(forward.z).putFloat(up.x).putFloat(up.y).putFloat(up.z);
-   VIEW.putFloat(client.options.fov().get().floatValue()).putFloat(client.getWindow().getHeight());
-   float dt=client.isPaused()?0:fx.lastDraw==0?1/60f:Math.clamp((now-fx.lastDraw)/1e9f,0,.1f);fx.lastDraw=now;
-   long counts=NativeJak.fxDraw(fx.handle,dt,VIEW,SPRITES,BOLTS);
-   drawnLightningVertices+=(int)(counts>>>32);
-   for(int i=0;i<(int)counts;i++){int at=i*44;if(SPRITES.getFloat(at+12)==0&&SPRITES.getFloat(at+16)==0&&SPRITES.getFloat(at+20)==0&&SPRITES.getFloat(at+24)>0)drawnDarkVertices++;}
-   Map<Integer,Batch> batches=new LinkedHashMap<>();
-   collect(SPRITES,(int)counts,batches);collect(BOLTS,(int)(counts>>>32),batches);
-   var stack=context.poseStack();stack.pushPose();stack.translate(fx.origin.x-camera.pos.x,fx.origin.y-camera.pos.y,fx.origin.z-camera.pos.z);
-   for(var group:batches.entrySet()){
-    int tex=group.getKey()>>>2,blend=group.getKey()&3;Identifier id=texture(tex);if(id==null)continue;
-    Batch batch=group.getValue();float[] data=Arrays.copyOf(batch.data,batch.used);drawnVertices+=batch.used/9;
-    context.submitNodeCollector().submitCustomGeometry(stack,JakEffectTypes.get(id,blend),(pose,consumer)->{
-     Vector3f v=new Vector3f();for(int i=0;i<data.length;i+=9){pose.pose().transformPosition(data[i],data[i+1],data[i+2],v);int color=pack(data[i+3],data[i+4],data[i+5],data[i+6]);
-      consumer.addVertex(v.x,v.y,v.z,color,data[i+7],data[i+8],OverlayTexture.NO_OVERLAY,0x00f000f0,0,1,0);
-     }
-    });
-   }stack.popPose();
+   drawOwner(context,client,fx,forward,up,now);
   }
+  for(var fx:BARRELS.values()){
+   int before=drawnVertices;
+   drawOwner(context,client,fx,forward,up,now);
+   drawnBarrelVertices+=drawnVertices-before;
+  }
+ }
+ private static void drawOwner(LevelRenderContext context,Minecraft client,Owner fx,Vector3f forward,Vector3f up,long now){
+  var camera=context.levelState().cameraRenderState;
+  Vec3 eye=camera.pos.subtract(fx.origin);
+  VIEW.clear();VIEW.putFloat((float)eye.x).putFloat((float)eye.y).putFloat((float)eye.z);
+  VIEW.putFloat(forward.x).putFloat(forward.y).putFloat(forward.z).putFloat(up.x).putFloat(up.y).putFloat(up.z);
+  VIEW.putFloat(client.options.fov().get().floatValue()).putFloat(client.getWindow().getHeight());
+  float dt=client.isPaused()?0:fx.lastDraw==0?1/60f:Math.clamp((now-fx.lastDraw)/1e9f,0,.1f);fx.lastDraw=now;
+  long counts=NativeJak.fxDraw(fx.handle,dt,VIEW,SPRITES,BOLTS);
+  drawnLightningVertices+=(int)(counts>>>32);
+  for(int i=0;i<(int)counts;i++){int at=i*44;if(SPRITES.getFloat(at+12)==0&&SPRITES.getFloat(at+16)==0&&SPRITES.getFloat(at+20)==0&&SPRITES.getFloat(at+24)>0)drawnDarkVertices++;}
+  var stack=context.poseStack();
+  stack.pushPose();
+  stack.translate(-eye.x,-eye.y,-eye.z);
+  drawnVertices+=submitGeometry(SPRITES,(int)counts,BOLTS,(int)(counts>>>32),stack,context.submitNodeCollector());
+  stack.popPose();
  }
  private static void collect(ByteBuffer buffer,int count,Map<Integer,Batch> batches){
   for(int i=0;i<count;i++){int at=i*44,key=(buffer.getInt(at+36)<<2)|buffer.getInt(at+40);batches.computeIfAbsent(key,k->new Batch()).vertex(buffer,at);}

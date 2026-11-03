@@ -28,10 +28,12 @@ final class MaterialScene {
 
     static void initialize(){
         ClientTickEvents.END_CLIENT_TICK.register(client->{
-            if(result==null||++captureTicks<30)return;
+            if(result==null||++captureTicks<60)return;
             Screenshot.grab(client.gameDirectory,"jak-materials.png",client.gameRenderer.mainRenderTarget(),1,_->{});
             try{
-                var dir=client.gameDirectory.toPath().resolve("jakmc/evidence/materials");
+                result.getAsJsonObject("actions").addProperty("original_fire_vertices",JakEffects.drawnBarrelVertices>0);
+            if(JakEffects.drawnBarrelVertices==0)result.addProperty("reason","Original barrel fire was not drawn");
+            var dir=client.gameDirectory.toPath().resolve("jakmc/evidence/materials");
                 Files.createDirectories(dir);
                 Files.writeString(dir.resolve("result.json"),result.toString());
             }catch(java.io.IOException e){throw new java.io.UncheckedIOException(e);}
@@ -75,11 +77,17 @@ final class MaterialScene {
             var initialSample=level.getBlockState(sample);
             var propPos=sample.above();
             var initialProp=level.getBlockState(propPos);
+            var barrelFloor=sample.east();
+            var barrelPos=barrelFloor.above();
+            var initialBarrelFloor=level.getBlockState(barrelFloor);
+            var initialBarrel=level.getBlockState(barrelPos);
             cleanup=()->{
                 level.setBlockAndUpdate(soil,initialFloor);
                 level.setBlockAndUpdate(base,initial);
                 level.setBlockAndUpdate(sample,initialSample);
                 level.setBlockAndUpdate(propPos,initialProp);
+                level.setBlockAndUpdate(barrelFloor,initialBarrelFloor);
+                level.setBlockAndUpdate(barrelPos,initialBarrel);
                 p.setItemInHand(hand,previous);
             };
             var layer=JakBlocks.BLOCKS.get("barrio_losa_capa");
@@ -100,7 +108,7 @@ final class MaterialScene {
                     .filter(stack->stack.is(layer.asItem())).mapToInt(ItemStack::getCount).sum()==3);
                 tests.addProperty("material_catalog",JakBlocks.BLOCKS.size()>1000);
                 tests.addProperty("native_door",JakBlocks.BLOCKS.values().stream().anyMatch(block->block instanceof net.minecraft.world.level.block.DoorBlock));
-                subject=Vec3.atBottomCenterOf(base).add(.65,.65,0);
+                subject=Vec3.atBottomCenterOf(base).add(1.1,.65,0);
                 level.setBlockAndUpdate(sample,JakBlocks.BLOCKS.get("barrio_losa").defaultBlockState());
                 level.setBlockAndUpdate(propPos,Blocks.AIR.defaultBlockState());
                 var tray=JakBlocks.BLOCKS.get("objeto_haven_bandeja_bar");
@@ -115,6 +123,19 @@ final class MaterialScene {
                 tests.addProperty("native_prop_loot",Block.getDrops(trayState,level,propPos,null,p,pickaxe).stream()
                     .filter(stack->stack.is(tray.asItem())).mapToInt(ItemStack::getCount).sum()==1);
                 tests.addProperty("native_prop_inventory",p.getItemInHand(hand).is(tray.asItem()));
+                var barrel=JakBlocks.BLOCKS.get("objeto_haven_bidon_fuego");
+                level.setBlockAndUpdate(barrelFloor,JakBlocks.BLOCKS.get("barrio_losa").defaultBlockState());
+                level.setBlockAndUpdate(barrelPos,barrel.defaultBlockState());
+                var halfWall=JakBlocks.BLOCKS.get("palacio_pared_azul_medio_vertical");
+                var north=halfWall.defaultBlockState();
+                var east=north.setValue(BlockStateProperties.HORIZONTAL_FACING,Direction.EAST);
+                var n=north.getCollisionShape(level,propPos);
+                var e=east.getCollisionShape(level,propPos);
+                tests.addProperty("architectural_shape_rotates",n.min(Direction.Axis.Z)==0&&n.max(Direction.Axis.Z)==.5
+                    &&e.min(Direction.Axis.X)==.5&&e.max(Direction.Axis.X)==1
+                    &&n.equals(north.getShape(level,propPos))&&e.equals(east.getShape(level,propPos)));
+                tests.addProperty("barrel_light_and_lifecycle",level.getBlockState(barrelPos).getLightEmission()==12
+                    &&level.getBlockEntity(barrelPos) instanceof dev.jakmc.content.JakProps.FireBarrel);
             }finally{
                 p.setGameMode(previousMode);
             }

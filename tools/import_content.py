@@ -25,9 +25,22 @@ NATIVE_MATERIALS={
     'glass_pane','iron_bars','lightning_rod','leaf_litter','ice','sea_lantern','stone',
 }
 
-def ready_material(row):
-    return not row['path'].startswith('objeto_') and (
-        row['look']['kind']!='native' or row['look']['vanilla'] in NATIVE_MATERIALS)
+def authored_boxes(path):
+    model=SOURCE/'source-pack/assets/jak/models/block'/f'{path}.json'
+    elements=json.loads(model.read_text(encoding='utf-8')).get('elements',[])
+    if not elements or any('rotation' in e or any(v<0 or v>16 for v in e['from']+e['to']) for e in elements):
+        return None
+    return [e['from']+e['to'] for e in elements]
+
+def configure_materials(definitions):
+    for row in definitions:
+        kind,vanilla=row['look']['kind'],row['look'].get('vanilla','')
+        if vanilla=='carved_pumpkin':
+            boxes=authored_boxes(row['path'])
+            if boxes is not None:
+                row['look']={'kind':'authored','boxes':boxes}
+                kind='authored'
+        row['ready']=not row['path'].startswith('objeto_') and (kind!='native' or vanilla in NATIVE_MATERIALS)
 
 def material_resources(definitions):
     """Minecraft owns the loot transactions and partial block-state predicates."""
@@ -80,8 +93,8 @@ def material_resources(definitions):
         (languages/(language+'.json')).write_text(json.dumps(translations,ensure_ascii=False),encoding='utf-8')
 
 def decorations(catalog):
-    # The fire barrel, projector, minigame and mirror need their original runtime behavior.
-    supported=(87,89,90,91,92,95,96,97,98,99,100,103,104)
+    # The projector, minigame and mirror need their original runtime behavior.
+    supported=(87,89,90,91,92,94,95,96,97,98,99,100,103,104)
     (catalog/'decorations.json').write_text(json.dumps(supported),encoding='utf-8')
     items=DEST/'assets/jak/items'
     models=DEST/'assets/jak/models/item'
@@ -123,8 +136,7 @@ def main():
     copy_models()
     catalog=DEST/'data/jakmc/catalog';catalog.mkdir(parents=True,exist_ok=True)
     definitions=json.loads((SOURCE/'blocks.json').read_text(encoding='utf-8'))
-    for row in definitions:
-        row['ready']=ready_material(row)
+    configure_materials(definitions)
     (catalog/'blocks.json').write_text(json.dumps(definitions,separators=(',',':')),encoding='utf-8')
     material_resources(definitions+decorations(catalog))
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)

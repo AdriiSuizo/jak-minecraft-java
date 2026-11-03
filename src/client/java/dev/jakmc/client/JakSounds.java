@@ -5,6 +5,7 @@ import dev.jakmc.JakData;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.client.resources.sounds.*;
 import net.minecraft.sounds.*;
 import net.minecraft.world.phys.Vec3;
@@ -14,10 +15,12 @@ import java.util.*;
 public final class JakSounds {
  private record Key(int owner,String name){}
  private static final Map<Key,Loop> LOOPS=new HashMap<>();
+ private static final Map<BlockPos,BarrelLoop> BARRELS=new HashMap<>();
  public static long played;
  public static void initialize(){
   ClientTickEvents.END_CLIENT_TICK.register(c->{
    LOOPS.entrySet().removeIf(e->e.getValue().isStopped());
+   BARRELS.values().removeIf(BarrelLoop::isStopped);
    if(c.level!=null&&c.player!=null)for(var entity:c.level.entitiesForRendering()){
     if(entity instanceof dev.jakmc.entity.JakHellcat cat&&cat.distanceToSqr(c.player)<64*64)vehicle(cat);
    }
@@ -62,7 +65,33 @@ public final class JakSounds {
   JsonArray pos=new JsonArray();pos.add(0);pos.add(0);pos.add(0);loop.add("pos",pos);
   loops.add(loop);
  }
- public static void clear(){for(var loop:LOOPS.values())loop.end();LOOPS.clear();}
+ static void barrel(BlockPos pos,Vec3 listener){
+  if(Vec3.atCenterOf(pos).distanceToSqr(listener)>12*12||BARRELS.containsKey(pos))return;
+  var loop=new BarrelLoop(pos);
+  BARRELS.put(pos,loop);
+  Minecraft.getInstance().getSoundManager().play(loop);
+ }
+ public static void clear(){
+  for(var loop:LOOPS.values())loop.end();LOOPS.clear();
+  for(var loop:BARRELS.values())loop.end();BARRELS.clear();
+ }
+ private static final class BarrelLoop extends AbstractTickableSoundInstance {
+  final BlockPos position;
+  BarrelLoop(BlockPos pos){
+   super(SoundEvent.createVariableRangeEvent(JakData.id("sfx/jak3/genbamb/can_fire")),
+       SoundSource.BLOCKS,SoundInstance.createUnseededRandom());
+   position=pos.immutable();looping=true;delay=0;
+   x=pos.getX()+.5;y=pos.getY()+.80;z=pos.getZ()+.5;
+   volume=.24f;
+  }
+  void end(){stop();}
+  @Override public void tick(){
+   var client=Minecraft.getInstance();
+   if(client.level==null||!client.level.hasChunkAt(position)
+       ||!(client.level.getBlockEntity(position) instanceof dev.jakmc.content.JakProps.FireBarrel)
+       ||Vec3.atCenterOf(position).distanceToSqr(client.gameRenderer.mainCamera().position())>16*16)stop();
+  }
+ }
  private static final class Loop extends AbstractTickableSoundInstance {
   final int owner;long seen;Vec3 at=Vec3.ZERO;float gain=0,targetPitch=1;
   Loop(int owner,String name){super(event(name),SoundSource.PLAYERS,SoundInstance.createUnseededRandom());this.owner=owner;looping=true;delay=0;volume=0;}

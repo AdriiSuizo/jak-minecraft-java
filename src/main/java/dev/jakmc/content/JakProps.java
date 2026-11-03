@@ -19,6 +19,9 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
+import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
@@ -30,6 +33,8 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 /** One-cell decorative meshes. Both the outline and collision use the source cell shapes. */
 public final class JakProps {
     public record Model(int id,String path,Block block,JsonArray triangles){}
+    public static final int FIRE_BARREL=94;
+    private static BlockEntityType<FireBarrel> fireBarrelType;
     public static final Map<Integer,Model> MODELS=new LinkedHashMap<>();
 
     public static void initialize(){
@@ -43,13 +48,17 @@ public final class JakProps {
             var loot=ResourceKey.create(Registries.LOOT_TABLE,name.withPrefix("blocks/"));
             var properties=BlockBehaviour.Properties.ofLegacyCopy(Blocks.TERRACOTTA).noOcclusion()
                 .setId(blockKey).overrideLootTable(Optional.of(loot));
-            var block=new PropBlock(properties,cell);
+            var block=index==FIRE_BARREL?new BarrelBlock(properties.lightLevel(_ ->12),cell):new PropBlock(properties,cell);
             Registry.register(BuiltInRegistries.BLOCK,blockKey,block);
             var itemKey=ResourceKey.create(Registries.ITEM,name);
             Registry.register(BuiltInRegistries.ITEM,itemKey,new BlockItem(block,new Item.Properties().setId(itemKey).useBlockDescriptionPrefix()));
             MODELS.put(index,new Model(index,path,block,cell.getAsJsonArray("triangles")));
             JakBlocks.BLOCKS.put(path,block);
         }
+        var barrel=MODELS.get(FIRE_BARREL).block();
+        fireBarrelType=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
+            Identifier.fromNamespaceAndPath("jak","burning_barrel"),
+            new BlockEntityType<>(FireBarrel::new,java.util.Set.of(barrel)));
     }
 
     public static int turns(Direction direction){
@@ -61,7 +70,16 @@ public final class JakProps {
         };
     }
 
-    private static final class PropBlock extends HorizontalDirectionalBlock {
+    public static final class FireBarrel extends BlockEntity {
+        FireBarrel(BlockPos pos,BlockState state){super(fireBarrelType,pos,state);}
+    }
+
+    private static final class BarrelBlock extends PropBlock implements EntityBlock {
+        BarrelBlock(Properties properties,JsonObject cell){super(properties,cell);}
+        @Override public BlockEntity newBlockEntity(BlockPos pos,BlockState state){return new FireBarrel(pos,state);}
+    }
+
+    private static class PropBlock extends HorizontalDirectionalBlock {
         private final VoxelShape[] shapes=new VoxelShape[4];
         PropBlock(Properties properties,JsonObject cell){
             super(properties);

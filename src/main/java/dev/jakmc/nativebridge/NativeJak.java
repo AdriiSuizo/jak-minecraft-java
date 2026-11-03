@@ -41,6 +41,7 @@ public final class NativeJak {
     public static native void relocate(long session,float x,float y,float z,float vx,float vy,float vz);
     public static native String fxManifest();
     public static native long fxCreate();
+    public static native long fxCreateBarrel();
     public static native void fxDestroy(long session);
     public static native int fxBacklog(long session);
     public static native void fxPush(long session,String commands,float originX,float originY,float originZ);
