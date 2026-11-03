@@ -26,9 +26,42 @@ fn save_wall_roots(root:&Path){
  }
  std::fs::write(root.join("wall-roots.json"),json!(roots).to_string()).unwrap();
 }
+fn save_track(root:&Path){
+ use minecraft_terrain::{jak_city_arena as arena,jak_pieces,original_places};
+ let center=arena::source_origin().map(|v|v as i32);
+ let textures=original_places::textures_of(&original_places::PLACES[1]);
+ let track=[
+  (105,"objeto_haven_rampa_cuarto","Módulo curvo de turbotabla","skatea-ramp-01",[-5,6,1],[-5,10,6]),
+  (106,"objeto_haven_rampa_piramide","Pirámide de turbotabla","skatea-ramp-01",[-19,6,-9],[-12,7,-2]),
+  (107,"objeto_haven_rail_grind","Barandilla de grind de Haven","skatea-grind-rail-01",[-24,6,-16],[-23,7,5]),
+ ];
+ let out=root.join("objects");std::fs::create_dir_all(&out).unwrap();
+ for (id,path,title,material,lo,hi) in track{
+  let texture=textures.iter().position(|&t|t==material).expect("source track texture") as u16;
+  let mut cells=Vec::new();
+  for x in lo[0]..=hi[0]{for y in lo[1]..=hi[1]{for z in lo[2]..=hi[2]{
+   let pos=(center[0]+x,center[1]+y,center[2]+z);
+   let Some(column)=jak_pieces::column(arena::SOURCE_ID,(pos.0.div_euclid(16)*16,pos.2.div_euclid(16)*16))else{continue;};
+   let Some(piece)=column.pieces.get(&pos)else{continue;};
+   let triangles:Vec<_>=piece.tris.iter().filter(|t|t.texture==texture)
+    .map(|t|json!({"p":t.p,"uv":t.uv,"color":t.color,"texture":material,"blend":t.blend})).collect();
+   if triangles.is_empty(){continue;}
+   cells.push(json!({"cell":[x-lo[0],y-lo[1],z-lo[2]],"triangles":triangles,"boxes":piece.collision_boxes().as_ref()}));
+  }}}
+  assert!(!cells.is_empty(),"no source track cells for {path}");
+  let size=std::array::from_fn::<_,3,_>(|axis|hi[axis]-lo[axis]+1);
+  let rails=if id==107{arena::rail_lines().iter().map(|rail|
+   rail.iter().map(|p|std::array::from_fn::<_,3,_>(|axis|p[axis]-f64::from(center[axis]+lo[axis]))).collect::<Vec<_>>()
+  ).collect::<Vec<_>>()}else{Vec::new()};
+  std::fs::write(out.join(format!("{id}.json")),json!({"id":id,"path":path,"title":title,
+   "group":if id==107{"rail"}else{"track"},"size":size,"soft":false,"cells":cells,"rails":rails}).to_string()).unwrap();
+ }
+}
 fn main(){let args:Vec<_>=std::env::args().collect();let root=Path::new(&args[1]);std::fs::create_dir_all(root).unwrap();
+ if args.get(2).is_some_and(|s|s=="--track-only"){save_track(root);return;}
  save_wall_roots(root);
  if args.get(2).is_some_and(|s|s=="--wall-roots-only"){return;}
+ save_track(root);
  jak_items::set_block_texture_source(texture);
  jak_items::write_pack(&root.join("source-pack")).unwrap();
  let layout=jak_barrio::natural_layout(8048,(0,0),64,0,&Flat).expect("Haven source plan");

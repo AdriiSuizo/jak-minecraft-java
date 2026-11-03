@@ -2,6 +2,7 @@ package dev.jakmc.nativebridge;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import dev.jakmc.content.JakAssemblies;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
@@ -31,6 +32,22 @@ public final class MinecraftCollision {
             if(hit.getType()==net.minecraft.world.phys.HitResult.Type.MISS)return 1;
             return (float)(start.distanceTo(hit.getLocation())/start.distanceTo(end));
         }
+        public java.util.List<java.util.List<Vec3>> rails(Vec3 at){
+            if(!(level instanceof net.minecraft.server.level.ServerLevel server))return java.util.List.of();
+            var anchors=new java.util.ArrayList<JakAssemblies.RailAnchor>();
+            var center=BlockPos.containing(at);
+            int minX=(center.getX()-32)>>4,maxX=(center.getX()+32)>>4;
+            int minZ=(center.getZ()-32)>>4,maxZ=(center.getZ()+32)>>4;
+            for(int x=minX;x<=maxX;x++)for(int z=minZ;z<=maxZ;z++){
+                var chunk=server.getChunkSource().getChunkNow(x,z);
+                if(chunk==null)continue;
+                for(var blockEntity:chunk.getBlockEntities().values())
+                    if(blockEntity instanceof JakAssemblies.RailAnchor anchor)anchors.add(anchor);
+            }
+            anchors.sort(java.util.Comparator.comparingLong(anchor->anchor.getBlockPos().asLong()));
+            return anchors.stream().flatMap(anchor->anchor.lines().stream()).limit(128).toList();
+        }
+
         public ByteBuffer triangles(float x,float y,float z,float X,float Y,float Z){
             if(!Float.isFinite(x)||!Float.isFinite(y)||!Float.isFinite(z)||!Float.isFinite(X)||!Float.isFinite(Y)||!Float.isFinite(Z))throw new IllegalArgumentException("Nonfinite collision query");
             if(tick!=level.getGameTime()){cache.clear();arena.reset();tick=level.getGameTime();}
@@ -42,27 +59,41 @@ public final class MinecraftCollision {
             });
         }
     }
+    private record Track(BlockPos at,net.minecraft.world.level.block.state.BlockState state,JakAssemblies.TrackMesh mesh){}
     private static final class Boxes {
+        final java.util.ArrayList<Track> tracks=new java.util.ArrayList<>();
         float[] values=new float[384];int used;
         void add(double x,double y,double z,double X,double Y,double Z){if(used+6>values.length)values=Arrays.copyOf(values,values.length*2);values[used++]=(float)x;values[used++]=(float)y;values[used++]=(float)z;values[used++]=(float)X;values[used++]=(float)Y;values[used++]=(float)Z;}
     }
     public static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region){return triangles(level,actor,origin,region,new Boxes(),null);}
     private static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region,Boxes boxes,DirectBufferArena arena){
-        boxes.used=0;var context=CollisionContext.of(actor);
+        boxes.used=0;boxes.tracks.clear();
+        int trackBytes=0;var context=CollisionContext.of(actor);
         for(BlockPos pos:BlockPos.betweenClosed(BlockPos.containing(region.minX,region.minY,region.minZ),BlockPos.containing(region.maxX,region.maxY,region.maxZ))){
             double x=pos.getX(),y=pos.getY(),z=pos.getZ();
             // A missing column remains solid, never air beneath fast-moving actors.
             if(!level.hasChunkAt(pos)){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z);continue;}
-            var shape=level.getBlockState(pos).getCollisionShape(level,pos,context);
+            var state=level.getBlockState(pos);
+            var track=JakAssemblies.trackMesh(state);
+            if(track!=null){
+                trackBytes=Math.addExact(trackBytes,track.capacity());
+                boxes.tracks.add(new Track(pos.immutable(),state,track));
+                continue;
+            }
+            var shape=state.getCollisionShape(level,pos,context);
             if(shape==net.minecraft.world.phys.shapes.Shapes.block()){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z);}
             else if(!shape.isEmpty())shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->boxes.add(x0+x-origin.x,y0+y-origin.y,z0+z-origin.z,x1+x-origin.x,y1+y-origin.y,z1+z-origin.z));
         }
         var decks=level.getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,region.inflate(4),
             deck->deck!=actor&&!deck.wrecked()&&(actor==null||deck.pilotId()!=actor.getId()));
-        int bytes=Math.multiplyExact(boxes.used/6,480);
+        int bytes=Math.addExact(Math.multiplyExact(boxes.used/6,480),trackBytes);
         int capacity=decks.isEmpty()?bytes:Math.addExact(bytes,Math.multiplyExact(decks.size(),dev.jakmc.entity.JakHellcat.deckCapacity()));
         ByteBuffer data=arena==null?NativeJak.buffer(capacity):arena.acquire(capacity);
         for(int i=0;i<boxes.used;i+=6)box(data,boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);
+        for(var track:boxes.tracks){
+            var pos=track.at();
+            track.mesh().write(data,level,pos,track.state(),pos.getX()-origin.x,pos.getY()-origin.y,pos.getZ()-origin.z);
+        }
         for(var deck:decks)deck.appendDeck(origin,region,data);
         return data.slice(0,data.position()).order(java.nio.ByteOrder.LITTLE_ENDIAN);
     }

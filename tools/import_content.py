@@ -157,6 +157,50 @@ def material_resources(definitions):
     for language in ('es_es','en_us'):
         (languages/(language+'.json')).write_text(json.dumps(translations,ensure_ascii=False),encoding='utf-8')
 
+def seal_track_meshes(catalog):
+    for index in (105,106):
+        path=catalog/'objects'/f'{index}.json'
+        data=json.loads(path.read_text(encoding='utf-8'))
+        # The original source uses clockwise faces. The closed construction also
+        # includes cut faces inside each curved strip and Minecraft cell.
+        surfaces={}
+        for cell in data['cells']:
+            x,y,z=cell['cell']
+            for tri in cell['triangles']:
+                for field in ('p','uv','color'):
+                    tri[field][1],tri[field][2]=tri[field][2],tri[field][1]
+                a,b,c=tri['p']
+                up=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2])
+                if up>1e-8:
+                    surfaces.setdefault((x,z),[]).append(
+                        tuple((p[0]+x,p[1]+y,p[2]+z) for p in tri['p']))
+        def interior(point):
+            x,y,z=point
+            if y<=0:return False
+            for a,b,c in surfaces.get((math.floor(x),math.floor(z)),()):
+                ax,ay,az=a;bx,by,bz=b;cx,cy,cz=c
+                den=(bx-ax)*(cz-az)-(bz-az)*(cx-ax)
+                u=((x-ax)*(cz-az)-(z-az)*(cx-ax))/den
+                v=((bx-ax)*(z-az)-(bz-az)*(x-ax))/den
+                if u>=-1e-6 and v>=-1e-6 and u+v<=1+1e-6 and y<ay+u*(by-ay)+v*(cy-ay)-1e-5:
+                    return True
+            return False
+        for cell in data['cells']:
+            outside=[]
+            for tri in cell['triangles']:
+                a,b,c=tri['p']
+                u=[b[i]-a[i] for i in range(3)]
+                v=[c[i]-a[i] for i in range(3)]
+                normal=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]
+                length=math.sqrt(sum(component*component for component in normal))
+                if length<1e-7:continue
+                middle=[(a[i]+b[i]+c[i])/3+cell['cell'][i] for i in range(3)]
+                if all(interior([middle[i]+side*.0004*normal[i]/length for i in range(3)]) for side in (-1,1)):
+                    continue
+                outside.append(tri)
+            cell['triangles']=outside
+        path.write_text(json.dumps(data,separators=(',',':')),encoding='utf-8')
+
 def decorations(catalog):
     # The minigame and mirror need their original runtime behavior.
     supported=(86,87,89,90,91,92,94,95,96,97,98,99,100,103,104)
@@ -164,7 +208,7 @@ def decorations(catalog):
     items=DEST/'assets/jak/items'
     models=DEST/'assets/jak/models/item'
     # The anchor is the supported base cell, including the actual palm trunk.
-    assemblies={88:[0,0,0],93:[3,0,2]}
+    assemblies={88:[0,0,0],93:[3,0,2],105:[0,0,0],106:[3,0,3],107:[1,0,1]}
     roots=json.loads((SOURCE/'wall-roots.json').read_text(encoding='utf-8'))
     for id,root in roots.items():
         assemblies[int(id)]=[math.floor(value+1e-6) for value in root]
@@ -211,6 +255,7 @@ def main():
     (catalog/'blocks.json').write_text(json.dumps(definitions,separators=(',',':')),encoding='utf-8')
     material_resources(definitions+decorations(catalog))
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)
+    seal_track_meshes(catalog)
     for name in ['haven','spargus','palace']:
         data=json.loads((SOURCE/f'{name}.json').read_text(encoding='utf-8'))
         (catalog/f'{name}.jbp').write_bytes(packed_blueprint(data))

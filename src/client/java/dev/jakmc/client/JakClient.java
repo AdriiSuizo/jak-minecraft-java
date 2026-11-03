@@ -25,6 +25,7 @@ public final class JakClient implements ClientModInitializer {
   CitizenScene.initialize();
   MaterialScene.initialize();
   AltarScene.initialize();
+  TrackScene.initialize();
   dev.jakmc.client.model.GltfItemRenderer.initialize();
   dev.jakmc.client.model.PropModels.initialize();
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(

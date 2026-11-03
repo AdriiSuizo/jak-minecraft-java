@@ -133,7 +133,10 @@ public final class PropModels {
                     .chunkLayer(triangle.blended()?ChunkSectionLayer.TRANSLUCENT:ChunkSectionLayer.byTransparency(material.sprite().transparency()))
                     .ambientOcclusion(net.fabricmc.fabric.api.util.TriState.FALSE).emit();
             }
-            return new Baked(new MeshQuadCollection(mesh.immutableCopy()),materials.values().iterator().next());
+            var particle=materials.isEmpty()
+                ?baker.materials().get(new Material(Identifier.fromNamespaceAndPath("jak","block/skatea-ramp-01")),()->name)
+                :materials.values().iterator().next();
+            return new Baked(new MeshQuadCollection(mesh.immutableCopy()),particle);
         }
     }
 

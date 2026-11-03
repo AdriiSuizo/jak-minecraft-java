@@ -238,6 +238,25 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_relocate(mut env:JN
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_destroy(mut env:JNIEnv,_:JClass,id:jlong){
  protect(&mut env,||{lock_sessions()?.live.remove(&(id as u64));Ok(())});
 }
+#[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_setGrindRails(mut env:JNIEnv,_:JClass,id:jlong,buffer:JByteBuffer){
+ let address=env.get_direct_buffer_address(&buffer).map_err(|e|e.to_string());
+ let length=env.get_direct_buffer_capacity(&buffer).map_err(|e|e.to_string());
+ protect(&mut env,||{
+  let length=length?;if length>65536{return Err("Grind rail packet exceeds budget".into());}
+  let data=unsafe{std::slice::from_raw_parts(address?,length)};
+  let mut cursor=0;let mut rails=Vec::new();
+  while cursor<data.len(){
+   if cursor+4>data.len()||rails.len()>=128{return Err("Invalid grind rail header".into());}
+   let count=read_u(data,cursor) as usize;cursor+=4;
+   if !(2..=128).contains(&count)||cursor+count*12>data.len(){return Err("Invalid grind rail points".into());}
+   let points=(0..count).map(|i|vec(data,cursor+i*12)*BLOCK).collect();
+   rails.push(jak_core::grind::Rail::new(points).ok_or("Degenerate grind rail")?);
+   cursor+=count*12;
+  }
+  lock_sessions()?.live.get_mut(&(id as u64)).ok_or("Stale session")?.jak.replace_grind_rails(Arc::new(rails));
+  Ok(())
+ })
+}
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_bindWorld(mut env:JNIEnv,_:JClass,id:jlong,query:JObject){
  let binding=env.new_global_ref(query).map_err(|e|e.to_string());let vm=env.get_java_vm().map_err(|e|e.to_string());
  protect(&mut env,||{let _=JVM.set(vm?);let mut sessions=lock_sessions()?;

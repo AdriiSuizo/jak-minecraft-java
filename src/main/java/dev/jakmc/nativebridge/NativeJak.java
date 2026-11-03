@@ -31,6 +31,7 @@ public final class NativeJak {
     public static native long create(float minecraftYaw);
     public static native void destroy(long session);
     public static native void rebase(long session,float deltaX,float deltaY,float deltaZ);
+    public static native void setGrindRails(long session,ByteBuffer rails);
     public static native void bindWorld(long session,Object collisionQuery);
     public static native void setStats(long session,float healthFraction,float red,float yellow,float blue,float dark);
     public static native String step(long session, ByteBuffer input, ByteBuffer triangles, ByteBuffer actors, int steps);

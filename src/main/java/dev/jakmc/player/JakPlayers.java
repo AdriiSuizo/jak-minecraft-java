@@ -34,7 +34,8 @@ public final class JakPlayers {
         Vec3 last;
         JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0,0,0);
         int pressed;
-        boolean shield,shieldHit,altarMount,usingBoard;
+        boolean shield,shieldHit,altarMount,usingBoard,grinding;
+        List<List<Vec3>> rails=List.of();
         long lastInput;
         float entityRate=1;
         JakLeaper mount;
@@ -142,8 +143,10 @@ public final class JakPlayers {
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server->{for(var s:LIVE.values())s.close();LIVE.clear();CONTROLLED.clear();PROBE_INPUT.clear();});
     }
     private static void step(ServerPlayer p,Session s){
-        if(p.position().distanceToSqr(s.origin)>256*256){Vec3 delta=p.position().subtract(s.origin);NativeJak.rebase(s.nativeId,(float)delta.x,(float)delta.y,(float)delta.z);s.origin=p.position();}
+        boolean rebased=!s.grinding&&p.position().distanceToSqr(s.origin)>256*256;
+        if(rebased){Vec3 delta=p.position().subtract(s.origin);NativeJak.rebase(s.nativeId,(float)delta.x,(float)delta.y,(float)delta.z);s.origin=p.position();}
         s.collision.origin=s.origin;
+        refreshGrindRails(p,s,rebased);
         boolean controlled=CONTROLLED.contains(p.getUUID());
         var input=controlled?PROBE_INPUT.get(p.getUUID()):s.input;
         boolean fresh=controlled||p.level().getGameTime()-s.lastInput<=5;
@@ -237,6 +240,7 @@ public final class JakPlayers {
             pose.getAsJsonArray("events").asList().clear();
         }
         s.usingBoard=pose.get("board").getAsBoolean();
+        s.grinding=s.usingBoard&&pose.get("state").getAsString().equals("board-grind");
         if(!Double.isFinite(position.x)||!Double.isFinite(position.y)||!Double.isFinite(position.z))throw new IllegalStateException("Nonfinite Jak pose");
         if(s.mount!=null){
             var ride=pose.get("ride");
@@ -273,6 +277,21 @@ public final class JakPlayers {
         ServerPlayNetworking.send(p,packet);
         for(ServerPlayer watcher:PlayerLookup.tracking(p))if(watcher!=p)ServerPlayNetworking.send(watcher,packet);
     }
+    private static void refreshGrindRails(ServerPlayer player,Session session,boolean rebased){
+        List<List<Vec3>> lines=session.usingBoard?session.collision.rails(player.position()):List.of();
+        if(lines.equals(session.rails)&&!rebased)return;
+        int bytes=0;
+        for(var line:lines)bytes+=4+line.size()*12;
+        var buffer=NativeJak.buffer(bytes);
+        for(var line:lines){
+            buffer.putInt(line.size());
+            for(var point:line)buffer.putFloat((float)(point.x-session.origin.x))
+                .putFloat((float)(point.y-session.origin.y)).putFloat((float)(point.z-session.origin.z));
+        }
+        NativeJak.setGrindRails(session.nativeId,buffer);
+        session.rails=lines;
+    }
+
     private static void relocate(Session s,Vec3 at,Vec3 velocity){
         Vec3 pos=at.subtract(s.origin);
         NativeJak.relocate(s.nativeId,(float)pos.x,(float)pos.y,(float)pos.z,
