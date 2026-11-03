@@ -31,7 +31,9 @@ public final class JakPlayers {
         Vec3 last;
         JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0,0,0);
         int pressed;
+        boolean shield,shieldHit;
         long lastInput;
+        float entityRate=1;
         Session(ServerPlayer player){nativeId=NativeJak.create(player.getYRot());origin=player.position();last=origin;dimension=player.level().dimension().identifier().toString();collision=new MinecraftCollision.Query(player.level(),player,origin);NativeJak.bindWorld(nativeId,collision);}
         public void close(){NativeJak.destroy(nativeId);}
     }
@@ -43,7 +45,18 @@ public final class JakPlayers {
         if(input.sequence()<=s.input.sequence())return;
         s.input=input;s.pressed|=input.pressed();s.lastInput=player.level().getGameTime();
     }
+    public static boolean blockWithLightShield(ServerPlayer player){
+        if(!active(player))return false;
+        var session=LIVE.get(player.getUUID());
+        if(session==null||!session.shield)return false;
+        session.shieldHit=true;
+        return true;
+    }
+
     public static void initialize(){
+        ServerTickEvents.START_LEVEL_TICK.register(level->{
+            if(level.tickRateManager().runsNormally())JakEntityClock.of(level).advance();
+        });
         ServerTickEvents.END_SERVER_TICK.register(server->{
             var present=new HashSet<UUID>();
             for(ServerPlayer p:server.getPlayerList().getPlayers()){
@@ -56,6 +69,20 @@ public final class JakPlayers {
                 try{step(p,s);}catch(RuntimeException failure){s.close();LIVE.remove(p.getUUID());p.setDeltaMovement(Vec3.ZERO);JakMod.LOG.error("Jak session stopped at last safe Minecraft pose for {}",p.getScoreboardName(),failure);}
             }
             var it=LIVE.entrySet().iterator();while(it.hasNext()){var e=it.next();if(!present.contains(e.getKey())){e.getValue().close();it.remove();}}
+            for(var level:server.getAllLevels()){
+                float rate=1;
+                for(var p:level.players()){
+                    var session=LIVE.get(p.getUUID());
+                    if(session!=null)rate=Math.min(rate,session.entityRate);
+                }
+                var clock=JakEntityClock.of(level);
+                boolean synchronize=rate<1||clock.rate()!=rate||clock.skipped()>0&&level.getGameTime()%20==0;
+                clock.setRate(rate);
+                if(synchronize){
+                    var packet=new JakPackets.EntityTime(level.dimension().identifier(),rate,clock.progress(),clock.skipped());
+                    for(var p:level.players())if(ServerPlayNetworking.canSend(p,JakPackets.EntityTime.TYPE))ServerPlayNetworking.send(p,packet);
+                }
+            }
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler,server)->{var s=LIVE.remove(handler.getPlayer().getUUID());if(s!=null)s.close();});
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server->{for(var s:LIVE.values())s.close();LIVE.clear();CONTROLLED.clear();PROBE_INPUT.clear();});
@@ -80,6 +107,15 @@ public final class JakPlayers {
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE))flags|=4;
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.SLOW_FALLING))flags|=8;
         flags|=floor(p)<<8;
+        if(!controlled){
+            flags|=1<<13; // Physical controls are routed by this host.
+            if((input.held()&JakPackets.FIRST_PERSON)!=0)flags|=1<<14;
+            if(!fresh||(input.held()&JakPackets.CANCEL_POWER)!=0)flags|=1<<15;
+        }
+        if(s.shieldHit){
+            flags|=1<<16;
+            s.shieldHit=false;
+        }
         b.putInt(flags).putFloat(p.getAttachedOrCreate(JakData.DARK_ECO)).putFloat(p.getAttachedOrCreate(JakData.LIGHT_ECO));
         b.putInt(JakItems.GUNS.indexOf(p.getMainHandItem().getItem()));
         AABB region=p.getBoundingBox().inflate(6,5,6);
@@ -87,6 +123,8 @@ public final class JakPlayers {
         s.actorBuffers.reset();var actors=MinecraftCollision.actors(p.level(),p,s.origin,region.inflate(256),s.actorBuffers);
         NativeJak.setStats(s.nativeId,p.getHealth()/p.getMaxHealth(),p.getAttachedOrCreate(JakData.AMMO.get(0)),p.getAttachedOrCreate(JakData.AMMO.get(1)),p.getAttachedOrCreate(JakData.AMMO.get(2)),p.getAttachedOrCreate(JakData.AMMO.get(3)));
         JsonObject pose=JsonParser.parseString(NativeJak.step(s.nativeId,b,triangles,actors,3)).getAsJsonObject();
+        s.shield=pose.get("shield").getAsBoolean();
+        s.entityRate=pose.get("entityRate").getAsFloat();
         Vec3 position=vector(pose.getAsJsonArray("pos")).add(s.origin);
         if(!Double.isFinite(position.x)||!Double.isFinite(position.y)||!Double.isFinite(position.z))throw new IllegalStateException("Nonfinite Jak pose");
         p.setPos(position);p.setDeltaMovement(Vec3.ZERO);p.setOnGround((pose.get("status").getAsInt()&2)!=0);p.resetFallDistance();

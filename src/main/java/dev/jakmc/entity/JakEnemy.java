@@ -47,15 +47,15 @@ public final class JakEnemy extends Monster {
  public String animation(){String c=entityData.get(CLIP);return c.isEmpty()?kind.clips[0]:c;}
  public boolean animationLoops(){return entityData.get(LOOP);}
  public float animationRate(){return entityData.get(PLAY_RATE);}
- public float animationSeconds(float partial){return Math.max(0,(level().getGameTime()-entityData.get(CLIP_START)+partial)/20f)*animationRate();}
+ public float animationSeconds(float partial){return Math.max(0,(dev.jakmc.player.JakEntityClock.time(level())-entityData.get(CLIP_START)+partial)/20f)*animationRate();}
  public State state(){return State.values()[Math.clamp(entityData.get(PHASE),0,State.values().length-1)];}
  private void animate(String clip,boolean loop,float rate){
-  if(!clip.equals(entityData.get(CLIP))){entityData.set(CLIP,clip);entityData.set(CLIP_START,level().getGameTime());}
+  if(!clip.equals(entityData.get(CLIP))){entityData.set(CLIP,clip);entityData.set(CLIP_START,dev.jakmc.player.JakEntityClock.time(level()));}
   entityData.set(LOOP,loop);entityData.set(PLAY_RATE,rate);
  }
  private void set(State next){
   state=next;stateTicks=0;struck=false;windup=0;landTicks=0;requestLeap=false;leapWindup=0;leaping=false;
-  entityData.set(PHASE,next.ordinal());entityData.set(CLIP_START,level().getGameTime());
+  entityData.set(PHASE,next.ordinal());entityData.set(CLIP_START,dev.jakmc.player.JakEntityClock.time(level()));
   if(next!=State.CHASE&&next!=State.WALK){getNavigation().stop();getMoveControl().setWantedPosition(getX(),getY(),getZ(),0);}
  }
  @Override protected void customServerAiStep(ServerLevel level){

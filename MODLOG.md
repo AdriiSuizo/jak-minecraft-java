@@ -101,3 +101,7 @@ Three original Haven models/outfits/clocks on the actual native Villager, includ
 Actual-game acceptance `.local/evidence/citizens-20261103-173335`, reviewed screenshots, normal save/exit. Collision metrics `.local/collision-performance-comparison.json`. Failures, source paths, and exact scope in docs/CURRENT-PORT-HANDOFF.md. Backup `.local/backups/pre-performance-citizens-20261103-164632.zip`; original exports, other projects and personal saves untouched.
 
 Final build passed in 28s; package receipt `.local/citizens-build-receipt.json`. Runtime archive has unique paths and unchanged JNI; source archive contains no private media/binaries.
+
+## 2026-11-03 — frame-smooth camera and original Jak powers
+
+Shared presentation for local avatar and camera, per-frame SDL look, native shoulder clipping, R3 powers, L2 aim, contextual R2 fire/place/mine. Original wing and shield clips and animated material layers, dark color variants and body-joint effects. Real shield damage reaction, flight, healing and per-dimension native entity slowdown with recovery. ABI3 preserved. Actual Minecraft evidence and limits in docs/CURRENT-PORT-HANDOFF.md.

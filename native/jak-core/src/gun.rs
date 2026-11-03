@@ -54,6 +54,8 @@ pub struct Gun {
     /// Aiming by hand (the host's over-the-shoulder aim): the gun fires
     /// this way, whatever auto-aim found.
     pub aim_dir: Option<Vec3>,
+    /// Exact crosshair intersection, independent of the muzzle animation.
+    pub aim_point: Option<Vec3>,
     /// Posed muzzle relative to Jak, supplied by the model host.
     pub muzzle_local: Option<Vec3>,
     pub fire_point: Vec3,
@@ -90,6 +92,7 @@ impl Default for Gun {
             turn_blend: 0.0,
             aim: None,
             aim_dir: None,
+            aim_point: None,
             muzzle_local: None,
             fire_point: Vec3::ZERO,
             fire_dir: Vec3::Z,
@@ -139,7 +142,9 @@ impl Gun {
             |local| c.trans + c.quat * local,
         );
         let range = self.kind.track_range();
-        if let Some(dir) = self.aim_dir.and_then(Vec3::try_normalize) {
+        if let Some(dir) = self.aim_point.and_then(|p| (p - self.fire_point).try_normalize())
+            .or_else(|| self.aim_dir.and_then(Vec3::try_normalize))
+        {
             self.fire_dir = dir;
             return;
         }

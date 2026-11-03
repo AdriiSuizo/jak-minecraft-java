@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Replay through real SDL → normal client input → packets → server Jak; no probeInput. */
 public final class InputScene {
- private static boolean running,interactions;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
+ private static boolean running,interactions,powers;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
  private static long deviceDeadline;private static Vec3 start,ecoCenter;private static double peak,walk;private static float yawStart,yawAfter;
  private static final Set<String> STATES=new TreeSet<>();private static final Set<UUID> ITEMS=new HashSet<>();
  public record CameraView(Vec3 position,float yaw,float pitch){}
@@ -25,7 +25,7 @@ public final class InputScene {
  public static void start(Minecraft c){
   if(running||c.player==null||c.getSingleplayerServer()==null)throw new IllegalStateException("Open the isolated dev world");
   output=c.gameDirectory.toPath().resolve("jakmc/evidence/input");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
-  interactions=false;ACTIONS.entrySet().clear();VIEWS.clear();
+  interactions=powers=false;ACTIONS.entrySet().clear();VIEWS.clear();
   start=c.player.position().add(7,0,0);tick=0;peak=0;walk=0;STATES.clear();ITEMS.clear();view=null;ecoCenter=null;
   c.gui.setScreen(null);c.options.setCameraType(CameraType.THIRD_PERSON_BACK);c.player.setYRot(0);c.player.setXRot(10);yawStart=0;yawAfter=0;
   pad=new SdlVirtualPad();deviceDeadline=System.nanoTime()+5_000_000_000L;running=true;var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{
@@ -40,6 +40,178 @@ public final class InputScene {
   });
  }
  public static void startInteractions(Minecraft c){start(c);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
+ private static boolean shieldTested,darkSeen,lightSeen,wingsSeen,shotSeen,aimSeen,flightSeen,healSeen;
+ private static volatile boolean hit,placeSeen,mineSeen,aimHit;
+ private static volatile float woundedHealth;
+ private static UUID aimTarget,freezeTarget;
+ private static volatile int slowStart,slowEnd,resumeStart,resumeEnd;
+ private static boolean freezeSeen,pauseOnLostFocus;
+ static boolean backgroundPad(int id){return running&&powers&&pad!=null&&pad.id==id;}
+ private static int darkScreenshot,shieldScreenshot,wingsScreenshot,betweenPackets,flightJump;
+ private static Vec3 lastCamera;
+ private static long cameraSnapshot;
+ public static void sampleCamera(Camera camera){
+  if(!running||!powers||tick<410||tick>=440)return;
+  var player=Minecraft.getInstance().player;
+  var pose=player==null?null:JakPoses.get(player.getId());
+  if(pose==null)return;
+  var at=camera.position();
+  if(lastCamera!=null&&pose.received()==cameraSnapshot&&at.distanceToSqr(lastCamera)>1e-8)betweenPackets++;
+  lastCamera=at;
+  cameraSnapshot=pose.received();
+ }
+ public static void startPowers(Minecraft c){
+  start(c);
+  powers=true;
+  pauseOnLostFocus=c.options.pauseOnLostFocus;
+  c.options.pauseOnLostFocus=false;
+  output=c.gameDirectory.toPath().resolve("jakmc/evidence/powers");
+  try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
+  hit=shieldTested=darkSeen=lightSeen=wingsSeen=shotSeen=aimSeen=placeSeen=mineSeen=aimHit=flightSeen=healSeen=false;
+  woundedHealth=0;
+  freezeSeen=false;
+  slowStart=slowEnd=resumeStart=resumeEnd=-1;
+  freezeTarget=null;
+  darkScreenshot=shieldScreenshot=wingsScreenshot=betweenPackets=flightJump=0;
+  lastCamera=null;
+  onServer(c,p->{
+   p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(3)));
+   p.setAttached(JakData.DARK_ECO,100f);
+   p.setAttached(JakData.LIGHT_ECO,100f);
+   var mob=dev.jakmc.entity.JakEntities.TYPES.get("grunt")
+       .create(p.level(),net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+   mob.setNoAi(true);
+   mob.setPos(start.add(0,0,5));
+   p.level().addFreshEntity(mob);
+   aimTarget=mob.getUUID();
+  });
+ }
+ private static void onServer(Minecraft c,java.util.function.Consumer<net.minecraft.server.level.ServerPlayer> action){
+  var server=c.getSingleplayerServer();var id=c.player.getUUID();
+  server.execute(()->{var player=server.getPlayerList().getPlayer(id);if(player!=null)action.accept(player);});
+ }
+ private static void powerActions(Minecraft c){
+  int t=++tick;
+  var pose=JakPoses.get(c.player.getId());
+  pad.axis(4,t>=18&&t<83?1:-1);
+  pad.axis(5,t>=40&&t<56||t>=78&&t<80||t>=95&&t<98?1:-1);
+  pad.axis(1,t>=402&&t<445?-.75f:0);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK,t>=109&&t<119||t>=149&&t<159||t>=195&&t<280||t>=324&&t<361||t>=475&&t<530||t>=620&&t<690);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,t>=235&&t<285);
+  if(flightJump==0&&t>363&&t<445&&pose!=null&&pose.light()
+      &&pose.raw().get("wings").isJsonObject()
+      &&Set.of("stance","walk").contains(pose.raw().get("state").getAsString()))flightJump=t;
+  int sinceJump=flightJump==0?-1:t-flightJump;
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,t==342
+      ||sinceJump>=0&&sinceJump<3||sinceJump>=7&&sinceJump<19);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,t>=498&&t<502);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,t>=653&&t<657);
+  if(t==13){c.player.setYRot(0);c.player.setXRot(4);c.gui.hud.getChat().clearMessages(false);}
+  if(t==52)capture(c,"powers-aim.png");
+  if(t==60)onServer(c,p->{
+   var target=p.level().getEntity(aimTarget);
+   aimHit=target instanceof net.minecraft.world.entity.LivingEntity living&&living.getHealth()<living.getMaxHealth();
+   if(target!=null)target.discard();
+  });
+  if(t==64){
+   c.player.setXRot(45);
+   onServer(c,p->p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(net.minecraft.world.item.Items.GOLD_BLOCK)));
+  }
+  if(t==185)onServer(c,p->p.setGameMode(net.minecraft.world.level.GameType.SURVIVAL));
+  if(t==91){
+   onServer(c,p->{
+    var base=net.minecraft.core.BlockPos.containing(start);
+    for(int z=1;z<=3;z++)placeSeen|=p.level().getBlockState(base.offset(0,0,z)).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK);
+    p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(net.minecraft.world.item.Items.DIAMOND_PICKAXE));
+   });
+  }
+  if(t==103){
+   onServer(c,p->{
+    var base=net.minecraft.core.BlockPos.containing(start);
+    mineSeen=placeSeen;
+    for(int z=1;z<=3;z++)mineSeen&=!p.level().getBlockState(base.offset(0,0,z)).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK);
+    p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,ItemStack.EMPTY);
+   });
+   c.player.setXRot(5);
+  }
+  if(pose!=null){
+   aimSeen|=t<64&&pose.raw().get("aim").getAsBoolean();
+   shotSeen|=pose.raw().getAsJsonObject("gun").get("fireAge").getAsFloat()<1;
+   if(pose.dark()&&t<109)ACTIONS.addProperty("l2_triggered_dark",true);
+   if(pose.dark()&&t>=119&&t<149){
+    darkSeen=true;
+    if(darkScreenshot==0)darkScreenshot=t+3;
+   }
+   if(t==darkScreenshot)capture(c,"powers-dark.png");
+   lightSeen|=pose.light();
+   if(!freezeSeen&&pose.raw().get("entityRate").getAsFloat()<.95f){
+    freezeSeen=true;
+    capture(c,"powers-freeze.png");
+   }
+   String state=pose.raw().get("state").getAsString();
+   if(t>363&&t<445&&t%4==0)STATES.add(t+":"+state);
+   if(!flightSeen&&state.startsWith("lightjak-swoop")&&pose.position().y>start.y+.4){
+    flightSeen=true;
+    capture(c,"powers-flight.png");
+   }
+   if(!healSeen&&state.equals("lightjak-regen")){
+    healSeen=true;
+    capture(c,"powers-heal.png");
+   }
+   if(pose.raw().get("shield").getAsBoolean()&&!shieldTested){
+    shieldTested=true;
+    shieldScreenshot=t+10;
+    onServer(c,p->{
+     float before=p.getHealth();
+     boolean damage=p.hurtServer(p.level(),p.damageSources().generic(),4);
+     hit=!damage&&before==p.getHealth();
+    });
+   }
+   if(t==shieldScreenshot)capture(c,"powers-shield.png");
+   if(pose.raw().get("shieldHitAge").getAsFloat()<1)ACTIONS.addProperty("shield_reacted",true);
+   if(pose.raw().get("wings").isJsonObject()&&!wingsSeen){
+    wingsSeen=true;
+    wingsScreenshot=t+22;
+   }
+  }
+  if(t==wingsScreenshot)capture(c,"powers-wings.png");
+  if(t==460)onServer(c,p->{
+   p.getFoodData().setFoodLevel(12);
+   p.setHealth(p.getMaxHealth()-6);
+   woundedHealth=p.getHealth();
+  });
+  if(t==605)onServer(c,p->{
+   var mob=dev.jakmc.entity.JakEntities.TYPES.get("grunt").create(p.level(),net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+   mob.setNoAi(true);
+   mob.setPos(p.position().add(0,0,4));
+   if(p.level().addFreshEntity(mob))freezeTarget=mob.getUUID();
+  });
+  if(t==720||t==780||t==1005||t==1045)onServer(c,p->{
+   var mob=freezeTarget==null?null:p.level().getEntity(freezeTarget);
+   if(mob==null)return;
+   if(t==720)slowStart=mob.tickCount;
+   else if(t==780)slowEnd=mob.tickCount;
+   else if(t==1005)resumeStart=mob.tickCount;
+   else {resumeEnd=mob.tickCount;mob.discard();}
+  });
+  if(t>=1051){
+   STATES.add("freeze_entity_ticks="+(slowEnd-slowStart));
+   STATES.add("resumed_entity_ticks="+(resumeEnd-resumeStart));
+   ACTIONS.addProperty("light_freeze_slows_entities",freezeSeen&&slowStart>=0&&slowEnd-slowStart>=2&&slowEnd-slowStart<=5);
+   ACTIONS.addProperty("light_freeze_recovers",resumeStart>=0&&resumeEnd-resumeStart>=34);
+   ACTIONS.addProperty("l2_only_aims",!ACTIONS.has("l2_triggered_dark")&&aimSeen);
+   ACTIONS.addProperty("r2_fired",shotSeen&&aimHit);
+   ACTIONS.addProperty("r2_mined_native_block",mineSeen);
+   ACTIONS.addProperty("r2_placed_native_block",placeSeen);
+   ACTIONS.addProperty("r3_dark",darkSeen);
+   ACTIONS.addProperty("r3_chords_light",lightSeen&&wingsSeen);
+   ACTIONS.addProperty("light_flight",flightSeen);
+   ACTIONS.addProperty("light_heals_survival",healSeen&&woundedHealth>0&&c.player.getHealth()>woundedHealth);
+   ACTIONS.addProperty("shield_blocked_damage",shieldTested&&hit&&ACTIONS.has("shield_reacted"));
+   ACTIONS.addProperty("camera_moves_between_packets",betweenPackets>4);
+   finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"power/aim assertion failed");
+  }
+ }
  private static void actions(Minecraft c){
   int t=++tick;pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,t==25);pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_BACK,t==55||t==60||t==65);pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_UP,t==75);pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_START,t==95);
   VIEWS.add(c.options.getCameraType());
@@ -53,6 +225,7 @@ public final class InputScene {
   // Hot-plug enumeration is asynchronous. Replay must wait for the normal backend
   // to open the device at rest, as SDL calibrates virtual triggers on open.
   if(!JakInput.controllerReady(pad.id)){if(System.nanoTime()>deviceDeadline)finish(c,"SDL replay device not opened");return;}
+  if(powers){powerActions(c);return;}
   if(interactions){actions(c);return;}
   int t=++tick;
   var pose=JakPoses.get(c.player.getId());if(pose!=null){if(pose.raw().has("state"))STATES.add(pose.raw().get("state").getAsString());peak=Math.max(peak,c.player.getY()-start.y);}
@@ -84,7 +257,8 @@ public final class InputScene {
  private static void look(Vec3 at,Vec3 target){Vec3 d=target.subtract(at);view=new CameraView(at,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),(float)Math.toDegrees(Math.atan2(-d.y,d.horizontalDistance())));}
  private static void capture(Minecraft c,String file){Screenshot.grab(c.gameDirectory,file,c.gameRenderer.mainRenderTarget(),1,m->{});}
  private static void finish(Minecraft c,String reason){
-  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(interactions){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason","interaction assertion failed");}
+  if(powers)c.options.pauseOnLostFocus=pauseOnLostFocus;
+  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason","interaction assertion failed");}
   result.addProperty("jak_actions_reached",STATES.containsAll(Set.of("double-jump","roll","attack","board-stance")));
   try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
   if(c.getSingleplayerServer()!=null){var server=c.getSingleplayerServer();server.execute(()->{for(UUID id:ITEMS){var item=server.overworld().getEntity(id);if(item!=null)item.discard();}});}c.stop();

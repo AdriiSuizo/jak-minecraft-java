@@ -3,6 +3,13 @@ import net.fabricmc.api.ClientModInitializer;
 public final class JakClient implements ClientModInitializer {
  @Override public void onInitializeClient() {
   JakInput.initialize();
+  net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+      dev.jakmc.network.JakPackets.EntityTime.TYPE,(packet,context)->{
+       var level=context.client().level;
+       if(level!=null&&level.dimension().identifier().equals(packet.dimension())){
+        dev.jakmc.player.JakEntityClock.of(level).synchronize(packet.rate(),packet.progress(),packet.skipped());
+       }
+      });
   net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(JakPoses::prune);
   JakSounds.initialize();
   JakEffects.initialize();

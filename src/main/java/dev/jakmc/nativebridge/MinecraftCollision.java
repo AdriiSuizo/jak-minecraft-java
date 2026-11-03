@@ -21,6 +21,16 @@ public final class MinecraftCollision {
         private record Region(int x,int y,int z,int X,int Y,int Z){}
         final java.util.Map<Region,ByteBuffer> cache=new java.util.LinkedHashMap<>();
         public Query(Level level,Entity actor,Vec3 origin){this.level=level;this.actor=actor;this.origin=origin;}
+        /** Fraction along the aim ray blocked by a native collision shape. */
+        public float aimDistance(float x,float y,float z,float endX,float endY,float endZ){
+            Vec3 start=origin.add(x,y,z);
+            Vec3 end=origin.add(endX,endY,endZ);
+            var hit=level.clip(new net.minecraft.world.level.ClipContext(start,end,
+                net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                net.minecraft.world.level.ClipContext.Fluid.NONE,actor));
+            if(hit.getType()==net.minecraft.world.phys.HitResult.Type.MISS)return 1;
+            return (float)(start.distanceTo(hit.getLocation())/start.distanceTo(end));
+        }
         public ByteBuffer triangles(float x,float y,float z,float X,float Y,float Z){
             if(!Float.isFinite(x)||!Float.isFinite(y)||!Float.isFinite(z)||!Float.isFinite(X)||!Float.isFinite(Y)||!Float.isFinite(Z))throw new IllegalArgumentException("Nonfinite collision query");
             if(tick!=level.getGameTime()){cache.clear();arena.reset();tick=level.getGameTime();}

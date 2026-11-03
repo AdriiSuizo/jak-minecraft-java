@@ -23,7 +23,7 @@ public final class JakCitizenRenderer {
   if(entity.getType()!=EntityTypes.VILLAGER){DRAW.remove(state);return;}var data=(CitizenState)entity;Asset a=asset(data.citizenVariant());int seed=entity.getUUID().hashCode();long shown=a.kind.segments(seed);String suffix="idle";float time=0;Sleep bed=null;
   if(entity.isSleeping()){bed=a.beds.computeIfAbsent(shown,m->bed(a,m));suffix="knocked-back-land";}
   else if(entity.deathTime>0){suffix=entity.onGround()&&entity.deathTime>5?"knocked-back-land":"knocked-back";time=(entity.deathTime+partial)/20;}
-  else if(data.citizenPhase()!=0){suffix=switch(data.citizenPhase()){case 1->"knocked-back";case 2->"knocked-back-land";default->"get-up-from-back";};time=(entity.level().getGameTime()-data.citizenPhaseStart()+partial)/20f;}
+  else if(data.citizenPhase()!=0){suffix=switch(data.citizenPhase()){case 1->"knocked-back";case 2->"knocked-back-land";default->"get-up-from-back";};time=(dev.jakmc.player.JakEntityClock.time(entity.level())-data.citizenPhaseStart()+partial)/20f;}
   else if(entity.isInWater()){suffix="tread-water";time=state.ageInTicks/20f%a.kind.duration(suffix);}
   else if(state.walkAnimationSpeed>.01f){suffix=a.kind.walk(seed);float stride=a.kind.stride(seed);// Native LivingEntity multiplies distance by four; babies multiply position by three.
    time=(state.walkAnimationPos/(4*(state.isBaby?3:1)*stride*JakEnemyKind.SCALE)%1)*a.kind.duration(suffix);}

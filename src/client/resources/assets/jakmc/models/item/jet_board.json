@@ -66,6 +66,6 @@
     }
   },
   "textures": {
-    "particle": "jakmc:particle/common_white"
+    "particle": "minecraft:block/white_concrete"
   }
 }

@@ -16,7 +16,7 @@ import java.io.IOException;
 public final class JakRenderer {
     private static final String[] FIRE_BODY={"jakb-gun-red-fire","jakb-gun-red-fire-2","jakb-gun-red-fire","jakb-gun-yellow-fire","jakb-gun-yellow-fire","jakb-gun-yellow-fire-3","jakb-gun-blue-fire-single","jakb-gun-blue-fire-2","jakb-gun-blue-fire-single","jakb-gun-dark-fire","jakb-gun-dark-fire","jakb-gun-dark-fire"};
     private static final String[] FIRE_GUN={"gun-gun-red-fire","gun-gun-red-fire-2","gun-gun-red-fire-3","gun-gun-yellow-fire","gun-gun-yellow-fire-2","gun-gun-yellow-fire-3","gun-gun-blue-fire-single","gun-gun-blue-fire-2","gun-gun-blue-fire-3-single","gun-gun-dark-fire","gun-gun-dark-fire-2","gun-gun-dark-fire-3"};
-    private static GltfModel body,daxter,board,gun;
+    private static GltfModel body,daxter,board,gun,wings,shield;
     private static float bodyScale;
     private static float floorOffset;
     public static long renderSerial;
@@ -28,7 +28,12 @@ public final class JakRenderer {
         try{
             var root=RuntimeConfig.assets.resolve("levels/common");
             body=new GltfModel(root.resolve("jakb-c-lod0.glb"),"jak");
-            body.animationsFrom(new GltfModel(root.resolve("jakb-lod0.glb"),"jak_clips"));
+            var clips=new GltfModel(root.resolve("jakb-lod0.glb"),"jak_clips");
+            body.animationsFrom(clips);
+            wings=new GltfModel(root.resolve("jakb-wings-wings-lod0.glb"),"light_wings");
+            wings.attachmentAnimationsFrom(clips,"jakb-wings-");
+            shield=new GltfModel(root.resolve("jakb-shield-shield-lod0.glb"),"light_shield");
+            shield.attachmentAnimationsFrom(clips,"jakb-shield-");
             daxter=new GltfModel(root.resolve("daxter-lod0.glb"),"daxter");
             var standing=body.pose("jakb-stance-loop",0);
             Vector3f anchor=body.joint(standing,"LshoulderPad").getTranslation(new Vector3f());
@@ -58,7 +63,10 @@ public final class JakRenderer {
         int frames=body.frames(pose.clip());if(pose.raw().has("loop")&&pose.raw().get("loop").getAsBoolean())frame%=frames;
         var skeleton=body.pose(pose.clip(),frame);
         int gunKind=JakItems.GUNS.indexOf(state.getMainHandItemStack().getItem());
-        if(gunKind>=0&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
+        var gunState=pose.raw().getAsJsonObject("gun");
+        boolean gunOut=gunState!=null&&gunState.get("out").getAsBoolean();
+        boolean shieldUp=pose.raw().has("shield")&&pose.raw().get("shield").getAsBoolean();
+        if(gunKind>=0&&gunOut&&!shieldUp&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
             String upper=switch(gunKind/3){case 0->"jakb-gun-stance";case 1->"jakb-gun-stance-yellow";case 2->"jakb-gun-stance-blue";default->"jakb-gun-stance-dark";};
             float age=0;var g=pose.raw().getAsJsonObject("gun");
             if(g!=null&&g.get("out").getAsBoolean()){
@@ -73,7 +81,25 @@ public final class JakRenderer {
             }
             skeleton=body.overlayUpper(skeleton,upper,age);
         }
-        body.submit(skeleton,stack,collector,state.lightCoords);
+        boolean aiming=pose.raw().has("aim")&&pose.raw().get("aim").getAsBoolean();
+        float lookYaw=pose.raw().has("lookYaw")?pose.raw().get("lookYaw").getAsFloat():pose.yaw();
+        if(actor==client.player)lookYaw=actor.getYRot();
+        float twist=aiming?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(pose.yaw()-lookYaw)),-1.6f,1.6f):0;
+        skeleton=body.jakForm(skeleton,pose.dark(),twist);
+        boolean luminous=pose.raw().has("lightInterp")&&pose.raw().get("lightInterp").getAsFloat()>0;
+        body.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous);
+        var wingState=pose.raw().get("wings");
+        if(wingState!=null&&wingState.isJsonObject()){
+            var wing=wingState.getAsJsonObject();
+            String clip=wing.get("clip").getAsString();
+            stack.pushPose();
+            stack.mulPose(rigid(body.joint(skeleton,"chest")));
+            float wingFrame=wing.get("frame").getAsFloat()+wing.get("frameRate").getAsFloat()*elapsed;
+            if(wing.get("loop").getAsBoolean())wingFrame%=wings.frames(clip);
+            wings.submitLightEffect(wings.pose(clip,wingFrame),stack,collector,LightFormTexture.Form.WINGS,1);
+            stack.popPose();
+        }
+        drawShield(state,pose,skeleton,stack,collector,shieldUp,elapsed);
         stack.pushPose();
         Vector3f shoulder=body.joint(skeleton,"LshoulderPad").getTranslation(new Vector3f());
         stack.translate(shoulder.x,shoulder.y,shoulder.z);stack.scale(1/1.4f,1/1.4f,1/1.4f);
@@ -95,6 +121,52 @@ public final class JakRenderer {
         }
         hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);
         stack.popPose();return true;
+    }
+    private record ShieldTiming(boolean open,float changed){}
+    private static final java.util.Map<net.minecraft.world.entity.Entity,ShieldTiming> SHIELDS=new java.util.WeakHashMap<>();
+
+    private static void drawShield(AvatarRenderState state,JakPoses.Pose pose,GltfModel.Posed skeleton,
+                                   PoseStack stack,SubmitNodeCollector collector,boolean open,float elapsed){
+        float time=pose.raw().getAsJsonObject("gun").get("time").getAsFloat()+elapsed;
+        var actor=Minecraft.getInstance().level.getEntity(state.id);
+        var timing=SHIELDS.get(actor);
+        if(timing==null&&!open)return;
+        float duration=shield.duration("jakb-shield-start");
+        if(timing==null||timing.open()!=open||time<timing.changed()){
+            float current=timing==null||time<timing.changed()?0:
+                Math.clamp(timing.open()?time-timing.changed():duration-(time-timing.changed()),0,duration);
+            timing=new ShieldTiming(open,time-(open?current:duration-current));
+            SHIELDS.put(actor,timing);
+        }
+        float age=time-timing.changed();
+        float fraction=Math.clamp(open?age/duration:1-age/duration,0,1);
+        if(fraction<=0){
+            if(!open)SHIELDS.remove(actor);
+            return;
+        }
+        String clip="jakb-shield-start";
+        float frameTime=fraction*duration;
+        float hit=pose.raw().get("shieldHitAge").getAsFloat()+elapsed;
+        if(open&&hit>=0&&hit<shield.duration("jakb-shield-hit")){
+            clip="jakb-shield-hit";
+            frameTime=hit;
+        }else if(open&&age>=duration){
+            clip="jakb-shield-idle";
+            frameTime=(age-duration)%shield.duration(clip);
+        }
+        var camera=Minecraft.getInstance().gameRenderer.mainCamera();
+        var toBody=new Matrix4f().rotateY((float)Math.toRadians(pose.yaw()));
+        var forward=toBody.transformDirection(new Vector3f(camera.forwardVector())).negate();
+        var up=toBody.transformDirection(new Vector3f(camera.upVector()));
+        var right=toBody.transformDirection(new Vector3f(camera.leftVector()));
+        var center=body.joint(skeleton,"upper_body").getTranslation(new Vector3f()).add(forward);
+        var transform=new Matrix4f(
+            2*right.x,2*right.y,2*right.z,0,2*up.x,2*up.y,2*up.z,0,
+            2*forward.x,2*forward.y,2*forward.z,0,center.x,center.y,center.z,1);
+        stack.pushPose();
+        stack.mulPose(transform);
+        shield.submitLightEffect(shield.poseAtTime(clip,frameTime),stack,collector,LightFormTexture.Form.SHIELD,fraction);
+        stack.popPose();
     }
     private static void hand(AvatarRenderState state,boolean right,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector){
         var held=right?state.rightHandItemState:state.leftHandItemState;

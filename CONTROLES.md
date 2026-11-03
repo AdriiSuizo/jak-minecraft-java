@@ -10,11 +10,17 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Puñetazo | Cuadrado | X |
 | Ataque giratorio | Círculo | B |
 | Agacharse / rodada al avanzar | L1 | LB |
-| Disparar Morph Gun / cargar y soltar Wave Concussor | R1 | RB |
+| Apuntar con la cámara al hombro | L2 | LT |
+| Disparar Morph Gun / cargar y soltar Wave Concussor | R2 | RT |
+| Colocar bloque seleccionado al apuntar | L2 + R2 | LT + RT |
+| Picar o atacar con herramienta o arma de Minecraft | R2 | RT |
 | Usar objeto, puerta o entidad de Minecraft | Triángulo | Y |
-| Sacar / guardar turbotabla equipada | R2 | RT |
-| Botón original L2 de Jak (modificador según estado) | L2 | LT |
-| Poder oscuro / luminoso | L3 / R3 | Pulsar sticks izquierdo / derecho |
+| Sacar / guardar turbotabla equipada cuando el gatillo está libre | R2 | RT |
+| Activar o desactivar Jak oscuro | Pulsar y soltar R3 | Pulsar y soltar stick derecho |
+| Jak luminoso con alas | R3 + X | Stick derecho + A |
+| Escudo de Jak luminoso | R3 + Círculo | Stick derecho + B |
+| Curación de Jak luminoso | R3 + Triángulo | Stick derecho + Y |
+| Frenar el tiempo de las criaturas | R3 + Cuadrado | Stick derecho + X |
 | Cambiar perspectiva | Share / Create | Back / View |
 | Inventario / creativo | Cruceta arriba | Cruceta arriba |
 | Casilla anterior / siguiente | Cruceta izquierda / derecha | Cruceta izquierda / derecha |
@@ -22,9 +28,9 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Pausa / cerrar pantalla | Options | Start / Menu |
 | Cerrar una pantalla | Círculo o Share | B o Back |
 
-Para equipar la turbotabla, selecciónala en la mano y pulsa Triángulo/Y una vez. Se guarda en su propio equipamiento persistente; después R2/RT la saca o guarda. No ocupa el escudo. Empieza el disparo con un Morph Gun seleccionado en la mano. Los poderes necesitan eco.
+Para equipar la turbotabla, selecciónala en la mano y pulsa Triángulo/Y una vez. Se guarda en su propio equipamiento persistente; después R2/RT la saca o guarda. No ocupa el escudo. Selecciona el Morph Gun en la mano antes de disparar. Con un arco, un cubo u otro objeto de uso asignado al gatillo, R2 ejecuta su acción de Minecraft. Mantén R3 antes de pulsar el botón del poder luminoso. Con las alas desplegadas, salta y vuelve a pulsar X en el aire para aletear. El escudo, la curación y la ralentización consumen eco luminoso.
 
-Se conservan teclado y ratón: B tabla, G puñetazo, V giro, R disparo, Z/X poderes y Espacio salto; se pueden cambiar en las opciones de Minecraft. Las interacciones normales también mantienen clic derecho.
+Se conservan teclado y ratón: B tabla, G puñetazo, V giro, R disparo, C apuntado, Z oscuro, X alas y Espacio salto; se pueden cambiar en las opciones de Minecraft. Las interacciones normales también mantienen clic derecho.
 
 La entrada del mando respeta las zonas muertas originales: el núcleo aplica la del movimiento; la cámara usa zona radial 0,18 y el giro original de 180 grados por segundo a máxima inclinación. Los gatillos se leen analógicamente; los botones digitales originales usan presión 0,75 y liberación 0,65. El mando se detecta al conectarlo, libera sus botones al desenchufarlo y suspende movimiento/ataques en menús o al perder foco.
 

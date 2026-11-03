@@ -10,6 +10,8 @@ use serde_json::{json,Value};
 use jni::objects::JString;
 use std::sync::Arc;
 mod art_group;
+mod body_joints;
+static BODY_JOINTS: OnceLock<body_joints::BodyJoints> = OnceLock::new();
 mod audio;
 mod jak_steps;
 mod particle_subset;
@@ -38,12 +40,33 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_animationMetadata(m
  }));
  match result {Ok(Ok(s))=>match env.new_string(s){Ok(v)=>v.into_raw(),Err(_)=>std::ptr::null_mut()},Ok(Err(e))=>{let _=env.throw_new("java/lang/IllegalStateException",e);std::ptr::null_mut()},Err(_)=>{let _=env.throw_new("java/lang/IllegalStateException","NPC animation metadata panic");std::ptr::null_mut()}}
 }
-struct Session { jak:Jak, world:World, actors:Actors, audio:audio::JakSoundQueue }
+struct Session { jak:Jak, world:World, actors:Actors, audio:audio::JakSoundQueue, power_held:bool, dark_pending:bool, joint_rotations:Vec<Quat> }
 #[derive(Default)]
 struct World { tris:Vec<Tri>,query:Option<GlobalRef>,error:Option<String> }
 static JVM:OnceLock<JavaVM>=OnceLock::new();
 #[derive(Default)]
 struct Actors { boxes:Vec<(u64,Vec3,Vec3)> }
+impl World {
+    fn block_aim(&self, start: Vec3, end: Vec3) -> Result<f32, String> {
+        let Some(query) = &self.query else {
+            return Ok(1.0);
+        };
+        let mut env = JVM.get().ok_or("Minecraft JVM unavailable")?
+            .attach_current_thread().map_err(|e| e.to_string())?;
+        let a = start / BLOCK;
+        let b = end / BLOCK;
+        let result = env.with_local_frame(8, |env| {
+            env.call_method(query.as_obj(), "aimDistance", "(FFFFFF)F", &[
+                JValue::Float(a.x), JValue::Float(a.y), JValue::Float(a.z),
+                JValue::Float(b.x), JValue::Float(b.y), JValue::Float(b.z),
+            ])?.f()
+        });
+        if result.is_err() {
+            let _ = env.exception_clear();
+        }
+        result.map(|fraction| fraction.clamp(0.0, 1.0)).map_err(|e| e.to_string())
+    }
+}
 impl CollideWorld for World {
  fn fill(&mut self,min:Vec3,max:Vec3,out:&mut Vec<Tri>){
   if let Some(query)=&self.query {
@@ -145,7 +168,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_create(mut env:JNIE
   jak.size=0.64;jak.foot_smooth_step=Some(1.05*BLOCK);jak.board_smooth_step=Some(1.05*BLOCK);jak.flut_smooth_step=Some(1.05*BLOCK);
   jak.edge_grab_min_height=2.*BLOCK;
   let mut s=lock_sessions()?;s.next+=1;let id=s.next;
-  s.live.insert(id,Session{jak,world:World::default(),actors:Actors::default(),audio:audio::JakSoundQueue::default()});Ok(id as jlong)
+  s.live.insert(id,Session{jak,world:World::default(),actors:Actors::default(),audio:audio::JakSoundQueue::default(),power_held:false,dark_pending:false,joint_rotations:Vec::new()});Ok(id as jlong)
  })
 }
 #[unsafe(no_mangle)]
@@ -173,6 +196,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
    anims=anims.with_effects(name,effects);
   }
   if anims.timed<150{return Err(format!("Only {} authored Jak animation timings; incomplete source export",anims.timed));}
+  let joints=body_joints::BodyJoints::load(&root,&mut authored)?;
+  BODY_JOINTS.set(joints).map_err(|_|"body joint configuration raced")?;
   let timed=anims.timed;ANIMS.set(Arc::new(anims)).map_err(|_|"animation configuration raced")?;Ok(timed as jint)
  })
 }
@@ -236,13 +261,81 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   s.jak.gun.endless_ammo=flags&32!=0;
   s.jak.camera=jak_core::math::Basis::from_quat(Quat::from_rotation_y(-read_f(b,32).to_radians())*Quat::from_rotation_x(read_f(b,36).to_radians()));
   let yaw=read_f(b,32).to_radians();let pitch=read_f(b,36).to_radians();
-  s.jak.gun.aim_dir=Some(Vec3::new(-yaw.sin()*pitch.cos(),-pitch.sin(),yaw.cos()*pitch.cos()));
-  let mut pad=PadInput{held:read_u(b,0),pressed:read_u(b,4),left:[read_f(b,8),read_f(b,12)],right:[read_f(b,16),read_f(b,20)],triggers:[read_f(b,24),read_f(b,28)]};
+  let view = Vec3::new(-yaw.sin()*pitch.cos(),-pitch.sin(),yaw.cos()*pitch.cos());
+  let mut pad=PadInput{held:read_u(b,0)&0xffff,pressed:read_u(b,4),left:[read_f(b,8),read_f(b,12)],right:[read_f(b,16),read_f(b,20)],triggers:[read_f(b,24),read_f(b,28)]};
+  let host_controls = flags & (1 << 13) != 0;
+  let first_person = host_controls && flags & (1 << 14) != 0;
+  let board = s.jak.state.is_board();
+  let manual_aim = host_controls && !board && !s.jak.swimming() && pad.held & jak_core::pad::button::L2 != 0;
+  let facing = Quat::from_rotation_y(-yaw);
+  s.jak.gun.aim = None;
+  s.jak.gun.aim_point = None;
+  s.jak.gun.aim_dir = (!host_controls).then_some(view);
+  if host_controls {
+      use jak_core::pad::button::*;
+      let power = pad.held & R3 != 0;
+      let faces = X | SQUARE | CIRCLE | TRIANGLE;
+      let cancel = board || s.jak.swimming() || s.jak.powers_blocked || flags & (1 << 15) != 0;
+      let power_edge = pad.pressed & R3 != 0;
+      if (power || power_edge) && !s.power_held {
+          s.dark_pending = !s.jak.light() && !cancel;
+      }
+      if cancel || (pad.held | pad.pressed) & faces != 0 {
+          s.dark_pending = false;
+      }
+      if !power && (s.power_held || power_edge) && std::mem::take(&mut s.dark_pending) {
+          s.jak.request_dark(!s.jak.dark);
+      }
+      s.power_held = power;
+      if !board {
+          pad.held &= !L2;
+          pad.pressed &= !L2;
+          if power && !cancel {
+              pad.held |= L2;
+              if pad.pressed & R3 != 0 {
+                  pad.pressed |= L2;
+              }
+          }
+      }
+      pad.held &= !R3;
+      pad.pressed &= !R3;
+      if !board && (first_person || manual_aim && pad.left[0].hypot(pad.left[1]) <= 0.2) {
+          s.jak.control.quat = facing;
+          s.jak.control.dir_targ = facing;
+      }
+      s.jak.dark_shock.in_head = first_person;
+      if (0..12).contains(&gun) && !board {
+          if manual_aim || first_person {
+              let eye = s.jak.trans() + Vec3::Y * (1.62 * BLOCK);
+              let motion = view * jak_core::math::meters(120.0);
+              let block = s.world.block_aim(eye, eye + motion)?;
+              let fraction = s.actors.actor_hit(eye, motion, 0.0)
+                  .map_or(block, |(_, fraction, _)| fraction.min(block));
+              s.jak.gun.aim_point = Some(eye + motion * fraction);
+          } else {
+              let forward = s.jak.orientation() * Vec3::Z;
+              let flat = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
+              let muzzle = s.jak.trans() + Vec3::Y * jak_core::gun::MUZZLE_UP + flat * jak_core::gun::MUZZLE_AHEAD;
+              s.jak.gun.aim = s.actors.boxes.iter().map(|(_, lo, hi)| (*lo + *hi) * 0.5)
+                  .filter(|center| {
+                      let delta = *center - muzzle;
+                      delta.length_squared() <= jak_core::gun::TRACK_FIND_RANGE.powi(2)
+                          && delta.normalize_or_zero().dot(flat) > 0.7
+                  })
+                  .min_by(|a, b| a.distance_squared(muzzle).total_cmp(&b.distance_squared(muzzle)));
+          }
+      }
+  }
+  if flags & (1 << 16) != 0 { s.jak.light_shield_hit(); }
   let mut events=Vec::new();
   let mut effects:Vec<effects::WireCommand>=Vec::new();
   let before_clip=s.jak.chan.anim;let before_frame=s.jak.chan.frame;
+  let before_wings=s.jak.lightjak.wings.map(|w|w.chan);
   s.world.error=None;
   for _ in 0..steps{
+   if let Some(body)=BODY_JOINTS.get(){
+       body.sample(&mut s.jak,&mut s.joint_rotations);
+   }
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
    let mut commands=s.jak.particles.as_mut().map(|p|p.take_journal()).unwrap_or_default();
    // Snapshot the original rope/field after each of the three 60 Hz steps.
@@ -269,11 +362,17 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   let j=&s.jak;
   let frame_rate=if before_clip==j.chan.anim&&j.chan.frame>=before_frame{((j.chan.frame-before_frame)/(steps as f32/60.)).clamp(-240.,240.)}else{0.};
   let gun=json!({"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
+  let wings=j.lightjak.wings.filter(|w|w.shown).map(|w|{
+   let rate=before_wings.filter(|before|before.anim==w.chan.anim&&w.chan.frame>=before.frame)
+       .map_or(0.,|before|((w.chan.frame-before.frame)/(steps as f32/60.)).min(240.));
+   json!({"clip":w.chan.anim.name(),"frame":w.chan.frame,"frameRate":rate,
+       "loop":matches!(w.chan.func,jak_core::anim::NumFunc::Loop{..})})
+  });
   let models:Vec<_>=j.shot_models().into_iter().map(|m|{
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
    json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}),"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"dark":j.dark,"light":j.light(),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
+  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}),"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
 }

@@ -23,8 +23,6 @@ def main():
     if not (SOURCE/'objects/104.json').is_file():raise RuntimeError('Source export is incomplete; run tools/content-exporter first')
     DEST.mkdir(parents=True,exist_ok=True)
     shutil.copytree(SOURCE/'source-pack/assets/jak',DEST/'assets/jak',dirs_exist_ok=True)
-    white=Path.home()/'Documents/Jak OpenGOAL/active/jak3/data/decompiler_out/jak3/textures/common/common-white.png'
-    particle=DEST/'assets/jakmc/textures/particle/common_white.png';particle.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(white,particle)
     catalog=DEST/'data/jakmc/catalog';catalog.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(SOURCE/'blocks.json',catalog/'blocks.json')
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)

@@ -83,6 +83,7 @@ impl Jak {
         b.glance_out_transv = frame.dir(b.glance_out_transv);
         let g = &mut self.gun;
         g.aim = g.aim.map(|p| frame.point(p));
+        g.aim_point = g.aim_point.map(|p| frame.point(p));
         g.aim_dir = g.aim_dir.map(|v| frame.dir(v));
         g.fire_point = frame.point(g.fire_point);
         g.fire_dir = frame.dir(g.fire_dir);

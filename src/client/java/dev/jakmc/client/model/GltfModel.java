@@ -23,6 +23,8 @@ public final class GltfModel {
     private final boolean inheritScale;
     private final boolean compensateScale;
     private dev.jakmc.nativebridge.ModelSegments segments;
+    private final Map<Identifier,Identifier> darkTextures=new HashMap<>(),lightTextures=new HashMap<>();
+    private boolean jakBody;
     private final Map<Identifier,byte[]> pendingTextures=new LinkedHashMap<>();
     private final JsonObject json;
     private final ByteBuffer bin;
@@ -101,6 +103,17 @@ public final class GltfModel {
                 else {var view=json.getAsJsonArray("bufferViews").get(image.get("bufferView").getAsInt()).getAsJsonObject();int off=intOr(view,"byteOffset",0);png=new byte[view.get("byteLength").getAsInt()];bin.get(off,png);}
                 id=JakData.id("local/"+key+"/"+source);final String label=id.toString();
                 pendingTextures.put(id,png);textures.put(texture,id);
+                if(key.equals("jak")){
+                    jakBody=true;
+                    String name=material.has("name")?material.get("name").getAsString().replaceFirst("-envmap$",""):"";
+                    var dark=file.getParent().getParent().getParent().resolve("textures/level-default-pris/"+name+"-dark.png");
+                    if(Files.isRegularFile(dark)){
+                        var variant=JakData.id(id.getPath()+"/dark");
+                        pendingTextures.put(variant,Files.readAllBytes(dark));
+                        darkTextures.put(id,variant);
+                    }
+                    lightTextures.put(id,JakData.id(id.getPath()+"/light"));
+                }
             }
             int targetCount=p.has("targets")?p.getAsJsonArray("targets").size():0;
             float[][] morphPositions=new float[targetCount][],morphNormals=new float[targetCount][];
@@ -115,7 +128,7 @@ public final class GltfModel {
             if(compactBones!=null)for(int vertex=0;vertex<used.length;vertex++)for(int k=0;k<4;k++)if(weight[used[vertex]*4+k]>0&&(compactBones[vertex*4+k]<0||compactBones[vertex*4+k]>=joints.length))throw new IOException("Indexed vertex uses missing skin joint in "+file);
             surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals));
         }
-        readAnimations(this);
+        readAnimations(this,null);
         String originalName=file.getFileName().toString().replace("-lod0.glb","");
         if(Set.of("board","gun").contains(originalName)){
             Path export=file.getParent().getParent().getParent();
@@ -133,13 +146,19 @@ public final class GltfModel {
     }
     public void loadSegments(Path art,String lod)throws IOException{segments=dev.jakmc.nativebridge.ModelSegments.read(art,lod,surfaces.stream().mapToInt(s->s.indices.length/3).toArray());if(segments==null)throw new IOException("Source segment table mismatch: "+lod);}
     public void prepare(Posed pose){prepared.computeIfAbsent(pose,p->{var geometry=new ArrayList<float[]>();for(Surface surface:surfaces)geometry.add(skin(surface,p));return List.copyOf(geometry);});}
-    public void animationsFrom(GltfModel source){readAnimations(source);}
-    private void readAnimations(GltfModel source){
+    public void animationsFrom(GltfModel source){readAnimations(source,null);}
+    public void attachmentAnimationsFrom(GltfModel source,String prefix){readAnimations(source,prefix);}
+    private void readAnimations(GltfModel source,String attachmentPrefix){
         if(!source.json.has("animations"))return;
         for(var element:source.json.getAsJsonArray("animations")){
-            var a=element.getAsJsonObject();var channels=new ArrayList<Channel>();float duration=0;
+            var a=element.getAsJsonObject();String name=a.get("name").getAsString();
+            if(attachmentPrefix!=null&&!name.startsWith(attachmentPrefix))continue;
+            var channels=new ArrayList<Channel>();float duration=0;
             for(var ce:a.getAsJsonArray("channels")){
-                var c=ce.getAsJsonObject();var target=c.getAsJsonObject("target");int sourceNode=target.get("node").getAsInt();Integer node=namedNodes.get(source.nodes[sourceNode].name);if(node==null)continue;
+                var c=ce.getAsJsonObject();var target=c.getAsJsonObject("target");int sourceNode=target.get("node").getAsInt();// The OpenGOAL combined export stores attachment channels in the body's node slots.
+                Integer node=attachmentPrefix==null?namedNodes.get(source.nodes[sourceNode].name):null;
+                if(attachmentPrefix!=null&&sourceNode>=0&&sourceNode<nodes.length)node=sourceNode;
+                if(node==null)continue;
                 var sampler=a.getAsJsonArray("samplers").get(c.get("sampler").getAsInt()).getAsJsonObject();
                 float[] times=source.accessor(sampler.get("input").getAsInt()),values=source.accessor(sampler.get("output").getAsInt());
                 String path=target.get("path").getAsString();int components=path.equals("weights")?values.length/times.length:path.equals("rotation")?4:3;
@@ -147,7 +166,7 @@ public final class GltfModel {
                 channels.add(new Channel(node,path,times,values,components,sampler.has("interpolation")&&sampler.get("interpolation").getAsString().equals("STEP")));
                 if(times.length>0)duration=Math.max(duration,times[times.length-1]);
             }
-            clips.put(a.get("name").getAsString(),new Clip(channels,duration));
+            clips.put(name,new Clip(channels,duration));
         }
     }
     public Posed pose(String name,float frame){return pose(name,frame,false);}
@@ -205,6 +224,40 @@ public final class GltfModel {
         Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,base.morphs,base.translations,base.rotations,base.scales);
     }
+    public Posed jakForm(Posed pose,boolean dark,float upperYaw){
+        int horns=namedNodes.get("horns");
+        pose.scales[horns].set(dark?1:0);
+        if(dark){
+            pose.scales[namedNodes.get("waist_prog")].mul(1.2f,1,1.2f);
+            pose.scales[namedNodes.get("neckB")].mul(.95f/1.32f,.92f,.95f/1.32f);
+        }
+        if(upperYaw!=0){
+            int upper=namedNodes.get("upper_body");
+            var parent=pose.globals[nodes[upper].parent].getUnnormalizedRotation(new Quaternionf()).normalize();
+            var twist=new Quaternionf(parent).conjugate().rotateY(upperYaw).mul(parent);
+            pose.rotations[upper].premul(twist).normalize();
+        }
+        var globals=new Matrix4f[nodes.length];
+        for(int i=0;i<nodes.length;i++)global(i,globals,pose.translations,pose.rotations,pose.scales);
+        var skin=new Matrix4f[joints.length];
+        for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
+        return new Posed(globals,skin,pose.morphs,pose.translations,pose.rotations,pose.scales);
+    }
+    public void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous){
+        Vector3f[] rim=null;
+        if(luminous){
+            var camera=Minecraft.getInstance().gameRenderer.mainCamera();
+            var right=new Vector3f(camera.leftVector()).negate();
+            var up=new Vector3f(camera.upVector());
+            var forward=new Vector3f(camera.forwardVector());
+            rim=new Vector3f[]{
+                new Vector3f(right).mul(.77455187f).fma(-.44725248f,up).fma(.44725248f,forward).normalize(),
+                new Vector3f(right).mul(-.77455187f).fma(-.44725248f,up).fma(.44725248f,forward).normalize(),
+                new Vector3f(up).mul(.8944f).fma(.4472f,forward).normalize()
+            };
+        }
+        submit(pose,stack,collector,light,1,OverlayTexture.NO_OVERLAY,-1L,dark,rim,null);
+    }
     public boolean hasClip(String name){return clips.containsKey(name);}
     public float duration(String name){Clip clip=clips.get(name);return clip==null?0:clip.duration;}
     public int frames(String name){Clip clip=clips.get(name);return clip==null?1:clip.channels.stream().mapToInt(c->c.times.length).max().orElse(1);}
@@ -228,24 +281,71 @@ public final class GltfModel {
     }
     public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,boolean gem){submit(posed,stack,collector,light,alpha,overlay,~(gem?4L:2L));}
     public void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask){
+        submit(posed,stack,collector,light,alpha,overlay,shownMask,false,null,null);
+    }
+    void submitLightEffect(Posed posed,PoseStack stack,SubmitNodeCollector collector,
+                           LightFormTexture.Form effect,float fade){
+        submit(posed,stack,collector,0xf000f0,fade,OverlayTexture.NO_OVERLAY,-1L,false,null,effect);
+    }
+    private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect){
         if(!pendingTextures.isEmpty()){
-            for(var image:pendingTextures.entrySet())try{String label=image.getKey().toString();Minecraft.getInstance().getTextureManager().register(image.getKey(),new DynamicTexture(()->label,NativeImage.read(new ByteArrayInputStream(image.getValue()))));}catch(IOException e){throw new UncheckedIOException(e);}
+            var manager=Minecraft.getInstance().getTextureManager();
+            for(var entry:pendingTextures.entrySet()){
+                var id=entry.getKey();
+                try{
+                    var texture=NativeImage.read(new ByteArrayInputStream(entry.getValue()));
+                    if(jakBody&&lightTextures.containsKey(id)){
+                        var white=texture.mappedCopy(pixel->pixel|0x00ffffff);
+                        var lightId=lightTextures.get(id);
+                        manager.register(lightId,new DynamicTexture(lightId::toString,white));
+                    }
+                    manager.register(id,new DynamicTexture(id::toString,texture));
+                }catch(IOException e){throw new UncheckedIOException(e);}
+            }
             pendingTextures.clear();
         }
         int surfaceNumber=0;var ready=prepared.get(posed);
+        float seconds=materialSeconds();
+        int effectFrame=effect==null?0:effect.frame(seconds);
+        var camera=Minecraft.getInstance().gameRenderer.mainCamera();
+        var viewLeft=effect==LightFormTexture.Form.SHIELD?new Vector3f(camera.leftVector()):null;
+        var viewUp=effect==LightFormTexture.Form.SHIELD?new Vector3f(camera.upVector()):null;
         for(Surface surface:surfaces){
             int index=surfaceNumber++;if(segments!=null&&!segments.shown(index,shownMask))continue;
             float[] skinned=ready==null?skin(surface,posed):ready.get(surfaceNumber-1);
-            Identifier texture=surface.skullGem?gemAtlas():surface.texture;
-            int gemFrame=Math.floorMod((int)Math.floor(materialSeconds()*60),60);
-            var renderType=surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
+            Identifier texture=effect!=null?effect.texture():surface.skullGem?gemAtlas():rim!=null?lightTextures.get(surface.texture):
+                dark?darkTextures.getOrDefault(surface.texture,surface.texture):surface.texture;
+            int gemFrame=Math.floorMod((int)Math.floor(seconds*60),60);
+            var renderType=effect!=null?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?RenderTypes.entityTranslucentEmissive(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
                 Vector3f v=new Vector3f(),normal=new Vector3f();
                 for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
                     int i=surface.indices[triangle+corner];pose.pose().transformPosition(skinned[i*6],skinned[i*6+1],skinned[i*6+2],v);
                     pose.transformNormal(skinned[i*6+3],skinned[i*6+4],skinned[i*6+5],normal);
                     int color=Math.clamp(Math.round(surface.colors[i*4+3]*alpha*255),0,255)<<24;for(int c=0;c<3;c++)color|=Math.clamp((int)(surface.colors[i*4+c]*255),0,255)<<(16-c*8);
-                    buffer.addVertex(v.x,v.y,v.z,color,surface.uv[i*2],surface.skullGem?(gemFrame+(.5f+(surface.uv[i*2+1]-(float)Math.floor(surface.uv[i*2+1]))*63)/64)/60:surface.uv[i*2+1],overlay,light,normal.x,normal.y,normal.z);
+                    if(rim!=null){
+                        float illumination=0;
+                        if(normal.lengthSquared()>0)normal.normalize();
+                        for(var direction:rim)illumination+=Math.max(0,normal.dot(direction));
+                        int green=Math.clamp((int)(surface.colors[i*4+1]*1.9f*illumination*255),0,255);
+                        int blue=Math.clamp((int)(surface.colors[i*4+2]*(.3f+2*illumination)*255),0,255);
+                        color=(color&0xff000000)|green<<8|blue;
+                    }
+                    float u=surface.uv[i*2],texV=surface.uv[i*2+1];
+                    if(effect!=null){
+                        // Blend 3 is additive and applies four times the submitted vertex alpha to RGB.
+                        color=0x40000000;
+                        for(int c=0;c<3;c++)color|=Math.clamp(Math.round(surface.colors[i*4+c]*alpha*255),0,255)<<(16-c*8);
+                        if(viewLeft!=null){
+                            if(normal.lengthSquared()>0)normal.normalize();
+                            u=.5f-.5f*normal.dot(viewLeft);
+                            texV=.5f-.5f*normal.dot(viewUp);
+                        }
+                        texV=effect.atlasV(effectFrame,texV);
+                    }else if(surface.skullGem){
+                        texV=(gemFrame+(.5f+(texV-(float)Math.floor(texV))*63)/64)/60;
+                    }
+                    buffer.addVertex(v.x,v.y,v.z,color,u,texV,overlay,light,normal.x,normal.y,normal.z);
                 }
             });
         }

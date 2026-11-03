@@ -9,7 +9,10 @@
     "GemPhysicsMixin",
     "CitizenMixin",
     "CitizenDamageMixin",
-    "CitizenEggMixin"
+    "CitizenEggMixin",
+    "JakShieldMixin",
+    "JakWorldClockMixin",
+    "JakFreezeTickMixin"
   ],
   "injectors": {
     "defaultRequire": 1
