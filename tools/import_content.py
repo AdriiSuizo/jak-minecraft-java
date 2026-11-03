@@ -67,7 +67,7 @@ def material_resources(definitions):
         elif kind=='layers' and any(key in path for key in ('sand','snow','mud','arena')):tool='shovel'
         else:tool='pickaxe'
         if tool:tags[tool].append('jak:'+path)
-        translations['block.jak.'+path]=path.replace('_',' ').replace('-',' ').capitalize()
+        translations['block.jak.'+path]=row.get('title',path.replace('_',' ').replace('-',' ').capitalize())
     # Optional entries allow the block catalogue to grow without invalidating the vanilla tool tags.
     target=DEST/'data/minecraft/tags/block/mineable'
     target.mkdir(parents=True,exist_ok=True)
@@ -78,6 +78,29 @@ def material_resources(definitions):
     languages.mkdir(parents=True,exist_ok=True)
     for language in ('es_es','en_us'):
         (languages/(language+'.json')).write_text(json.dumps(translations,ensure_ascii=False),encoding='utf-8')
+
+def decorations(catalog):
+    # The fire barrel, projector, minigame and mirror need their original runtime behavior.
+    supported=(87,89,90,91,92,95,96,97,98,99,100,103,104)
+    (catalog/'decorations.json').write_text(json.dumps(supported),encoding='utf-8')
+    items=DEST/'assets/jak/items'
+    models=DEST/'assets/jak/models/item'
+    rows=[]
+    for id in supported:
+        source=json.loads((SOURCE/'objects'/f'{id}.json').read_text(encoding='utf-8'))
+        path=source['path']
+        sprite=source['cells'][0]['triangles'][0]['texture']
+        item={'model':{'type':'minecraft:special','base':'jak:item/'+path,
+              'model':{'type':'jakmc:prop','id':id}}}
+        (items/f'{path}.json').write_text(json.dumps(item),encoding='utf-8')
+        model={'gui_light':'side','textures':{'particle':'jak:block/'+sprite},
+               'display':{'gui':{'rotation':[25,135,0],'scale':[0.9]*3},
+                          'ground':{'translation':[0,3,0],'scale':[0.5]*3},
+                          'thirdperson_righthand':{'rotation':[0,90,-30],'scale':[0.4]*3},
+                          'firstperson_righthand':{'rotation':[0,45,0],'scale':[0.65]*3}}}
+        (models/f'{path}.json').write_text(json.dumps(model),encoding='utf-8')
+        rows.append({'path':path,'ready':True,'look':{'kind':'prop'},'title':source['title']})
+    return rows
 
 def copy_models():
     source=SOURCE/'source-pack/assets/jak'
@@ -103,7 +126,7 @@ def main():
     for row in definitions:
         row['ready']=ready_material(row)
     (catalog/'blocks.json').write_text(json.dumps(definitions,separators=(',',':')),encoding='utf-8')
-    material_resources(definitions)
+    material_resources(definitions+decorations(catalog))
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)
     for name in ['haven','spargus','palace']:
         data=json.loads((SOURCE/f'{name}.json').read_text(encoding='utf-8'))

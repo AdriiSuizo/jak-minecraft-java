@@ -59,7 +59,12 @@ final class MaterialScene {
             ServerPlayer p=server.getPlayerList().getPlayer(uuid);
             if(p==null)return;
             var level=p.level();
-            var base=p.blockPosition().offset(3,0,3);
+            var near=p.blockPosition().offset(3,0,3);
+            int openY=near.getY();
+            for(int x=-2;x<=5;x++)for(int z=-5;z<=2;z++)
+                openY=Math.max(openY,level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING,
+                    near.getX()+x,near.getZ()+z));
+            var base=near.atY(openY+1);
             var soil=base.below();
             var hand=InteractionHand.MAIN_HAND;
             var previous=p.getItemInHand(hand).copy();
@@ -68,10 +73,14 @@ final class MaterialScene {
             var initialFloor=level.getBlockState(soil);
             var sample=base.east();
             var initialSample=level.getBlockState(sample);
+            var propPos=sample.above();
+            var initialProp=level.getBlockState(propPos);
             cleanup=()->{
                 level.setBlockAndUpdate(soil,initialFloor);
                 level.setBlockAndUpdate(base,initial);
                 level.setBlockAndUpdate(sample,initialSample);
+                level.setBlockAndUpdate(propPos,initialProp);
+                p.setItemInHand(hand,previous);
             };
             var layer=JakBlocks.BLOCKS.get("barrio_losa_capa");
             var tests=new JsonObject();
@@ -91,11 +100,23 @@ final class MaterialScene {
                     .filter(stack->stack.is(layer.asItem())).mapToInt(ItemStack::getCount).sum()==3);
                 tests.addProperty("material_catalog",JakBlocks.BLOCKS.size()>1000);
                 tests.addProperty("native_door",JakBlocks.BLOCKS.values().stream().anyMatch(block->block instanceof net.minecraft.world.level.block.DoorBlock));
-                subject=Vec3.atBottomCenterOf(base).add(0,.25,0);
+                subject=Vec3.atBottomCenterOf(base).add(.65,.65,0);
                 level.setBlockAndUpdate(sample,JakBlocks.BLOCKS.get("barrio_losa").defaultBlockState());
+                level.setBlockAndUpdate(propPos,Blocks.AIR.defaultBlockState());
+                var tray=JakBlocks.BLOCKS.get("objeto_haven_bandeja_bar");
+                p.setItemInHand(hand,new ItemStack(tray,2));
+                boolean placedTray=use(p,sample,1);
+                var trayState=level.getBlockState(propPos);
+                tests.addProperty("native_prop_placement",placedTray&&trayState.is(tray)&&p.getItemInHand(hand).getCount()==1
+                    &&trayState.getValue(BlockStateProperties.HORIZONTAL_FACING)==p.getDirection().getOpposite());
+                var trayShape=trayState.getCollisionShape(level,propPos);
+                tests.addProperty("native_prop_shape",!trayShape.isEmpty()&&trayShape.max(Direction.Axis.Y)<1
+                    &&trayShape.equals(trayState.getShape(level,propPos)));
+                tests.addProperty("native_prop_loot",Block.getDrops(trayState,level,propPos,null,p,pickaxe).stream()
+                    .filter(stack->stack.is(tray.asItem())).mapToInt(ItemStack::getCount).sum()==1);
+                tests.addProperty("native_prop_inventory",p.getItemInHand(hand).is(tray.asItem()));
             }finally{
                 p.setGameMode(previousMode);
-                p.setItemInHand(hand,previous);
             }
             var report=new JsonObject();
             report.add("actions",tests);

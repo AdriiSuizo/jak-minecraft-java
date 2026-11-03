@@ -25,6 +25,7 @@ public final class JakClient implements ClientModInitializer {
   CitizenScene.initialize();
   MaterialScene.initialize();
   dev.jakmc.client.model.GltfItemRenderer.initialize();
+  dev.jakmc.client.model.PropModels.initialize();
   dev.jakmc.client.model.SkullGemRenderer.initialize();
   dev.jakmc.client.model.EcoItemRenderer.initialize();
   dev.jakmc.client.model.JakShotRenderer.initialize();
