@@ -59,7 +59,7 @@ public final class JakPlayers {
     public static boolean active(Entity player){return player.getAttachedOrCreate(JakData.ENABLED)&&!player.isPassenger()&&player.isAlive();}
     public static void input(ServerPlayer player,JakPackets.Input input){
         if(CONTROLLED.contains(player.getUUID()))return;
-        if(player.getVehicle() instanceof dev.jakmc.entity.JakWheeledCar car){car.input(player,input);return;}
+        if(player.getVehicle() instanceof dev.jakmc.entity.JakVehicle car){car.input(player,input);return;}
         if(!active(player))return;
         Session s=LIVE.computeIfAbsent(player.getUUID(),id->new Session(player));
         if(input.sequence()<=s.input.sequence())return;

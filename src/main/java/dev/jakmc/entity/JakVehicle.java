@@ -39,47 +39,60 @@ import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-public final class JakWheeledCar extends Entity {
+public final class JakVehicle extends Entity {
     public enum Model {
-        TOAD("dune_hopper", "toad", 5.9f, 2.2f),
-        SNAKE("sand_shark", "snake", 4.4f, 1.55f);
+        TOAD("dune_hopper", "toad", "wasall", 5.9f, 2.2f, 40),
+        SNAKE("sand_shark", "snake", "wasall", 4.4f, 1.55f, 40),
+        BIKEA("zoomer_bike_a", "bikea", "ctycarb", 2.0f, 1.15f, 15),
+        BIKEB("zoomer_bike_b", "bikeb", "ctycarb", 2.0f, 1.15f, 15),
+        BIKEC("zoomer_bike_c", "bikec", "ctycarb", 2.0f, 1.15f, 15),
+        CARA("zoomer_car_a", "cara", "ctycara", 3.2f, 1.15f, 24),
+        CARB("zoomer_car_b", "carb", "ctycara", 3.2f, 1.15f, 24),
+        CARC("zoomer_car_c", "carc", "ctycara", 3.2f, 1.15f, 24);
 
-        public final String id, asset;
-        final float length, height;
-        public EntityType<JakWheeledCar> type;
+        public final String id,asset,folder;
+        final float length,height,hitPoints;
+        public EntityType<JakVehicle> type;
         public Item item;
 
-        Model(String id,String asset,float length,float height) {
+        Model(String id,String asset,String folder,float length,float height,float hitPoints) {
             this.id=id;
             this.asset=asset;
+            this.folder=folder;
+            this.hitPoints=hitPoints;
             this.length=length;
             this.height=height;
         }
+        public boolean hover(){return ordinal()>=BIKEA.ordinal();}
+        public boolean bike(){return hover()&&ordinal()<CARA.ordinal();}
+        public double parkingClearance(){return hover()?(bike()?2.3:2.5)*.64+.5:height*.65;}
     }
 
     private static final EntityDataAccessor<String> FRAME=SynchedEntityData.defineId(
-        JakWheeledCar.class,EntityDataSerializers.STRING);
+        JakVehicle.class,EntityDataSerializers.STRING);
     public final Model model;
     private long handle,retryAt,lastInput,boardingAt;
     private WheeledCollision collision;
     private Vec3 nativePosition, velocity=Vec3.ZERO, seat=new Vec3(0,.5,0), boardingFrom;
     private float boardingProgress=1;
-    private float pitch,roll,health=40;
+    private float pitch,roll,health;
+    private boolean high;
     private JakPackets.Input controls;
     private JsonObject currentFrame,previousFrame;
     private int press;
     private final WheeledWeapons weapons=new WheeledWeapons(this);
 
-    private JakWheeledCar(EntityType<? extends JakWheeledCar> type,Level level,Model model) {
+    private JakVehicle(EntityType<? extends JakVehicle> type,Level level,Model model) {
         super(type,level);
         this.model=model;
+        health=model.hitPoints;
     }
 
     public static void initialize() {
         for(var model:Model.values()) {
             var type=ResourceKey.create(Registries.ENTITY_TYPE,JakData.id(model.id));
             model.type=Registry.register(BuiltInRegistries.ENTITY_TYPE,type,EntityType.Builder
-                .<JakWheeledCar>of((entityType,level)->new JakWheeledCar(entityType,level,model),MobCategory.MISC)
+                .<JakVehicle>of((entityType,level)->new JakVehicle(entityType,level,model),MobCategory.MISC)
                 .sized(model.length,model.height).clientTrackingRange(12).updateInterval(1).build(type));
             var item=ResourceKey.create(Registries.ITEM,JakData.id(model.id));
             model.item=Registry.register(BuiltInRegistries.ITEM,item,new Item(new Item.Properties().setId(item).stacksTo(1)) {
@@ -88,7 +101,7 @@ public final class JakWheeledCar extends Entity {
                     if(context.getLevel() instanceof ServerLevel server) {
                         var car=model.type.create(server,EntitySpawnReason.SPAWN_ITEM_USE);
                         if(car==null)return InteractionResult.FAIL;
-                        Vec3 point=Vec3.atBottomCenterOf(context.getClickedPos().above()).add(0,model.height*.65,0);
+                        Vec3 point=Vec3.atBottomCenterOf(context.getClickedPos().above()).add(0,model.parkingClearance(),0);
                         car.snapTo(point.x,point.y,point.z,context.getRotation(),0);
                         if(!server.noCollision(car)||!server.addFreshEntity(car))return InteractionResult.FAIL;
                         context.getItemInHand().consume(1,context.getPlayer());
@@ -129,7 +142,7 @@ public final class JakWheeledCar extends Entity {
             controls=null;
             press=0;
             boardingAt=level().getGameTime();
-            playCue(model.asset+"-start");
+            playCue(model.hover()?"vehicl-ignition":model.asset+"-start");
             return InteractionResult.SUCCESS_SERVER;
         }
         return level().isClientSide()?InteractionResult.SUCCESS:InteractionResult.PASS;
@@ -170,36 +183,50 @@ public final class JakWheeledCar extends Entity {
         int held=fresh?controls.held()|press:0;
         if(fresh&&(press&8)!=0&&server.getGameTime()-boardingAt>6){
             rider.stopRiding();
-            playCue(model.asset+"-stop");
+            if(!model.hover())playCue(model.asset+"-stop");
             rider=null;
             held=0;
             fresh=false;
         }
+        int edges=fresh?press:0;
         press=0;
         if(rider==null){controls=null;boardingFrom=null;}
         boardingProgress=boardingFrom==null?1:Math.clamp((server.getGameTime()-boardingAt)/11f,0,1);
-        if(rider==null&&tickCount>20&&velocity.lengthSqr()<.00001&&tickCount%10!=0)return;
+        if(rider==null&&tickCount>20&&velocity.lengthSqr()<.00001&&tickCount%10!=0
+            &&(!model.hover()||currentFrame==null||currentFrame.get("lamps").getAsFloat()<.01f))return;
         try {
             if(handle==0){
                 nativePosition=position();
-                collision=new WheeledCollision(server,this,nativePosition);
-                handle=NativeJak.carCreate(collision,model.ordinal(),getYRot(),(float)velocity.x,
-                    (float)velocity.y,(float)velocity.z,pitch,roll);
+                collision=new WheeledCollision(server,this,nativePosition,model.hover());
+                handle=model.hover()?NativeJak.hoverCreate(collision,model.ordinal()-Model.BIKEA.ordinal(),
+                    getYRot(),(float)velocity.x,(float)velocity.y,(float)velocity.z,pitch,roll,high,getUUID().getLeastSignificantBits()):
+                    NativeJak.carCreate(collision,model.ordinal(),getYRot(),(float)velocity.x,
+                        (float)velocity.y,(float)velocity.z,pitch,roll);
             }
             var at=position();
             var moved=at.subtract(collision.origin);
             collision.origin=at;
             int actions=held&7;
             if((held&64)!=0)actions|=8;
-            String encoded=NativeJak.carStep(handle,fresh?-controls.strafe():0,fresh?controls.forward():0,
-                fresh?controls.throttle():0,fresh?controls.brake():0,actions,
-                (float)moved.x,(float)moved.y,(float)moved.z,3);
+            float steer=fresh?-controls.strafe():0,lean=fresh?controls.forward():0;
+            float throttle=fresh?controls.throttle():0,brake=fresh?controls.brake():0;
+            String encoded;
+            if(model.hover()){
+                int zoomer=(edges&1)|(held&6);
+                float hour=(server.getDefaultClockTime()%24000+6000)%24000/1000f;
+                encoded=NativeJak.hoverStep(handle,steer,lean,throttle,brake,zoomer,
+                    (float)moved.x,(float)moved.y,(float)moved.z,hour%24,health/model.hitPoints,rider!=null);
+            }else{
+                encoded=NativeJak.carStep(handle,steer,lean,throttle,brake,actions,
+                    (float)moved.x,(float)moved.y,(float)moved.z,3);
+            }
             var frame=JsonParser.parseString(encoded).getAsJsonObject();
             Vec3 step=JakPlayers.vector(frame.getAsJsonArray("position"));
             nativePosition=at.add(step);
             velocity=JakPlayers.vector(frame.getAsJsonArray("velocity"));
             seat=JakPlayers.vector(frame.getAsJsonArray("seat")).subtract(step);
             pitch=frame.get("pitch").getAsFloat();
+            if(model.hover())high=frame.get("high").getAsBoolean();
             roll=frame.get("roll").getAsFloat();
             setYRot(frame.get("yaw").getAsFloat());
             setPos(nativePosition);
@@ -210,6 +237,7 @@ public final class JakWheeledCar extends Entity {
             for(var value:frame.remove("events").getAsJsonArray()){
                 var event=value.getAsJsonObject();
                 if(event.has("sound")&&!event.get("sound").isJsonNull())playCue(event.get("sound").getAsString());
+                if(model.hover()&&event.has("impact"))hoverImpact(event.get("impact").getAsFloat());
                 if(rider!=null&&event.has("fire")){
                     var q=frame.getAsJsonArray("rotation");
                     var attitude=new org.joml.Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat());
@@ -222,6 +250,7 @@ public final class JakWheeledCar extends Entity {
             frame.addProperty("boardingProgress",boardingProgress);
             frame.addProperty("boarding",boardingProgress<1?boardingProgress*.55f:-1);
             if(boardingProgress<1)frame.add("boardingFrom",jsonVector(boardingFrom));
+            currentFrame=frame;
             entityData.set(FRAME,frame.toString());
         }catch(RuntimeException failure){
             closeNative();
@@ -237,6 +266,13 @@ public final class JakWheeledCar extends Entity {
         result.add(point.z);
         return result;
     }
+    private void hoverImpact(float speed){
+        if(speed<12)return;
+        String family=model.bike()?"bike":"car";
+        playCue(family+(speed>=32?"-impact-stn":"-glance-stn"));
+        health-=speed>=70?model.hitPoints*2:speed>=32?10:speed>=21?4:0;
+        if(health<=0)wreck();
+    }
     private void playCue(String name){
         var cue=JakEnemySounds.find("jak3",name);
         if(cue!=null)level().playSound(null,getX(),getY(),getZ(),cue,SoundSource.NEUTRAL,1,1);
@@ -244,15 +280,16 @@ public final class JakWheeledCar extends Entity {
     @Override public boolean hurtServer(ServerLevel server,DamageSource source,float amount){
         if(amount<=0||isInvulnerableToBase(source))return false;
         health-=amount;
-        if(health<=0){
-            ejectPassengers();
-            playCue("car-explode");
-            discard();
-        }
+        if(health<=0)wreck();
         return true;
     }
+    private void wreck(){
+        ejectPassengers();
+        playCue(model.bike()?"bike-explode":"car-explode");
+        discard();
+    }
     private void closeNative(){
-        if(handle!=0){NativeJak.carDestroy(handle);handle=0;}
+        if(handle!=0){if(model.hover())NativeJak.hoverDestroy(handle);else NativeJak.carDestroy(handle);handle=0;}
         collision=null;
     }
     @Override public void remove(RemovalReason reason){closeNative();super.remove(reason);}
@@ -260,7 +297,8 @@ public final class JakWheeledCar extends Entity {
         velocity=new Vec3(in.getDoubleOr("VelocityX",0),in.getDoubleOr("VelocityY",0),in.getDoubleOr("VelocityZ",0));
         pitch=in.getFloatOr("Pitch",0);
         roll=in.getFloatOr("Roll",0);
-        health=in.getFloatOr("Health",40);
+        health=in.getFloatOr("Health",model.hitPoints);
+        high=in.getBooleanOr("High",false);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         out.putDouble("VelocityX",velocity.x);
@@ -269,5 +307,6 @@ public final class JakWheeledCar extends Entity {
         out.putFloat("Pitch",pitch);
         out.putFloat("Roll",roll);
         out.putFloat("Health",health);
+        out.putBoolean("High",high);
     }
 }

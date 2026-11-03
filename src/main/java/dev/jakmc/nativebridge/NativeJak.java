@@ -35,6 +35,11 @@ public final class NativeJak {
     public static native void bindWorld(long session,Object collisionQuery);
     public static native void setStats(long session,float healthFraction,float red,float yellow,float blue,float dark);
     public static native String step(long session, ByteBuffer input, ByteBuffer triangles, ByteBuffer actors, int steps);
+    public static native long hoverCreate(Object world,int model,float yaw,float vx,float vy,float vz,
+        float pitch,float bank,boolean high,long key);
+    public static native void hoverDestroy(long session);
+    public static native String hoverStep(long session,float steer,float lean,float throttle,float brake,int buttons,
+        float x,float y,float z,float hour,float health,boolean engine);
     public static native long carCreate(Object world,int model,float yaw,float vx,float vy,float vz,float pitch,float roll);
     public static native void carDestroy(long session);
     public static native String carStep(long session,float steer,float lean,float throttle,float brake,int buttons,

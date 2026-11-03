@@ -369,7 +369,7 @@ impl Car {
     }
 }
 
-fn hull_hit(
+pub(super) fn hull_hit(
     world: &mut dyn Ground,
     position: Vec3,
     step: Vec3,

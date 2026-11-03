@@ -4,7 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.jakmc.JakData;
-import dev.jakmc.entity.JakWheeledCar;
+import dev.jakmc.entity.JakVehicle;
 import java.util.Arrays;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
@@ -187,7 +187,7 @@ public final class JakCityStructure extends Structure {
             for(var garage:plan.garages){
                 var pos=CityBlueprint.rotate(garage.pos(),turns).offset(origin);
                 if(!chunkBounds.isInside(pos))continue;
-                var model=garage.duneHopper()?JakWheeledCar.Model.TOAD:JakWheeledCar.Model.SNAKE;
+                var model=garage.duneHopper()?JakVehicle.Model.TOAD:JakVehicle.Model.SNAKE;
                 var car=model.type.create(level.getLevel(),EntitySpawnReason.STRUCTURE);
                 if(car==null)continue;
                 var spot=Vec3.atBottomCenterOf(pos.above()).add(0,1.1,0);

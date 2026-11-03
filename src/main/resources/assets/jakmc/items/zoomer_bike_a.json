@@ -1,0 +1,1 @@
+{"model": {"type": "minecraft:special", "base": "jakmc:item/vehicle_placement", "model": {"type": "jakmc:gltf", "file": "ctycarb/bikea-lod0.glb", "scale": 0.37, "clip": "bikea-idle"}}}

@@ -2,7 +2,7 @@ package dev.jakmc.client;
 
 import com.google.gson.JsonObject;
 import dev.jakmc.JakData;
-import dev.jakmc.entity.JakWheeledCar;
+import dev.jakmc.entity.JakVehicle;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -119,7 +119,7 @@ final class CityScene {
                 if(path.startsWith("objeto_haven_rampa_cuarto"))ramps++;
             }
         }
-        var cars=level.getEntitiesOfClass(JakWheeledCar.class,new AABB(Vec3.atCenterOf(target),Vec3.atCenterOf(target)).inflate(120),e->true);
+        var cars=level.getEntitiesOfClass(JakVehicle.class,new AABB(Vec3.atCenterOf(target),Vec3.atCenterOf(target)).inflate(120),e->true);
         report.addProperty("x",target.getX());report.addProperty("z",target.getZ());
         report.addProperty("jakBlocks",structures);
         report.addProperty("roadBlocks",roads);

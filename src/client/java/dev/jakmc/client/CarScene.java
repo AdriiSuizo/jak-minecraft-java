@@ -3,7 +3,7 @@ package dev.jakmc.client;
 import com.google.gson.JsonObject;
 import dev.jakmc.JakData;
 import dev.jakmc.client.input.SdlVirtualPad;
-import dev.jakmc.entity.JakWheeledCar;
+import dev.jakmc.entity.JakVehicle;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -36,15 +36,21 @@ final class CarScene {
     private static int index;
     private static boolean dismounted;
     private static final boolean[] FIRED=new boolean[2];
-    private static boolean grenadeBurst;
+    private static boolean grenadeBurst,hover;
+    private static final boolean[] LAMPS=new boolean[2],LANE=new boolean[2],REVERSE=new boolean[2];
+    private static final java.util.List<Integer> DISPLAY=new java.util.ArrayList<>();
     private static InputScene.CameraView view;
 
     static boolean backgroundPad(int id){return pad!=null&&pad.id==id;}
     static InputScene.CameraView camera(){return view;}
     static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(CarScene::tick);}
-    static void start(Minecraft client){
+    static void start(Minecraft client,boolean zoomers){
         if(pad!=null||client.getSingleplayerServer()==null||client.player==null)throw new IllegalStateException("Open the development world");
         index=tick=0;
+        hover=zoomers;
+        java.util.Arrays.fill(LAMPS,false);
+        java.util.Arrays.fill(LANE,false);
+        java.util.Arrays.fill(REVERSE,false);
         dismounted=grenadeBurst=false;
         java.util.Arrays.fill(FIRED,false);
         java.util.Arrays.fill(DISTANCE,0);java.util.Arrays.fill(HEIGHT,0);
@@ -57,6 +63,7 @@ final class CarScene {
         pad=new SdlVirtualPad();
         onServer(client,p->{
             var level=p.level();
+            if(hover)level.getServer().getCommands().performPrefixedCommand(level.getServer().createCommandSourceStack(),"time set midnight");
             var original=p.position();
             var rotation=new float[]{p.getYRot(),p.getXRot()};
             var enabled=p.getAttachedOrCreate(JakData.ENABLED);
@@ -83,16 +90,26 @@ final class CarScene {
                 player.teleportTo(original.x,original.y,original.z);
                 player.setYRot(rotation[0]);player.setXRot(rotation[1]);
             };
+            if(hover){
+                for(int i=3;i<=6;i++){
+                    var model=JakVehicle.Model.values()[i];
+                    var car=model.type.create(level,EntitySpawnReason.COMMAND);
+                    var pos=start.add(i%2==0?16:-4,model.parkingClearance(),8+(i-3)*6);
+                    car.snapTo(pos.x,pos.y,pos.z,0,0);
+                    if(level.addFreshEntity(car))DISPLAY.add(car.getId());
+                }
+            }
             spawn(p,0);
         });
     }
 
     private static void spawn(ServerPlayer p,int index){
-        var car=JakWheeledCar.Model.values()[index].type.create(p.level(),EntitySpawnReason.COMMAND);
-        Vec3 at=start.add(index*10,1.3,0);
+        var model=JakVehicle.Model.values()[hover?(index==0?2:7):index];
+        var car=model.type.create(p.level(),EntitySpawnReason.COMMAND);
+        Vec3 at=start.add(index*10,hover?model.parkingClearance():1.3,0);
         car.setPos(at);
         car.setYRot(0);
-        p.teleportTo(at.x,at.y-1.3,at.z-2);
+        p.teleportTo(at.x,start.y,at.z-(hover?1.4:2));
         p.setYRot(0);p.setXRot(0);
         if(!p.level().addFreshEntity(car))throw new IllegalStateException("Could not place source car");
         carId=car.getId();
@@ -100,11 +117,16 @@ final class CarScene {
 
     private static void tick(Minecraft client){
         if(pad==null||client.level==null||client.player==null||carId<0||!JakInput.controllerReady(pad.id))return;
-        if(!(client.level.getEntity(carId) instanceof JakWheeledCar car)||car.frame()==null)return;
+        if(!(client.level.getEntity(carId) instanceof JakVehicle car)||car.frame()==null)return;
         tick++;
         var pos=car.position().subtract(start);
         var frame=car.frame();
         int grounded=frame.get("grounded").getAsInt();
+        if(hover){
+            LAMPS[index]|=frame.get("lamps").getAsFloat()>.8f&&frame.getAsJsonArray("heads").size()>0;
+            LANE[index]|=frame.get("high").getAsBoolean()&&pos.y>5;
+            REVERSE[index]|=tick>55&&dev.jakmc.player.JakPlayers.vector(frame.getAsJsonArray("velocity")).z<-.2;
+        }
         if(index==0&&!frame.getAsJsonArray("grenades").isEmpty())FIRED[0]=true;
         for(var effect:frame.getAsJsonArray("gunEffects")){
             String name=effect.getAsJsonObject().get("effect").getAsString();
@@ -118,39 +140,43 @@ final class CarScene {
         if(pos.z>=12&&pos.z<=17)STEP_SPEED[index]=Math.max(STEP_SPEED[index],speed);
         if(tick==10)onServer(client,p->{
             var target=p.level().getEntity(carId);
-            target.interact(p,InteractionHand.MAIN_HAND,new Vec3(0,0,-1));
+            target.interact(p,InteractionHand.MAIN_HAND,new Vec3(0,hover?-.55:0,-1));
         });
         if(tick==25)pad.axis(5,.12f);
-        if(tick==32)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,true);
-        if(tick==36)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,false);
+        if(!hover&&tick==32)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,true);
+        if(!hover&&tick==36)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,false);
         if(tick==37)pad.axis(5,1);
-        if(tick==49&&index==0)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,true);
-        if(tick==54&&index==0){
+        if((hover&&tick==29)||(!hover&&tick==49&&index==0))pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,true);
+        if(hover&&tick==31)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,false);
+        if(hover&&tick==49)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,true);
+        if(hover&&tick==51)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,false);
+        if(!hover&&tick==54&&index==0){
             pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,false);
             pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,true);
         }
-        if(index==0&&tick>=54&&grounded==0){
+        if(hover&&tick==52){pad.axis(5,-1);pad.axis(4,1);}
+        if(!hover&&index==0&&tick>=54&&grounded==0){
             if(airborneSpeed==0)airborneSpeed=speed;
             if(frame.get("boost").getAsBoolean())airBoost=Math.max(airBoost,speed-airborneSpeed);
         }
-        if(tick==47||tick==61&&index==0){
+        if(tick==47||!hover&&tick==61&&index==0){
             Vec3 target=car.position().add(0,.65,0);
             Vec3 eye=target.add(-5,2.5,6);
             Vec3 direction=target.subtract(eye);
             view=new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-direction.x,direction.z)),
                 (float)-Math.toDegrees(Math.atan2(direction.y,direction.horizontalDistance())));
         }
-        if(tick==48||tick==62&&index==0){
-            String name=index==1?"cars-snake.png":tick==48?"cars-toad.png":"cars-air.png";
+        if(tick==48||!hover&&tick==62&&index==0){
+            String name=hover?(index==0?"zoomers-bike.png":"zoomers-car.png"):index==1?"cars-snake.png":tick==48?"cars-toad.png":"cars-air.png";
             Screenshot.grab(client.gameDirectory,name,client.gameRenderer.mainRenderTarget(),1,_-> {});
         }
-        if(tick==72){
+        if(tick==(hover?110:72)){
             pad.axis(5,-1);
             pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,false);
             pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,true);
         }
-        if(tick==76)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,false);
-        if(tick!=80)return;
+        if(tick==(hover?114:76)){pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,false);pad.axis(4,-1);}
+        if(tick!=(hover?118:80))return;
         dismounted=client.player.getVehicle()==null;
         if(index==0){
             view=null;
@@ -176,10 +202,16 @@ final class CarScene {
         report.addProperty("grenade",FIRED[0]);
         report.addProperty("grenadeBurst",grenadeBurst);
         report.addProperty("gunBeam",FIRED[1]);
-        report.addProperty("reason",DISTANCE[0]>=16&&DISTANCE[1]>=16&&CONTACTS[0]>=2&&CONTACTS[1]>=2
-            &&STEP_SPEED[0]>.1&&STEP_SPEED[1]>.1&&airBoost>.02&&dismounted&&FIRED[0]&&FIRED[1]&&grenadeBurst?"complete":"Car acceptance failed");
+        report.add("lamps",new com.google.gson.Gson().toJsonTree(LAMPS));
+        report.add("lanes",new com.google.gson.Gson().toJsonTree(LANE));
+        report.add("reverse",new com.google.gson.Gson().toJsonTree(REVERSE));
+        boolean success=hover?DISTANCE[0]>5&&DISTANCE[1]>5&&LAMPS[0]&&LAMPS[1]&&LANE[0]&&LANE[1]
+            &&REVERSE[0]&&REVERSE[1]&&dismounted:
+            DISTANCE[0]>=16&&DISTANCE[1]>=16&&CONTACTS[0]>=2&&CONTACTS[1]>=2
+            &&STEP_SPEED[0]>.1&&STEP_SPEED[1]>.1&&airBoost>.02&&dismounted&&FIRED[0]&&FIRED[1]&&grenadeBurst;
+        report.addProperty("reason",success?"complete":"Vehicle acceptance failed");
         try{
-            var folder=client.gameDirectory.toPath().resolve("jakmc/evidence/cars");
+            var folder=client.gameDirectory.toPath().resolve("jakmc/evidence/"+(hover?"zoomers":"cars"));
             Files.createDirectories(folder);
             Files.writeString(folder.resolve("result.json"),report.toString());
         }catch(IOException e){throw new UncheckedIOException(e);}
@@ -192,6 +224,11 @@ final class CarScene {
             p.stopRiding();
             var old=p.level().getEntity(last);
             if(old!=null)old.discard();
+            for(int id:DISPLAY){
+                var parked=p.level().getEntity(id);
+                if(parked!=null)parked.discard();
+            }
+            DISPLAY.clear();
             cleanup.accept(p);
             client.execute(client::stop);
         });

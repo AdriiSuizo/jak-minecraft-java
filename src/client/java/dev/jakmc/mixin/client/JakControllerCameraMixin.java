@@ -130,9 +130,9 @@ abstract class JakControllerCameraMixin {
         return entity==Minecraft.getInstance().player&&(JakPoses.presented()!=null||jakmc$car()!=null);
     }
 
-    @Unique private dev.jakmc.entity.JakWheeledCar jakmc$car(){
+    @Unique private dev.jakmc.entity.JakVehicle jakmc$car(){
         return entity==Minecraft.getInstance().player&&entity!=null
-            &&entity.getVehicle() instanceof dev.jakmc.entity.JakWheeledCar car?car:null;
+            &&entity.getVehicle() instanceof dev.jakmc.entity.JakVehicle car?car:null;
     }
 
     @ModifyArgs(method="alignWithEntity",at=@At(value="INVOKE",target="Lnet/minecraft/client/Camera;setPosition(DDD)V"))

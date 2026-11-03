@@ -316,6 +316,7 @@ public final class GltfModel {
         });
         return compose(translations,turns,rest.scales,rest.morphs);
     }
+    boolean hasJoint(String name){return namedNodes.containsKey(name);}
     Vector3f localTranslation(Posed pose,String joint){return new Vector3f(pose.translations[namedNodes.get(joint)]);}
     public Matrix4f jointAt(Posed pose,int originalIndex){return pose.globals[joints[originalIndex]];}
     public Matrix4f joint(Posed pose,String name){Integer node=namedNodes.get(name);if(node==null)throw new IllegalArgumentException("Required original joint missing: "+name);return pose.globals[node];}

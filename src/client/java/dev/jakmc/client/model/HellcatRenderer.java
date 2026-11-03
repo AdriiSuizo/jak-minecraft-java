@@ -130,7 +130,7 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         var right=new Vector3f(cameraView.leftVector()).negate();
         var up=new Vector3f(cameraView.upVector());
         var origin=new Vec3(state.x,state.y,state.z);
-        Batch core=new Batch(),glow=new Batch(),head=new Batch(),tail=new Batch();
+        Batch core=new Batch(),glow=new Batch();
         for(int i=0;i<count;i++){
             int b=i*36;
             var at=state.attitude.transform(new Vector3f(SPRITES.getFloat(b),SPRITES.getFloat(b+4),SPRITES.getFloat(b+8)));
@@ -140,14 +140,9 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
             batch.quad(at,right,up,SPRITES.getFloat(b+12),
                 rgba(SPRITES.getFloat(b+16),SPRITES.getFloat(b+20),SPRITES.getFloat(b+24),SPRITES.getFloat(b+28)*fade*fade));
         }
-        if(state.lamps>0){
-            lamps(state,HEAD,true,origin,camera.pos,right,up,head);
-            lamps(state,TAIL,false,origin,camera.pos,right,up,tail);
-        }
         core.submit("laser-hit2",2,stack,collector);
         glow.submit("glow",2,stack,collector);
-        head.submit("glow",3,stack,collector);
-        tail.submit("glow-hotdot",3,stack,collector);
+        vehicleLamps(HEAD,TAIL,state.attitude,state.lamps,origin,camera,stack,collector);
     }
 
     private static void beams(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){
@@ -169,15 +164,30 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         batch.submit("glow",3,stack,collector);
     }
 
-    private static void lamps(State state,float[][] points,boolean front,Vec3 origin,Vec3 eye,Vector3f right,Vector3f up,Batch batch){
+    static void vehicleLamps(float[][] heads,float[][] tails,Quaternionf attitude,float intensity,Vec3 origin,
+        CameraRenderState camera,PoseStack stack,SubmitNodeCollector collector){
+        if(intensity<=0)return;
+        var view=Minecraft.getInstance().gameRenderer.mainCamera();
+        var right=new Vector3f(view.leftVector()).negate();
+        var up=new Vector3f(view.upVector());
+        var head=new Batch();
+        var tail=new Batch();
+        lamps(attitude,intensity,heads,true,origin,camera.pos,right,up,head);
+        lamps(attitude,intensity,tails,false,origin,camera.pos,right,up,tail);
+        head.submit("glow",3,stack,collector);
+        tail.submit("glow-hotdot",3,stack,collector);
+    }
+
+    private static void lamps(Quaternionf attitude,float intensity,float[][] points,boolean front,
+        Vec3 origin,Vec3 eye,Vector3f right,Vector3f up,Batch batch){
         var level=Minecraft.getInstance().level;
         if(level==null)return;
         for(var point:points){
-            var at=state.attitude.transform(new Vector3f(point).div(6400));
+            var at=attitude.transform(new Vector3f(point).div(6400));
             var location=origin.add(at.x,at.y,at.z);
             Vec3 toward=eye.subtract(location);
             float metres=(float)(toward.length()/.64);
-            float factor=state.lamps*Math.clamp(8.997864f-.04998922f*metres,0,1);
+            float factor=intensity*Math.clamp(8.997864f-.04998922f*metres,0,1);
             if(factor<=0)continue;
             toward=toward.normalize().scale(front?.128:.064);
             at.add((float)toward.x,(float)toward.y,(float)toward.z);
@@ -187,7 +197,7 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
                 net.minecraft.world.level.ClipContext.Fluid.NONE,Minecraft.getInstance().getCameraEntity());
             if(level.clip(context).getType()!=net.minecraft.world.phys.HitResult.Type.MISS)continue;
             batch.quad(at,right,up,front?1.28f:.48f,rgba(255,front?224:32,0,18*factor));
-            if(front)batch.quad(at,right,up,.512f,rgba(255,224,144,34*state.lamps*Math.clamp(2.3332994f-.05554176f*metres,0,1)));
+            if(front)batch.quad(at,right,up,.512f,rgba(255,224,144,34*intensity*Math.clamp(2.3332994f-.05554176f*metres,0,1)));
         }
     }
 

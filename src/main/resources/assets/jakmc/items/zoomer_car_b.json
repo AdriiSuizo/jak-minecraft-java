@@ -1,0 +1,1 @@
+{"model": {"type": "minecraft:special", "base": "jakmc:item/vehicle_placement", "model": {"type": "jakmc:gltf", "file": "ctycara/carb-lod0.glb", "scale": 0.22, "clip": "carb-idle"}}}

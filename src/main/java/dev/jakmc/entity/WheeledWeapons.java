@@ -32,13 +32,13 @@ final class WheeledWeapons {
         }
     }
     private final ArrayList<Grenade> grenades=new ArrayList<>();
-    private final JakWheeledCar car;
+    private final JakVehicle car;
     private int next;
-    WheeledWeapons(JakWheeledCar car){this.car=car;}
+    WheeledWeapons(JakVehicle car){this.car=car;}
 
     void fire(ServerLevel level,ServerPlayer pilot,Quaternionfc attitude,Vec3 velocity,boolean right,JsonArray effects) {
         double side=right?1:-1;
-        boolean toad=car.model==JakWheeledCar.Model.TOAD;
+        boolean toad=car.model==JakVehicle.Model.TOAD;
         Vec3 muzzle=car.position().add(transform(attitude,new Vec3(side*(toad?.5:.9),toad?1.8:1.3,1.5)).scale(SCALE));
         Vec3 forward=transform(attitude,new Vec3(0,0,1));
         Vec3 up=transform(attitude,new Vec3(0,1,0));
@@ -133,8 +133,8 @@ final class WheeledWeapons {
     private JsonObject event(String effect,Vec3 pos,Vec3 end){
         var result=new JsonObject();
         result.addProperty("effect",effect);
-        result.add("pos",JakWheeledCar.jsonVector(pos.subtract(car.position())));
-        if(end!=null)result.add("end",JakWheeledCar.jsonVector(end.subtract(car.position())));
+        result.add("pos",JakVehicle.jsonVector(pos.subtract(car.position())));
+        if(end!=null)result.add("end",JakVehicle.jsonVector(end.subtract(car.position())));
         return result;
     }
     private static Vec3 transform(Quaternionfc attitude,Vec3 value){

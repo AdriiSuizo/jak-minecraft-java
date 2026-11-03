@@ -42,9 +42,9 @@ fn cars() -> Result<std::sync::MutexGuard<'static, Cars>, String> {
         .map_err(|e| e.to_string())
 }
 
-struct Terrain {
-    query: GlobalRef,
-    error: Option<String>,
+pub(super) struct Terrain {
+    pub(super) query: GlobalRef,
+    pub(super) error: Option<String>,
 }
 impl Ground for Terrain {
     fn below(&mut self, at: Vec3, reach: f32) -> Option<f32> {

@@ -3,7 +3,7 @@ package dev.jakmc.client;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import dev.jakmc.entity.JakWheeledCar;
+import dev.jakmc.entity.JakVehicle;
 import dev.jakmc.player.JakPlayers;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,18 +14,18 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 /** Original emitters stay on the fixed Jak effects clock, independent of the render frame rate. */
-final class WheeledEffects {
+final class VehicleEffects {
     private static final float[] BASIS={1,0,0,0,1,0,0,0,1};
     private static final Gson JSON=new Gson();
-    private static final Map<JakWheeledCar,JsonObject> SEEN=new WeakHashMap<>();
-    private static final Map<JakWheeledCar,Map<Integer,Vec3>> GRENADE_LAST=new WeakHashMap<>();
+    private static final Map<JakVehicle,JsonObject> SEEN=new WeakHashMap<>();
+    private static final Map<JakVehicle,Map<Integer,Vec3>> GRENADE_LAST=new WeakHashMap<>();
     private static final double METRE=.64;
 
     static void initialize(){
         ClientTickEvents.END_CLIENT_TICK.register(client->{
             if(client.level==null||client.player==null)return;
             for(var entity:client.level.entitiesForRendering()){
-                if(entity instanceof JakWheeledCar car&&car.distanceToSqr(client.player)<96*96){
+                if(entity instanceof JakVehicle car&&car.distanceToSqr(client.player)<96*96){
                     var frame=car.frame();
                     if(frame!=null&&SEEN.put(car,frame)!=frame)emit(car,frame);
                 }
@@ -33,7 +33,7 @@ final class WheeledEffects {
         });
     }
 
-    private static void emit(JakWheeledCar car,JsonObject frame){
+    private static void emit(JakVehicle car,JsonObject frame){
         var commands=new JsonArray();
         var q=frame.getAsJsonArray("rotation");
         var rotation=new Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat());
@@ -81,9 +81,10 @@ final class WheeledEffects {
                     commands.add(command("Var",923,units(local),BASIS,overrides,0));
                 }
             }
-            if(frame.get("boost").getAsBoolean()){
-                boolean toad=car.model==JakWheeledCar.Model.TOAD;
-                double length=(toad?6:2)*4096*thrust;
+            if(frame.get("boost").getAsBoolean()||frame.has("thrusterPower")&&frame.get("thrusterPower").getAsFloat()>0){
+                boolean toad=car.model==JakVehicle.Model.TOAD;
+                double power=frame.has("thrusterPower")?frame.get("thrusterPower").getAsFloat():thrust;
+                double length=(toad?6:2)*4096*power;
                 double width=Math.min((toad?1:.6)*4096,length/2);
                 var back=vector(rotated(rotation,new Vec3(0,0,-1)));
                 for(var point:frame.getAsJsonArray("thrusters")){

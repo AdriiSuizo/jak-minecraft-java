@@ -7,6 +7,9 @@ pub struct Specs {
     pub heads: Vec<Vec3>,
     pub tails: Vec<Vec3>,
     pub damage_stages: usize,
+    pub thrusters: Vec<Vec3>,
+    pub exhaust: Vec<Vec3>,
+    pub masks: [u64; 3],
 }
 pub fn read(source: &str) -> HashMap<String, Specs> {
     let mut out = HashMap::new();
@@ -37,7 +40,7 @@ pub fn read(source: &str) -> HashMap<String, Specs> {
         // same authored attachments directly on its vehicle constants.
         let p = match keyword(body, ":particles") {Some(Sexp::List(p))=>p,_=>body};
         let points = |key: &str, count: &str| -> Vec<Vec3> {
-            let n = keyword(p, count).and_then(Sexp::number).unwrap_or(0.0) as usize;
+            let n = if count.is_empty() { 2 } else { keyword(p, count).and_then(Sexp::number).unwrap_or(0.) as usize };
             let Some(Sexp::List(values)) = keyword(p, key) else {
                 return Vec::new();
             };
@@ -66,12 +69,29 @@ pub fn read(source: &str) -> HashMap<String, Specs> {
                 })
                 .fold(here, usize::max)
         }
+        fn collect_masks(items: &[Sexp], output: &mut [u64; 3]) {
+            if let Some(Sexp::List(parts)) = keyword(items, ":damage-seg-array") {
+                for (index, value) in parts.iter().skip(5).take(3).enumerate() {
+                    if let Some(mask) = value.number() {
+                        output[index] |= mask.max(0.) as u64;
+                    }
+                }
+            }
+            for value in items {
+                if let Sexp::List(values) = value { collect_masks(values, output); }
+            }
+        }
+        let mut masks = [0;3];
+        collect_masks(body, &mut masks);
         out.insert(
             model.into(),
             Specs {
                 heads: points(":headlight-local-pos", ":headlight-count"),
                 tails: points(":taillight-local-pos", ":taillight-count"),
                 damage_stages: stages(body).max(1),
+                thrusters: points(":thruster-local-pos", ""),
+                exhaust: points(":exhaust-local-pos", ""),
+                masks: masks.map(|mask|mask|1),
             },
         );
     }

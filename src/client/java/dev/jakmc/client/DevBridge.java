@@ -69,7 +69,8 @@ public final class DevBridge {
                     var at=request.has("origin")?dev.jakmc.player.JakPlayers.vector(request.getAsJsonArray("origin")):null;
                     CityScene.start(client,at);out.addProperty("scheduled",true);
                 }
-                case "cars_scene" -> {CarScene.start(client);out.addProperty("scheduled",true);}
+                case "zoomers_scene" -> {CarScene.start(client,true);out.addProperty("scheduled",true);}
+                case "cars_scene" -> {CarScene.start(client,false);out.addProperty("scheduled",true);}
                 case "track_scene" -> {TrackScene.start(client);out.addProperty("scheduled",true);}
                 case "altar_scene" -> {AltarScene.start(client);out.addProperty("scheduled",true);}
                 case "materials_scene" -> {MaterialScene.start(client);out.addProperty("scheduled",true);}

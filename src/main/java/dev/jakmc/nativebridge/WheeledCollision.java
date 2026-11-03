@@ -13,12 +13,14 @@ public final class WheeledCollision {
     private static final double METRES_PER_BLOCK=6400.0/4096;
     private final Level level;
     private final Entity owner;
+    private final boolean floats;
     public Vec3 origin;
     private final float[] contact=new float[4];
 
-    public WheeledCollision(Level level,Entity owner,Vec3 origin){
+    public WheeledCollision(Level level,Entity owner,Vec3 origin,boolean floats){
         this.level=level;
         this.owner=owner;
+        this.floats=floats;
         this.origin=origin;
     }
 
@@ -26,7 +28,7 @@ public final class WheeledCollision {
         Vec3 at=origin.add(x/METRES_PER_BLOCK,y/METRES_PER_BLOCK,z/METRES_PER_BLOCK);
         if(!level.hasChunkAt(BlockPos.containing(at)))return Float.NaN;
         Vec3 bottom=at.add(0,-reach/METRES_PER_BLOCK,0);
-        var result=level.clip(new ClipContext(at,bottom,ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,owner));
+        var result=level.clip(new ClipContext(at,bottom,ClipContext.Block.COLLIDER,floats?ClipContext.Fluid.ANY:ClipContext.Fluid.NONE,owner));
         if(result.getType()!=HitResult.Type.BLOCK)return Float.NaN;
         return (float)((at.y-result.getLocation().y)*METRES_PER_BLOCK);
     }

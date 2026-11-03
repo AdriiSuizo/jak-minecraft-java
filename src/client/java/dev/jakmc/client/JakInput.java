@@ -33,7 +33,7 @@ public final class JakInput {
     private static final dev.jakmc.client.input.SdlGamepad GAMEPAD=new dev.jakmc.client.input.SdlGamepad();
     private static dev.jakmc.client.input.SdlGamepad.State pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
     public static dev.jakmc.client.input.SdlGamepad.State controller(){return pad;}
-    private static boolean inCar(Minecraft c){return c.player!=null&&c.player.getVehicle() instanceof dev.jakmc.entity.JakWheeledCar;}
+    private static boolean inCar(Minecraft c){return c.player!=null&&c.player.getVehicle() instanceof dev.jakmc.entity.JakVehicle;}
     private static boolean enabled(Minecraft c){return c.player!=null&&(JakPlayers.active(c.player)||inCar(c)&&c.player.getAttachedOrCreate(dev.jakmc.JakData.ENABLED))&&!c.player.isSleeping();}
     private static boolean blocked(Minecraft c){
         return !enabled(c)||c.gui.screen()!=null||(!c.isWindowActive()&&!InputScene.backgroundPad(controllerId));
