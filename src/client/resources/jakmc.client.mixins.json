@@ -1,0 +1,7 @@
+{
+ "required":true,
+ "package":"dev.jakmc.mixin.client",
+ "compatibilityLevel":"JAVA_25",
+ "client":["JakRenderMixin","JakDisconnectMixin"],
+ "injectors":{"defaultRequire":1}
+}

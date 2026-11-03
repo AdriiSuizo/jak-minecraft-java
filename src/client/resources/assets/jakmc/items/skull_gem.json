@@ -1,0 +1,11 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/skull_gem",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "collectables-gem-lod0.glb",
+      "scale": 0.25
+    }
+  }
+}

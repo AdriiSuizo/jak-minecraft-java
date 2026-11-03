@@ -1,0 +1,14 @@
+{
+  "jak_enemies.rs": {
+    "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak_enemies.rs",
+    "sha256": "d993c49d043fe479e23c3ac242f52e002ae1fca0222874c31435ea7d9b74c410"
+  },
+  "creature_body.rs": {
+    "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\creature_body.rs",
+    "sha256": "8040f66927a36952701089f0a9693205d24f5c981471120d6eb00f1bda93ba12"
+  },
+  "jak_skull_gems.rs": {
+    "path": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak_skull_gems.rs",
+    "sha256": "4381e68d99ce676960188fbc868a7f67f82a902973b5c9ab55f656a65fc7994c"
+  }
+}

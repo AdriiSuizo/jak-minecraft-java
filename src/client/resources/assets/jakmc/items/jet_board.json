@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/jet_board",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "board-lod0.glb",
+      "scale": 0.38,
+      "clip": "board-close"
+    }
+  }
+}

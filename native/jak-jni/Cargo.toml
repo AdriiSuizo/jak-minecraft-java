@@ -1,0 +1,12 @@
+[package]
+name="jak-jni"
+version="0.1.0"
+edition.workspace=true
+license.workspace=true
+[lib]
+crate-type=["cdylib","rlib"]
+[dependencies]
+jak-core={path="../jak-core"}
+glam.workspace=true
+jni="0.21.1"
+serde_json="1"

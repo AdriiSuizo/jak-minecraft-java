@@ -1,0 +1,186 @@
+{
+  "reference_projects_read_only": [
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\LSC4 REPO CARPETA\\large-steal-car-4\\CLAUDE.md",
+      "sha256": "1afd7f461ae47ee35fa44c0cd36a83ba73551256bb682f5723b109513a705f65"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\GTA SA\\AGENTS.md",
+      "sha256": "252ee061b5e9ebbcdf803214b05b340fcb5bd937ff551acf16647e69e78c8ba6"
+    },
+    {
+      "path": "C:\\Users\\vieir\\Desktop\\Repo\\GTA SA\\tools\\Run-Checks.py",
+      "sha256": "44fd52405903e1210eb855e328189348a5789a93fdaec35dba650dd40752935a"
+    }
+  ],
+  "jak_core_sources": [
+    {
+      "path": "crates\\jak_mode\\src\\align.rs",
+      "sha256": "fdacdcce23c29102111d4cca81784fc3a8d1ab4cd2a1b54bf93f32c883975956"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\attack.rs",
+      "sha256": "c81aaeb3727c8181dad8710acce196283de4f2e33c098329eca93f06ae4ccab6"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\board.rs",
+      "sha256": "ec1bbb42473766076690b9eb1205255020da0905076e5a3c0a68ab283091917f"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\board_anim.rs",
+      "sha256": "e915a57f5740c5998afa03debfb920b05ff092ca46630568e40c3459f799a19e"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\board_code.rs",
+      "sha256": "4348c486d206fa22a7be8fa0834e076a50fb2257c1d962e90e1357ee4525d4e3"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\collide.rs",
+      "sha256": "ac2cea08170f3ce8a3cece266cb5e802e44b0547a77f21bf5907a05ac56b4102"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\control.rs",
+      "sha256": "b6c84c8644de277608a66ba339921f3d9c83118ec9b18751171e616a1ca7d15f"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\darkjak.rs",
+      "sha256": "c02da9a34992e32dc83392884cef9d5a8b8d715a13e83978c100a10b06ccc4a2"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\dark_shock.rs",
+      "sha256": "78df7edcb266f696b5541757ab4927f8b7c4e8c1ad3e8ad50a4128e41ea3c569"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\eco_blast.rs",
+      "sha256": "5cea72d41faa126aadca9a1a51e92032676112798a49c30b38ca961ac599f0e4"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\eco_power.rs",
+      "sha256": "d592ca3a706faf41c36a2906148c3fc876b8b261f2f15ed1cb176fedfa4de76a"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\edge_grab.rs",
+      "sha256": "37a555ca25fbc5cecba8c327a3dc17177aaf4a7ea5b6e00c6640f8532a53f3bc"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\flight.rs",
+      "sha256": "7b6a7a190581f03398a3f864683bb32e62501b9825d9c03db9b9144e073cca11"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\flut.rs",
+      "sha256": "522bfd26418ce877596add27e08c334c070fe2fde66ede3eb77a2d7073dc0c41"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\flut_swim.rs",
+      "sha256": "c73da34e74898101d4aa1a39852646c4428fac2f076281883a58528f1dd09cc4"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\foot_code.rs",
+      "sha256": "30e2dc647460f9bc247b5a8cf708866927f04841786e311c6a0bda0c69cbd637"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\grind.rs",
+      "sha256": "ed9b2f92b60fa419e37f184e4aa06d27eae2399d33c93b406f864f2cb247ed19"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\gun.rs",
+      "sha256": "7a7c41c90bfcee1870f0f4b9d7b1c3fff1591a0faff99c9f11584ea0613b48d0"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\hellcat.rs",
+      "sha256": "ae9d436a680b80a347645a345f1da3590b72cc8172e608b6da1a95d75d75dd4b"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\hurt.rs",
+      "sha256": "71eb6134dc1bcbe170df41efe8c9058f88c74e678d7e6b2d3b2880fd675f43e4"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\ladder.rs",
+      "sha256": "7f4aa82d50262842d1d356f2874e5af07a525e2f09ae7cc739535518827b41c0"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\lib.rs",
+      "sha256": "75e9490d1cb8635ce9f5acec573ab5de829b67b22ad8f621d07a0a3fd9dfbb41"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\lightjak.rs",
+      "sha256": "c30fab07eb6db20d11cc81de4e23a93e3beedf32cc118709debc97ba9303792c"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\lightning_bolt.rs",
+      "sha256": "c9eac511c5c4a6f74345f65b6a1ff6bb9db3780c082a55f3756e678e20e4649f"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\math.rs",
+      "sha256": "492623692044d466a3837c0677bccac2d0e71ef78818205a67c2c786801404cd"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\pad.rs",
+      "sha256": "1ad09ca8862ed35f3ea2052048dccb23c5840ad97d0bad361ec0880473756e95"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\particles.rs",
+      "sha256": "76791349ef927d413ec63b423154aa8e61393485cc4d358dfaf1bd1f8053e165"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\projectile.rs",
+      "sha256": "932e7ebac0288c85ea5322bfd5669fed064091973c3c4009e535b0de66512650"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\reframe.rs",
+      "sha256": "53007b9b82023a77c7f31f23ec840e0f8929f33e46b1260f578e59d0223b7952"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\step.rs",
+      "sha256": "72036bbe632a13544db1f6058f86c0e16896243abe5546f0729bb5c7d5a4808d"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\surface.rs",
+      "sha256": "7ade7fc765013e3a0fcd038c1d14d53ea55e5d69f20a6ba9a9ae8615c520720f"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\swim.rs",
+      "sha256": "ee5b54034d13f1940def60220d18b8894a2adf22126fd9758fb98b052570ca66"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\target.rs",
+      "sha256": "747bd0c2f3298da5d7d7e38c6a2a2bbe8aefb1a4647080107184603bec4579a8"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\weapons.rs",
+      "sha256": "6e712e7c90d446a767d3e983c01d89fc742c280c3f3a681f6a1a3783e97e4c49"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\zoom.rs",
+      "sha256": "571fa2e7995890014f12a362b44af2bc0ea39dd8f0a09c63d15fd6ddc79ad403"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\anim\\mod.rs",
+      "sha256": "933633d7b4e0700615d5eb5da519a0d633bcc5b5afc27665307e6f6da92d55db"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\anim\\table.rs",
+      "sha256": "2149bf5ef1ee9ef12fa88288a269c9926fc4ef7e319f9e755e95350426cb24b2"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\particles\\callbacks.rs",
+      "sha256": "78cda802b9cff6ee06d11fff846b035e6e4f76654825d20b78582e8d5214debf"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\particles\\lightning.rs",
+      "sha256": "99a50671f3820c8f243c528837580fdcb6c7e7f269875c43bb78cfea1850431f"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\particles\\vehicle_lights.rs",
+      "sha256": "6e474f9039404dce21a36c86d063fdb4b5fc8f1584f292830a048d2df127580e"
+    },
+    {
+      "path": "crates\\jak_mode\\src\\particles\\wcars.rs",
+      "sha256": "7741b784908c970495893688189be1c0fdfd0bac4d59e9a377e4f5786c39fbad"
+    }
+  ],
+  "minecraft": "26.3",
+  "loader": "0.20.1",
+  "loom": "1.19.3",
+  "fabric_api": "0.165.0+26.3"
+}

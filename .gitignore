@@ -1,0 +1,12 @@
+.gradle/
+build/
+run/
+.local/
+native/target/
+converted-assets/
+*.log
+.idea/
+tools/content-exporter/target/
+src/generated/
+__pycache__/
+*.pyc

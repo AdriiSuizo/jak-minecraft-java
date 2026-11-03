@@ -1,0 +1,10 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/light_eco",
+    "model": {
+      "type": "jakmc:eco",
+      "light": true
+    }
+  }
+}

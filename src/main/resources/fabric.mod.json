@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "jakmc",
+  "version": "${version}",
+  "name": "Jak Worlds",
+  "description": "Jak mechanics and worlds in Minecraft Java.",
+  "authors": [
+    "Jak Minecraft project"
+  ],
+  "license": "Apache-2.0",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.jakmc.JakMod"
+    ],
+    "client": [
+      "dev.jakmc.client.JakClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "mixins": [
+    "jakmc.mixins.json",
+    {
+      "config": "jakmc.client.mixins.json",
+      "environment": "client"
+    }
+  ]
+}

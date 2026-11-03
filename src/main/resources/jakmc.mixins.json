@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "dev.jakmc.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "PlayerTravelMixin",
+    "ServerMovementMixin",
+    "JakPickupMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

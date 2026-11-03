@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/peace_maker",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "gun-lod0.glb",
+      "scale": 0.48,
+      "clip": "gun-idle-dark"
+    }
+  }
+}
