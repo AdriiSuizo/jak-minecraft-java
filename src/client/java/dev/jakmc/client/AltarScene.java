@@ -18,6 +18,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -26,11 +29,11 @@ import net.minecraft.world.phys.Vec3;
 
 final class AltarScene {
     private static final int BOARD_BUTTON=1<<7;
-    private static InputScene.CameraView view;
+    private static InputScene.CameraView view,gateView;
     private static JsonObject checks;
     private static int ticks,opened,closed;
     private static boolean deployed;
-    private static Runnable take,press,release,returnBoard,cleanup;
+    private static Runnable take,press,release,returnBoard,openGate,cleanup;
 
     static InputScene.CameraView camera(){return view;}
 
@@ -47,7 +50,11 @@ final class AltarScene {
             if(ticks==74)server.execute(press);
             if(ticks==77)server.execute(release);
             if(ticks==92)server.execute(returnBoard);
-            if(ticks<124||!checks.has("returned_to_altar"))return;
+            if(ticks==101)view=gateView;
+            if(ticks==106)Screenshot.grab(client.gameDirectory,"jak-gate-closed.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
+            if(ticks==108)server.execute(openGate);
+            if(ticks==120)Screenshot.grab(client.gameDirectory,"jak-gate-open.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
+            if(ticks<125||!checks.has("returned_to_altar")||!checks.has("gate_raised"))return;
             checks.addProperty("native_board_deployed",deployed);
             checks.addProperty("original_board_open",BoardAltarRenderer.openingFrames>opened);
             checks.addProperty("original_board_close",BoardAltarRenderer.closingFrames>closed);
@@ -118,6 +125,34 @@ final class AltarScene {
             report.addProperty("solid_luminous_floor_plate",plate.getLightEmission()==15
                 &&plateShape.min(Direction.Axis.Y)==.5&&plateShape.max(Direction.Axis.Y)==1
                 &&plateShape.equals(plate.getShape(level,pos)));
+            var gate=JakBlocks.BLOCKS.get("krimson_porton_fence_gate");
+            var first=floor.west(2).north(2).above();
+            var second=first.north();
+            var power=first.west();
+            for(var base:new BlockPos[]{first,second})for(int i=0;i<4;i++)
+                snapshot.put(base.above(i),level.getBlockState(base.above(i)));
+            snapshot.put(power,level.getBlockState(power));
+            p.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(gate,2));
+            boolean gatesPlaced=place(p,first.below())&&place(p,second.below());
+            report.addProperty("gate_places_two_columns",gatesPlaced&&p.getMainHandItem().isEmpty()
+                &&level.getBlockState(first.above(2)).is(gate)&&level.getBlockState(second.above(3)).is(gate));
+            openGate=()->{
+                boolean manual=interact(p,first.above());
+                boolean cleared=passage(level,first)&&passage(level,second);
+                boolean raised=level.getBlockState(first.above(3)).getValue(BlockStateProperties.OPEN)
+                    &&!level.getBlockState(first.above(3)).getCollisionShape(level,first.above(3)).isEmpty();
+                boolean reclosed=interact(p,first.above(3))&&!passage(level,first)&&!passage(level,second);
+                level.setBlockAndUpdate(power,Blocks.REDSTONE_BLOCK.defaultBlockState());
+                boolean redstoneOpened=passage(level,first)&&passage(level,second);
+                level.setBlockAndUpdate(power,Blocks.AIR.defaultBlockState());
+                boolean redstoneClosed=!passage(level,first)&&!passage(level,second);
+                interact(p,first.above());
+                client.execute(()->{
+                    report.addProperty("gate_opens_and_closes",manual&&cleared&&reclosed);
+                    report.addProperty("gate_raised",raised);
+                    report.addProperty("gate_redstone",redstoneOpened&&redstoneClosed);
+                });
+            };
             report.addProperty("refuses_second_board",!interact(p,pos)&&level.getBlockState(pos).is(filled));
             p.setAttached(JakData.BOARD,ItemStack.EMPTY);
             take=()->{
@@ -146,15 +181,37 @@ final class AltarScene {
                 p.setGameMode(mode);
                 p.teleportTo(before.x,before.y,before.z);
             };
+            Vec3 gateTarget=Vec3.atBottomCenterOf(first).add(0,1.65,-.5);
+            Vec3 gateEye=gateTarget.add(4,1,-2);
+            gateView=cameraAt(gateEye,gateTarget);
             Vec3 target=Vec3.atBottomCenterOf(pos).add(-.5,.85,0);
             Vec3 eye=target.add(3,2.1,-4.1);
-            Vec3 delta=target.subtract(eye);
             client.execute(()->{
-                view=new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-delta.x,delta.z)),
-                    (float)-Math.toDegrees(Math.atan2(delta.y,delta.horizontalDistance())));
+                view=cameraAt(eye,target);
                 checks=report;
             });
         });
+    }
+
+    private static boolean passage(net.minecraft.server.level.ServerLevel level,BlockPos base){
+        var center=new net.minecraft.world.phys.AABB(.15,0,.15,.85,1,.85);
+        for(int y=0;y<3;y++){
+            var pos=base.above(y);
+            if(level.getBlockState(pos).getCollisionShape(level,pos).toAabbs().stream().anyMatch(box->box.intersects(center)))
+                return false;
+        }
+        return true;
+    }
+
+    private static InputScene.CameraView cameraAt(Vec3 eye,Vec3 target){
+        Vec3 delta=target.subtract(eye);
+        return new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-delta.x,delta.z)),
+            (float)-Math.toDegrees(Math.atan2(delta.y,delta.horizontalDistance())));
+    }
+
+    private static boolean place(ServerPlayer player,BlockPos floor){
+        var hit=new BlockHitResult(Vec3.atCenterOf(floor).add(0,.5,0),Direction.UP,floor,false);
+        return player.getMainHandItem().getItem().useOn(new UseOnContext(player,InteractionHand.MAIN_HAND,hit)).consumesAction();
     }
 
     private static boolean interact(ServerPlayer player,BlockPos pos){

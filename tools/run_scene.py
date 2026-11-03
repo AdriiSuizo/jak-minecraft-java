@@ -3,6 +3,30 @@ from pathlib import Path
 import argparse,datetime,json,os,shutil,subprocess,time
 from bridge import call,ROOT
 
+def owned_game_pid(parent_pid):
+    # Before the bridge starts, only a game descending from this one Gradle launch is ours.
+    script=r"""
+    $rootProcess=__PARENT__
+    $tree=@{}
+    Get-CimInstance Win32_Process | ForEach-Object {$tree[[int]$_.ProcessId]=$_}
+    foreach($candidate in $tree.Values){
+        if($candidate.CommandLine -notlike '*net.fabricmc.devlaunchinjector.Main*' -or
+           $candidate.CommandLine -notlike '*jak-minecraft-java*'){continue}
+        $parent=[int]$candidate.ParentProcessId
+        $seen=[System.Collections.Generic.HashSet[int]]::new()
+        while($parent -gt 0 -and $seen.Add($parent)){
+            if($parent -eq $rootProcess){[int]$candidate.ProcessId; break}
+            if(!$tree.ContainsKey($parent)){break}
+            $parent=[int]($tree[$parent].ParentProcessId)
+        }
+    }
+    """.replace('__PARENT__',str(parent_pid))
+    completed=subprocess.run(['powershell','-NoProfile','-Command',script],
+        creationflags=subprocess.CREATE_NO_WINDOW,capture_output=True,text=True,timeout=10)
+    pids=[int(line) for line in completed.stdout.splitlines() if line.strip().isdigit()]
+    return pids[0] if len(pids)==1 else None
+
+
 def run():
     parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','gems','gems_visual','collision_perf','citizens','powers','leaper','flut','hellcat','hellcat_crossing','materials','altar'],default='scale');parser.add_argument('--origin',nargs=3,type=float);args=parser.parse_args();scene=args.scene
     stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -37,6 +61,11 @@ def run():
         shutil.copyfile(result,evidence/'result.json')
         if scene in ('weapons','rings','input','input_actions','gems','gems_visual','collision_perf','citizens','powers','leaper','flut','hellcat','hellcat_crossing','materials','altar') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
         shutil.copyfile(image,evidence/'screen.png')
+        if scene=='altar':
+            for name in ('jak-gate-closed.png','jak-gate-open.png'):
+                shot=ROOT/'run/screenshots'/name
+                if shot.exists() and shot.stat().st_mtime_ns>=capture_after:
+                    shutil.copyfile(shot,evidence/name)
         if scene=='materials':
             for name in ('jak-assemblies.png','jak-facade.png'):
                 shot=ROOT/'run/screenshots'/name
@@ -60,13 +89,22 @@ def run():
         print(json.dumps({'evidence':str(evidence),'result':outcome},indent=2),flush=True)
     except Exception as failure:
         (evidence/'runner-error.json').write_text(json.dumps({'error':str(failure),'owned_session':owned},indent=2),encoding='utf-8')
-        if owned and process.poll() is None:
-            # Exact session PID, never a wildcard Java kill. Preserve the actual
-            # shutdown/build failure instead of leaving an idle test window.
-            subprocess.run([str(Path(env['JAVA_HOME'])/'bin/jcmd.exe'),str(int(owned['pid'])),'Thread.print'],stdout=(evidence/'timeout-threads.txt').open('w',encoding='utf-8'),stderr=subprocess.STDOUT,timeout=10,creationflags=subprocess.CREATE_NO_WINDOW)
-            pid=int(owned['pid'])
-            script=f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; if($p.CommandLine -like '*net.fabricmc.devlaunchinjector.Main*' -and $p.CommandLine -like '*jak-minecraft-java*'){{Stop-Process -Id {pid}}}"
-            subprocess.run(['powershell','-NoProfile','-Command',script],creationflags=subprocess.CREATE_NO_WINDOW,timeout=10)
+        if process.poll() is None:
+            try:
+                pid=int(owned['pid']) if owned else owned_game_pid(process.pid)
+            except subprocess.SubprocessError:
+                pid=None
+            if pid:
+                try:
+                    with (evidence/'timeout-threads.txt').open('w',encoding='utf-8') as report:
+                        subprocess.run([str(Path(env['JAVA_HOME'])/'bin/jcmd.exe'),str(pid),'Thread.print'],
+                            stdout=report,stderr=subprocess.STDOUT,timeout=10,creationflags=subprocess.CREATE_NO_WINDOW)
+                except subprocess.SubprocessError:
+                    pass
+                script=f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; if($p.CommandLine -like '*net.fabricmc.devlaunchinjector.Main*' -and $p.CommandLine -like '*jak-minecraft-java*'){{Stop-Process -Id {pid}}}"
+                subprocess.run(['powershell','-NoProfile','-Command',script],creationflags=subprocess.CREATE_NO_WINDOW,timeout=10)
+            else:
+                process.terminate()
             try:process.wait(timeout=20)
             except subprocess.TimeoutExpired:pass
         raise

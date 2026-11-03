@@ -42,6 +42,7 @@ public final class JakBlocks {
             Block block=path.equals("altar_turbotabla")||path.equals("altar_turbotabla_vacio")
                 ?new JakBoardAltar(properties.noOcclusion(),path.equals("altar_turbotabla"),look.getAsJsonArray("boxes"))
                 :switch(kind){
+                case "gate" -> new JakKrimsonGate(properties.noOcclusion().pushReaction(net.minecraft.world.level.material.PushReaction.IMMOVEABLE),look.getAsJsonArray("parts"));
                 case "static_authored" -> new JakAuthoredBlock.Fixed(properties.noOcclusion(),look.getAsJsonArray("boxes"));
                 case "authored" -> new JakAuthoredBlock(properties.noOcclusion(),look.getAsJsonArray("boxes"));
                 case "slab" -> new SlabBlock(properties);
@@ -58,7 +59,9 @@ public final class JakBlocks {
             };
             Registry.register(BuiltInRegistries.BLOCK,key,block);BLOCKS.put(path,block);
             var itemKey=ResourceKey.create(Registries.ITEM,id);
-            Registry.register(BuiltInRegistries.ITEM,itemKey,new BlockItem(block,new Item.Properties().setId(itemKey).useBlockDescriptionPrefix()));
+            var itemProperties=new Item.Properties().setId(itemKey).useBlockDescriptionPrefix();
+            Registry.register(BuiltInRegistries.ITEM,itemKey,block instanceof JakKrimsonGate gate?
+                new JakKrimsonGate.GateItem(gate,itemProperties):new BlockItem(block,itemProperties));
         }
         tab("biomes",p->!detail(p)&&!construction(p));
         tab("building",JakBlocks::construction);
@@ -79,7 +82,7 @@ public final class JakBlocks {
             default -> new Block(p);
         };
     }
-    private static boolean construction(String p){return !detail(p)&&(p.startsWith("palacio_")||p.startsWith("barrio_")||p.startsWith("haven_")||p.startsWith("spargus_")||p.contains("pared")||p.contains("suelo")||p.contains("techo")||p.contains("losa")||p.contains("escalera"));}
+    private static boolean construction(String p){return !detail(p)&&(p.startsWith("krimson_")||p.startsWith("palacio_")||p.startsWith("barrio_")||p.startsWith("haven_")||p.startsWith("spargus_")||p.contains("pared")||p.contains("suelo")||p.contains("techo")||p.contains("losa")||p.contains("escalera"));}
     private static boolean detail(String p){return p.startsWith("objeto_")||p.startsWith("detalle_")||p.contains("neon")||p.contains("lampara")||p.contains("altar")||p.contains("propa");}
     private static void tab(String name,java.util.function.Predicate<String> include){
         Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,JakData.id(name),FabricCreativeModeTab.builder().title(Component.translatable("tab.jakmc."+name)).icon(()->new ItemStack(BLOCKS.values().iterator().next())).displayItems((context,out)->BLOCKS.forEach((path,block)->{if(include.test(path))out.accept(block);})).build());

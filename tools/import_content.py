@@ -32,6 +32,67 @@ def authored_boxes(path):
         return None
     return [e['from']+e['to'] for e in elements]
 
+GATE='krimson_porton_fence_gate'
+GATE_HEIGHT=4
+
+def gate_model(source,section,opened):
+    out={'textures':source['textures'],'elements':[]}
+    for element in source['elements']:
+        start,end=element['from'],element['to']
+        low,high=max(start[1],section*16),min(end[1],(section+1)*16)
+        if low>=high:continue
+        z_offset=3 if opened else 0
+        faces={}
+        for side,face in element['faces'].items():
+            if side=='up' and high<end[1] or side=='down' and low>start[1]:continue
+            face=face.copy()
+            if side not in ('up','down'):
+                u0,v0,u1,v1=face['uv']
+                t0=(end[1]-high)/(end[1]-start[1])
+                t1=(end[1]-low)/(end[1]-start[1])
+                face['uv']=[u0,v0+(v1-v0)*t0,u1,v0+(v1-v0)*t1]
+            faces[side]=face
+        out['elements'].append({'from':[start[0],low-section*16,start[2]+z_offset],
+                                'to':[end[0],high-section*16,end[2]+z_offset],'faces':faces})
+    return out
+
+def gate_resources():
+    source=SOURCE/'source-pack/assets/jak/models/block'
+    target=DEST/'assets/jak'
+    by_open=[]
+    for opened in (False,True):
+        name=GATE+('_open' if opened else '')
+        original=json.loads((source/(name+'.json')).read_text(encoding='utf-8'))
+        sections=[gate_model(original,section,opened) for section in range(GATE_HEIGHT)]
+        for section,model in enumerate(sections):
+            (target/'models/block'/f'{name}_{section}.json').write_text(json.dumps(model),encoding='utf-8')
+        by_open.append([[e['from']+e['to'] for e in model['elements']] for model in sections])
+    multipart=[]
+    post_sources=[]
+    style=json.loads((source/(GATE+'.json')).read_text(encoding='utf-8'))
+    for side,source_rail in zip(('left','right'),style['elements'][-2:]):
+        for top in (False,True):
+            name=f'{GATE}_jamb_{side}'+('_top' if top else '')
+            low=list(source_rail['from']);high=list(source_rail['to'])
+            low[1],high[1]=0,16
+            if top:low[2]=0
+            rail={'textures':style['textures'],
+                  'elements':[{'from':low,'to':high,'faces':source_rail['faces']}]}
+            (target/'models/block'/f'{name}.json').write_text(json.dumps(rail),encoding='utf-8')
+            post_sources.append((side,top,name))
+    for direction,angle in {'south':0,'west':90,'north':180,'east':270}.items():
+        for opened in (False,True):
+            for section in range(GATE_HEIGHT):
+                name=GATE+('_open' if opened else '')+f'_{section}'
+                multipart.append({'when':{'facing':direction,'open':str(opened).lower(),'section':str(section)},
+                                  'apply':{'model':'jak:block/'+name,'y':angle,'uvlock':True}})
+        for side,top,name in post_sources:
+            multipart.append({'when':{'facing':direction,'open':'true','section':'3' if top else '0|1|2',
+                                      side+'_jamb':'true'},
+                              'apply':{'model':'jak:block/'+name,'y':angle,'uvlock':True}})
+    (target/'blockstates'/f'{GATE}.json').write_text(json.dumps({'multipart':multipart}),encoding='utf-8')
+    return by_open
+
 def configure_materials(definitions):
     for row in definitions:
         kind,vanilla=row['look']['kind'],row['look'].get('vanilla','')
@@ -40,6 +101,9 @@ def configure_materials(definitions):
             if boxes is not None:
                 kind='authored' if vanilla=='carved_pumpkin' else 'static_authored'
                 row['look']={'kind':kind,'boxes':boxes,'vanilla':vanilla}
+        if row['path']==GATE:
+            kind='gate'
+            row['look']={'kind':kind,'parts':gate_resources()}
         row['ready']=not row['path'].startswith('objeto_') and (kind!='native' or vanilla in NATIVE_MATERIALS)
 
 def material_resources(definitions):

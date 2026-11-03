@@ -219,17 +219,20 @@ public final class JakAssemblies {
             var itemState=context.getItemInHand().getOrDefault(DataComponents.BLOCK_STATE,BlockItemStateProperties.EMPTY);
             var planned=placement(context,itemState.apply(state));
             if(planned.isEmpty())return false;
-            Level level=context.getLevel();
-            var previous=new LinkedHashMap<BlockPos,BlockState>();
-            for(var cell:planned.entrySet()){
-                previous.put(cell.getKey(),level.getBlockState(cell.getKey()));
-                if(!level.setBlock(cell.getKey(),cell.getValue(),PLACE_FLAGS)){
-                    previous.forEach((at,old)->level.setBlock(at,old,PLACE_FLAGS));
-                    return false;
-                }
-            }
-            for(var cell:planned.entrySet())level.updateNeighborsAt(cell.getKey(),cell.getValue().getBlock());
-            return true;
+            return placeAll(context.getLevel(),planned);
         }
+    }
+
+    static boolean placeAll(Level level,Map<BlockPos,BlockState> planned){
+        var previous=new LinkedHashMap<BlockPos,BlockState>();
+        for(var cell:planned.entrySet()){
+            previous.put(cell.getKey(),level.getBlockState(cell.getKey()));
+            if(!level.setBlock(cell.getKey(),cell.getValue(),PLACE_FLAGS)){
+                previous.forEach((at,old)->level.setBlock(at,old,PLACE_FLAGS));
+                return false;
+            }
+        }
+        for(var cell:planned.entrySet())level.updateNeighborsAt(cell.getKey(),cell.getValue().getBlock());
+        return true;
     }
 }
