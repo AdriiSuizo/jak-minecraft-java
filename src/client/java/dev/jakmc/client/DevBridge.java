@@ -74,7 +74,7 @@ public final class DevBridge {
                 case "track_scene" -> {TrackScene.start(client);out.addProperty("scheduled",true);}
                 case "altar_scene" -> {AltarScene.start(client);out.addProperty("scheduled",true);}
                 case "materials_scene" -> {MaterialScene.start(client);out.addProperty("scheduled",true);}
-                case "hellcat_scene" -> {InputScene.startHellcat(client);out.addProperty("scheduled",true);}
+                case "hellcat_scene","helldog_scene" -> {InputScene.startHellcat(client,op.equals("helldog_scene"));out.addProperty("scheduled",true);}
                 case "hellcat_crossing_scene" -> {
                     var at=request.has("origin")?dev.jakmc.player.JakPlayers.vector(request.getAsJsonArray("origin")):client.player.position();
                     InputScene.startHellcatCrossing(client,at);out.addProperty("scheduled",true);

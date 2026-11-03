@@ -48,8 +48,8 @@ public final class JakHellcat extends Entity {
     private static final EntityDataAccessor<Float> WIND=SynchedEntityData.defineId(JakHellcat.class,EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<Float> HEALTH=SynchedEntityData.defineId(JakHellcat.class,EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<String> BEAMS=SynchedEntityData.defineId(JakHellcat.class,EntityDataSerializers.STRING);
-    public static EntityType<JakHellcat> TYPE;
-    public static Item ITEM;
+    public static EntityType<JakHellcat> TYPE,DOG_TYPE;
+    public static Item ITEM,DOG_ITEM;
 
     private long handle,retryAfter;
     private MinecraftCollision.Query collision;
@@ -64,15 +64,23 @@ public final class JakHellcat extends Entity {
     public JakHellcat(EntityType<? extends JakHellcat> type,Level level){super(type,level);}
 
     public static void initialize(){
-        var key=ResourceKey.create(Registries.ENTITY_TYPE,JakData.id("hellcat"));
-        TYPE=Registry.register(BuiltInRegistries.ENTITY_TYPE,key,EntityType.Builder
+        TYPE=registerType("hellcat");
+        DOG_TYPE=registerType("helldog");
+        ITEM=registerItem("hellcat",TYPE);
+        DOG_ITEM=registerItem("helldog",DOG_TYPE);
+    }
+    private static EntityType<JakHellcat> registerType(String name){
+        var key=ResourceKey.create(Registries.ENTITY_TYPE,JakData.id(name));
+        return Registry.register(BuiltInRegistries.ENTITY_TYPE,key,EntityType.Builder
             .of(JakHellcat::new,MobCategory.MISC).sized(4.1f,2.05f).clientTrackingRange(12).updateInterval(1).build(key));
-        var item=ResourceKey.create(Registries.ITEM,JakData.id("hellcat"));
-        ITEM=Registry.register(BuiltInRegistries.ITEM,item,new Item(new Item.Properties().setId(item).stacksTo(1)){
+    }
+    private static Item registerItem(String name,EntityType<JakHellcat> type){
+        var item=ResourceKey.create(Registries.ITEM,JakData.id(name));
+        return Registry.register(BuiltInRegistries.ITEM,item,new Item(new Item.Properties().setId(item).stacksTo(1)){
             @Override public InteractionResult useOn(UseOnContext context){
                 if(!context.getClickedFace().equals(net.minecraft.core.Direction.UP))return InteractionResult.PASS;
                 if(context.getLevel() instanceof ServerLevel server){
-                    var craft=TYPE.create(server,EntitySpawnReason.SPAWN_ITEM_USE);
+                    var craft=type.create(server,EntitySpawnReason.SPAWN_ITEM_USE);
                     if(craft==null)return InteractionResult.FAIL;
                     Vec3 point=Vec3.atBottomCenterOf(context.getClickedPos().above()).add(0,1.28,0);
                     craft.snapTo(point.x,point.y,point.z,context.getRotation(),0);
@@ -95,6 +103,7 @@ public final class JakHellcat extends Entity {
         builder.define(HEALTH,1f);
         builder.define(BEAMS,"");
     }
+    public boolean hellDog(){return getType()==DOG_TYPE;}
     public int pilotId(){return entityData.get(PILOT);}
     public org.joml.Quaternionfc attitude(){return entityData.get(ATTITUDE);}
     public float lamps(){return entityData.get(LAMPS);}
@@ -105,7 +114,7 @@ public final class JakHellcat extends Entity {
     public String beamData(){return entityData.get(BEAMS);}
     public boolean wrecked(){return entityData.get(WRECK);}
     @Override protected AABB makeBoundingBox(Vec3 position){
-        return HellcatDeck.bounds(position,getYRot());
+        return HellcatDeck.bounds(position,getYRot(),hellDog());
     }
     @Override public boolean isPickable(){return !isRemoved()&&!wrecked();}
     public boolean canBoard(Player player,Vec3 hit){

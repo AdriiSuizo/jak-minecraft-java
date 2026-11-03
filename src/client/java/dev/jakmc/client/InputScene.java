@@ -13,7 +13,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import java.nio.file.*;
 import java.util.*;
 
-/** Replay through real SDL â†’ normal client input â†’ packets â†’ server Jak; no probeInput. */
+/** Replay through real SDL Ã¢â€ â€™ normal client input Ã¢â€ â€™ packets Ã¢â€ â€™ server Jak; no probeInput. */
 public final class InputScene {
  private static boolean running,interactions,powers,leaper,hellcat;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
  private static long deviceDeadline;private static Vec3 start,ecoCenter;private static double peak,walk;private static float yawStart,yawAfter;
@@ -63,7 +63,7 @@ public final class InputScene {
  }
  public static void startInteractions(Minecraft c){start(c);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
  private static volatile int hellcatId;
- private static boolean crossing,crossingSample;
+ private static boolean crossing,crossingSample,hellDog;
  private static final long[] crossingFrames=new long[40000];
  private static int crossingFrameCount;
  private static long crossingLastFrame;
@@ -78,7 +78,7 @@ public final class InputScene {
   crossingLastFrame=now;
  }
  public static void startHellcatCrossing(Minecraft c,Vec3 origin){
-  startHellcat(c,true,origin);
+  startHellcat(c,true,origin,false);
   crossingSample=false;
   crossingFrameCount=crossingStalledTicks=crossingStreak=crossingLongestStall=0;
   crossingLastFrame=0;
@@ -93,11 +93,11 @@ public final class InputScene {
  private static volatile boolean hellcatPlaced,hellcatSaved;
  private static Vec3 hellcatStart;
  private static double hellcatClimb,hellcatHalfThrottle,hellcatFullThrottle;
- public static void startHellcat(Minecraft c){startHellcat(c,false,c.player.position());}
- private static void startHellcat(Minecraft c,boolean acrossBiomes,Vec3 origin){
+ public static void startHellcat(Minecraft c,boolean dog){startHellcat(c,false,c.player.position(),dog);}
+ private static void startHellcat(Minecraft c,boolean acrossBiomes,Vec3 origin,boolean dog){
   start(c,true,origin);
   hellcat=true;
-  crossing=acrossBiomes;
+  crossing=acrossBiomes;hellDog=dog;
   crossingSample=false;
   hellcatId=-1;
   hellcatBoardPress=hellcatMountedAt=hellcatEntryImage=hellcatOffAt=0;
@@ -106,7 +106,7 @@ public final class InputScene {
   hellcatStart=null;
   hellcatClimb=hellcatHalfThrottle=hellcatFullThrottle=0;
   pauseOnLostFocus=c.options.pauseOnLostFocus;c.options.pauseOnLostFocus=false;
-  output=c.gameDirectory.toPath().resolve("jakmc/evidence/"+(crossing?"hellcat_crossing":"hellcat"));
+  output=c.gameDirectory.toPath().resolve("jakmc/evidence/"+(crossing?"hellcat_crossing":dog?"helldog":"hellcat"));
   try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
   onServer(c,p->{
    var server=p.level().getServer();
@@ -123,9 +123,10 @@ public final class InputScene {
    var floor=net.minecraft.core.BlockPos.containing(start).offset(0,-1,4);
    var at=Vec3.atBottomCenterOf(floor.above());
    var hit=new net.minecraft.world.phys.BlockHitResult(at,net.minecraft.core.Direction.UP,floor,false);
-   p.setItemInHand(hand,new ItemStack(dev.jakmc.entity.JakHellcat.ITEM));
+   var item=dog?dev.jakmc.entity.JakHellcat.DOG_ITEM:dev.jakmc.entity.JakHellcat.ITEM;
+   p.setItemInHand(hand,new ItemStack(item));
    var context=new net.minecraft.world.item.context.UseOnContext(p,hand,hit);
-   hellcatPlaced=dev.jakmc.entity.JakHellcat.ITEM.useOn(context).consumesAction();
+   hellcatPlaced=item.useOn(context).consumesAction();
    p.setItemInHand(hand,ItemStack.EMPTY);
    for(var craft:p.level().getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,
        new net.minecraft.world.phys.AABB(at,at).inflate(2),e->true)){
@@ -215,6 +216,7 @@ public final class InputScene {
    ACTIONS.addProperty("item_placed",hellcatPlaced);
    ACTIONS.addProperty("native_save_roundtrip",hellcatSaved);
    ACTIONS.addProperty("actual_entry_clip",hellcatBoarding&&hellcatMountedAt>0);
+   ACTIONS.addProperty("original_variant",cat.hellDog()==hellDog);
    ACTIONS.addProperty("analog_throttle",hellcatHalfThrottle>.3&&hellcatHalfThrottle<.65&&hellcatFullThrottle>.9);
    ACTIONS.addProperty("flight",walk>6&&hellcatClimb>1);
    ACTIONS.addProperty("night_lamps",hellcatNight);

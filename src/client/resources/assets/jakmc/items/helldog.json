@@ -1,0 +1,14 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/hellcat",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "lhelldog/helldog-lod0.glb",
+      "scale": 0.1,
+      "damage_table": "helldog",
+      "game": "jak2",
+      "clip": "helldog-idle"
+    }
+  }
+}

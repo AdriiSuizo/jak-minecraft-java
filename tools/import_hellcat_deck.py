@@ -107,13 +107,15 @@ def relief(verts, indices):
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('jak3_export',type=Path)
+    parser.add_argument('export',type=Path)
+    parser.add_argument('--helldog',action='store_true',help='Read the original black Hell Dog from a Jak II export')
     args=parser.parse_args()
-    vertices,surfaces=source_mesh(args.jak3_export/'levels/factorya/hellcat-lod0.glb')
-    stages=damage_stages((args.jak3_export/'raw_obj/hellcat-ag.go').read_bytes(),surfaces)
+    name,level=('helldog','lhelldog') if args.helldog else ('hellcat','factorya')
+    vertices,surfaces=source_mesh(args.export/f'levels/{level}/{name}-lod0.glb')
+    stages=damage_stages((args.export/f'raw_obj/{name}-ag.go').read_bytes(),surfaces)
     deck=relief(vertices,[i for part,stage in zip(surfaces,stages) if stage in (0,3) for i in part])
     deck['stages']=stages
-    dest=Path(__file__).resolve().parents[1]/'src/generated/resources/assets/jakmc/hellcat/deck.json'
+    dest=Path(__file__).resolve().parents[1]/f'src/generated/resources/assets/jakmc/{name}/deck.json'
     dest.parent.mkdir(parents=True,exist_ok=True)
     dest.write_text(json.dumps(deck,separators=(',',':'))+'\n',encoding='utf-8')
     print(f"{deck['size'][0]}x{deck['size'][1]} cells, {sum(y is not None for y in deck['top'])} occupied")

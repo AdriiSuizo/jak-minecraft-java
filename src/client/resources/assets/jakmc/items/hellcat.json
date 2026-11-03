@@ -5,7 +5,8 @@
     "model": {
       "type": "jakmc:gltf",
       "file": "factorya/hellcat-lod0.glb",
-      "scale": 0.1
+      "scale": 0.1,
+      "damage_table": "hellcat"
     }
   }
 }

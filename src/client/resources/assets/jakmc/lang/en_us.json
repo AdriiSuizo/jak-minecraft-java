@@ -107,5 +107,7 @@
   "item.jakmc.dark_ammo": "Dark Morph Gun Ammo",
   "item.jakmc.wlander_male_spawn_egg": "Spargus Wastelander Spawn Egg",
   "item.jakmc.wlander_female_spawn_egg": "Spargus Wastelander Spawn Egg",
-  "item.jakmc.monk_spawn_egg": "Spargus Monk Spawn Egg"
+  "item.jakmc.monk_spawn_egg": "Spargus Monk Spawn Egg",
+  "item.jakmc.helldog": "Hell Dog",
+  "entity.jakmc.helldog": "Hell Dog"
 }

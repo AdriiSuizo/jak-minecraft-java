@@ -14,7 +14,8 @@ import net.minecraft.world.phys.Vec3;
 
 /** The original hull relief in the parked craft's flat deck frame. */
 final class HellcatDeck {
-    private static final HellcatDeck MODEL=load();
+    private static final HellcatDeck CAT=load("hellcat");
+    private static final HellcatDeck DOG=load("helldog");
     private final Vec3 min,max;
     private final int width,depth;
     private final float cell;
@@ -69,32 +70,34 @@ final class HellcatDeck {
         double u=fx-i,v=fz-j;
         return (float)(u>=v?a+(b-a)*u+(c-b)*v:a+(c-d)*u+(d-a)*v);
     }
-    static AABB bounds(Vec3 root,float yaw){
+    static AABB bounds(Vec3 root,float yaw,boolean dog){
+        var model=dog?DOG:CAT;
         float angle=(float)-Math.toRadians(yaw);
         double sin=Math.sin(angle),cos=Math.cos(angle);
-        var first=rotate(MODEL.min,sin,cos);
-        var box=new AABB(first.x,MODEL.min.y,first.z,first.x,MODEL.max.y,first.z);
-        for(double x:new double[]{MODEL.min.x,MODEL.max.x})for(double z:new double[]{MODEL.min.z,MODEL.max.z}){
+        var first=rotate(model.min,sin,cos);
+        var box=new AABB(first.x,model.min.y,first.z,first.x,model.max.y,first.z);
+        for(double x:new double[]{model.min.x,model.max.x})for(double z:new double[]{model.min.z,model.max.z}){
             var point=rotate(new Vec3(x,0,z),sin,cos);
-            box=box.minmax(new AABB(point.x,MODEL.min.y,point.z,point.x,MODEL.max.y,point.z));
+            box=box.minmax(new AABB(point.x,model.min.y,point.z,point.x,model.max.y,point.z));
         }
         return box.move(root);
     }
 
     static Vec3 exit(JakHellcat craft){
         double x=.8,z=.384;
-        float y=MODEL.top(x,z);
-        if(Float.isNaN(y))y=(float)MODEL.max.y;
+        var model=craft.hellDog()?DOG:CAT;
+        float y=model.top(x,z);
+        if(Float.isNaN(y))y=(float)model.max.y;
         return craft.position().add(new Vec3(x,y+.045,z).yRot((float)-Math.toRadians(craft.getYRot())));
     }
 
-    static int maximumBytes(){return MODEL.triangles.size()*40;}
+    static int maximumBytes(){return Math.max(CAT.triangles.size(),DOG.triangles.size())*40;}
     static void append(JakHellcat craft,Vec3 origin,AABB region,ByteBuffer output){
         Vec3 root=craft.position();
         Vec3 offset=root.subtract(origin);
         float angle=(float)-Math.toRadians(craft.getYRot());
         double sin=Math.sin(angle),cos=Math.cos(angle);
-        for(Triangle tri:MODEL.triangles){
+        for(Triangle tri:(craft.hellDog()?DOG:CAT).triangles){
             Vec3 a=rotate(tri.a,sin,cos),b=rotate(tri.b,sin,cos),c=rotate(tri.c,sin,cos);
             double minX=Math.min(a.x,Math.min(b.x,c.x))+root.x,maxX=Math.max(a.x,Math.max(b.x,c.x))+root.x;
             double minY=Math.min(a.y,Math.min(b.y,c.y))+root.y,maxY=Math.max(a.y,Math.max(b.y,c.y))+root.y;
@@ -110,8 +113,8 @@ final class HellcatDeck {
     private static void point(ByteBuffer output,Vec3 point,Vec3 offset){
         output.putFloat((float)(point.x+offset.x)).putFloat((float)(point.y+offset.y)).putFloat((float)(point.z+offset.z));
     }
-    private static HellcatDeck load(){
-        try(var stream=HellcatDeck.class.getResourceAsStream("/assets/jakmc/hellcat/deck.json")){
+    private static HellcatDeck load(String name){
+        try(var stream=HellcatDeck.class.getResourceAsStream("/assets/jakmc/"+name+"/deck.json")){
             if(stream==null)throw new IOException("Import the owned HellCat hull with tools/import_hellcat_deck.py");
             var doc=JsonParser.parseReader(new InputStreamReader(stream,StandardCharsets.UTF_8)).getAsJsonObject();
             var size=doc.getAsJsonArray("size");

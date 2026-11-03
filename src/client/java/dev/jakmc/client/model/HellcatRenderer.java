@@ -37,11 +37,25 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
     private static final ByteBuffer SPRITES=NativeJak.buffer(120*36);
     private static final Map<String,Identifier> TEXTURES=new HashMap<>();
     private final Map<JakHellcat,Orientation> orientations=new WeakHashMap<>();
+    private final boolean dog;
     private GltfModel model;
     private GltfModel.Posed rest;
 
-    public static void initialize(){EntityRendererRegistry.register(JakHellcat.TYPE,HellcatRenderer::new);}
-    public HellcatRenderer(EntityRendererProvider.Context context){super(context);shadowRadius=1.65f;}
+    public static void initialize(){
+        EntityRendererRegistry.register(JakHellcat.TYPE,context->new HellcatRenderer(context,false));
+        EntityRendererRegistry.register(JakHellcat.DOG_TYPE,context->new HellcatRenderer(context,true));
+    }
+    public HellcatRenderer(EntityRendererProvider.Context context,boolean dog){super(context);this.dog=dog;shadowRadius=1.65f;}
+    static void damageStages(GltfModel model,String name)throws IOException{
+        try(var input=HellcatRenderer.class.getResourceAsStream("/assets/jakmc/"+name+"/deck.json")){
+            if(input==null)throw new IOException("Missing locally imported "+name+" hull data");
+            var hull=com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(input,java.nio.charset.StandardCharsets.UTF_8));
+            var values=hull.getAsJsonObject().getAsJsonArray("stages");
+            int[] stages=new int[values.size()];
+            for(int i=0;i<stages.length;i++)stages[i]=values.get(i).getAsInt();
+            model.vehicleDamageStages(stages);
+        }
+    }
     public static class State extends EntityRenderState {
         final Quaternionf attitude=new Quaternionf();
         float flame,lamps;
@@ -91,16 +105,13 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         super.submit(state,stack,collector,camera);
         if(state.isInvisible)return;
         if(model==null){
-            try(var input=HellcatRenderer.class.getResourceAsStream("/assets/jakmc/hellcat/deck.json")){
-                if(input==null)throw new IOException("Missing locally imported HellCat hull data");
-                var hull=com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(input,java.nio.charset.StandardCharsets.UTF_8));
-                var values=hull.getAsJsonObject().getAsJsonArray("stages");
-                int[] stages=new int[values.size()];
-                for(int i=0;i<stages.length;i++)stages[i]=values.get(i).getAsInt();
-                model=new GltfModel(RuntimeConfig.assets.resolve("levels/factorya/hellcat-lod0.glb"),"hellcat",true);
-                model.vehicleDamageStages(stages);
+            try{
+                String name=dog?"helldog":"hellcat";
+                String file=dog?"lhelldog/helldog-lod0.glb":"factorya/hellcat-lod0.glb";
+                model=new GltfModel(RuntimeConfig.gameAssets(dog?"jak2":"jak3").resolve("levels").resolve(file),name,true);
+                damageStages(model,name);
             }catch(IOException e){throw new UncheckedIOException(e);}
-            rest=model.pose("",0);
+            rest=model.pose(dog?"helldog-idle":"",0);
             model.prepare(rest);
         }
         stack.pushPose();

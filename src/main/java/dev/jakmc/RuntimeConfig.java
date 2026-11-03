@@ -9,6 +9,9 @@ import java.util.*;
 
 public final class RuntimeConfig {
     public static Path assets;
+    public static Path gameAssets(String game){
+        return game.equals("jak3")?assets:assets.resolve("../../../../"+game+"/data/decompiler_out/"+game).normalize();
+    }
     public static void initialize() {
         try {
             var properties=new Properties();
