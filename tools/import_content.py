@@ -19,12 +19,91 @@ def packed_blueprint(data):
     out.extend(struct.pack('>I',len(props)));out.extend(props)
     return gzip.compress(out,mtime=0)
 
+NATIVE_MATERIALS={
+    'oak_door','oak_trapdoor','spruce_trapdoor','oak_stairs','stone_stairs',
+    'oak_slab','smooth_quartz_slab','spruce_slab','crimson_slab','cobblestone_wall',
+    'glass_pane','iron_bars','lightning_rod','leaf_litter','ice','sea_lantern','stone',
+}
+
+def ready_material(row):
+    return not row['path'].startswith('objeto_') and (
+        row['look']['kind']!='native' or row['look']['vanilla'] in NATIVE_MATERIALS)
+
+def material_resources(definitions):
+    """Minecraft owns the loot transactions and partial block-state predicates."""
+    loot=DEST/'data/jak/loot_table/blocks'
+    loot.mkdir(parents=True,exist_ok=True)
+    translations={}
+    tags={name:[] for name in ('pickaxe','axe','shovel','hoe')}
+    def loot_state(path,prop,value):
+        return {'type':'minecraft:match_block','blocks':'jak:'+path,'state':{prop:value}}
+    def set_count(path,prop,value,count):
+        return {'type':'minecraft:set_count','count':count,'condition':loot_state(path,prop,value)}
+    for row in definitions:
+        path,look=row['path'],row['look']
+        if not row['ready']:continue
+        kind,vanilla=look['kind'],look.get('vanilla','')
+        entry={'type':'minecraft:item','name':'jak:'+path}
+        functions=[]
+        conditions=[]
+        if kind=='layers':
+            functions.extend(set_count(path,'layers',str(i),i) for i in range(2,9))
+        if kind=='slab' or vanilla.endswith('_slab'):
+            functions.append(set_count(path,'type','double',2))
+        if vanilla.endswith('_door'):
+            conditions.append(loot_state(path,'half','lower'))
+        if kind in ('plant','leaves','vine'):
+            conditions.append({'type':'minecraft:any_of','terms':[
+                'minecraft:tool/can_shear','minecraft:tool/can_silk_touch']})
+        pool={'rolls':1,'entries':[entry]}
+        if conditions:entry['condition']=conditions[0] if len(conditions)==1 else {'type':'minecraft:all_of','terms':conditions}
+        functions.append({'type':'minecraft:explosion_decay'})
+        entry['modifier']=functions
+        table={'type':'minecraft:block','pools':[pool]}
+        (loot/(path+'.json')).write_text(json.dumps(table,separators=(',',':')),encoding='utf-8')
+        if kind=='leaves':tool='hoe'
+        elif kind in ('plant','vine','lily_pad'):tool=None
+        elif kind=='pillar' or 'wood' in path or vanilla.startswith(('oak_','spruce_','crimson_')):tool='axe'
+        elif kind=='layers' and any(key in path for key in ('sand','snow','mud','arena')):tool='shovel'
+        else:tool='pickaxe'
+        if tool:tags[tool].append('jak:'+path)
+        translations['block.jak.'+path]=path.replace('_',' ').replace('-',' ').capitalize()
+    # Optional entries allow the block catalogue to grow without invalidating the vanilla tool tags.
+    target=DEST/'data/minecraft/tags/block/mineable'
+    target.mkdir(parents=True,exist_ok=True)
+    for tool,blocks in tags.items():
+        content={'replace':False,'values':[{'id':name,'required':False} for name in blocks]}
+        (target/(tool+'.json')).write_text(json.dumps(content,separators=(',',':')),encoding='utf-8')
+    languages=DEST/'assets/jak/lang'
+    languages.mkdir(parents=True,exist_ok=True)
+    for language in ('es_es','en_us'):
+        (languages/(language+'.json')).write_text(json.dumps(translations,ensure_ascii=False),encoding='utf-8')
+
+def copy_models():
+    source=SOURCE/'source-pack/assets/jak'
+    destination=DEST/'assets/jak'
+    deferred=set()
+    for path in (source/'models/block').glob('*.json'):
+        model=json.loads(path.read_text(encoding='utf-8'))
+        if any(n < -16 or n > 32 for e in model.get('elements',[]) for n in e['from']+e['to']):
+            deferred.add(path.name)
+    def skip(directory,names):
+        return deferred.intersection(names) if Path(directory)==source/'models/block' else set()
+    shutil.copytree(source,destination,dirs_exist_ok=True,ignore=skip)
+    for name in deferred:
+        (destination/'models/block'/name).unlink(missing_ok=True)
+    print(f"Retained {len(deferred)} oversized models in the source export for grid conversion")
+
 def main():
     if not (SOURCE/'objects/104.json').is_file():raise RuntimeError('Source export is incomplete; run tools/content-exporter first')
     DEST.mkdir(parents=True,exist_ok=True)
-    shutil.copytree(SOURCE/'source-pack/assets/jak',DEST/'assets/jak',dirs_exist_ok=True)
+    copy_models()
     catalog=DEST/'data/jakmc/catalog';catalog.mkdir(parents=True,exist_ok=True)
-    shutil.copyfile(SOURCE/'blocks.json',catalog/'blocks.json')
+    definitions=json.loads((SOURCE/'blocks.json').read_text(encoding='utf-8'))
+    for row in definitions:
+        row['ready']=ready_material(row)
+    (catalog/'blocks.json').write_text(json.dumps(definitions,separators=(',',':')),encoding='utf-8')
+    material_resources(definitions)
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)
     for name in ['haven','spargus','palace']:
         data=json.loads((SOURCE/f'{name}.json').read_text(encoding='utf-8'))

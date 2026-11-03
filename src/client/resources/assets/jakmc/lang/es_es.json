@@ -79,5 +79,8 @@
   "item.jakmc.citizen_fat_spawn_egg": "Generar Ciudadano corpulento de Villa Refugio",
   "item.jakmc.citizen_chick_spawn_egg": "Generar Ciudadana de Villa Refugio",
   "entity.jakmc.hellcat": "HellCat de la Guardia Carmesí",
-  "item.jakmc.hellcat": "HellCat de la Guardia Carmesí"
+  "item.jakmc.hellcat": "HellCat de la Guardia Carmesí",
+  "tab.jakmc.biomes": "Jak: biomas",
+  "tab.jakmc.building": "Jak: construcción",
+  "tab.jakmc.details": "Jak: detalles"
 }

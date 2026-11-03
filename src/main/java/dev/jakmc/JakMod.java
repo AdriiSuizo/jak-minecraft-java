@@ -9,6 +9,7 @@ public final class JakMod implements ModInitializer {
   RuntimeConfig.initialize();
   JakData.initialize();
   dev.jakmc.content.JakItems.initialize();
+  dev.jakmc.content.JakBlocks.initialize();
   dev.jakmc.entity.JakHellcat.initialize();
   dev.jakmc.entity.JakLeaper.initialize();
   dev.jakmc.entity.JakFlutFlut.initialize();
