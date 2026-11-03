@@ -300,6 +300,20 @@ public final class JakPlayers {
                 float damage=e.get("damage").getAsFloat()*2.5f;
                 if(victim instanceof dev.jakmc.entity.JakEnemy enemy)enemy.hurtFromJak(p.level(),source,damage,heavy);else victim.hurtServer(p.level(),source,damage);
             }
+        }else if(kind.equals("impact")||kind.equals("strike")){
+            Vec3 target=vector(e.getAsJsonArray("pos")).add(origin);
+            if(kind.equals("impact")){
+                Vec3 normal=vector(e.getAsJsonArray("normal"));
+                var at=net.minecraft.core.BlockPos.containing(target.subtract(normal.scale(.03)));
+                dev.jakmc.content.JakProps.hitProjector(p.level(),at,p);
+            }else{
+                var ray=new net.minecraft.world.level.ClipContext(p.position().add(0,1,0),target,
+                    net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE,p);
+                var hit=p.level().clip(ray);
+                if(hit.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK)
+                    dev.jakmc.content.JakProps.hitProjector(p.level(),hit.getBlockPos(),p);
+            }
         } else if(kind.equals("fall_damage")) p.hurtServer(p.level(),p.damageSources().fall(),e.get("damage").getAsFloat()*2.5f);
         else if(kind.equals("lift")){
             Entity victim=p.level().getEntity(e.get("actor").getAsInt());

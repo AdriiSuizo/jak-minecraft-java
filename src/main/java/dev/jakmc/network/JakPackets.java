@@ -34,6 +34,14 @@ public final class JakPackets {
         public Type<EntityTime> type(){return TYPE;}
     }
 
+    public record PropBreak(net.minecraft.resources.Identifier dimension,net.minecraft.core.BlockPos position) implements CustomPacketPayload {
+        public static final Type<PropBreak> TYPE=new Type<>(JakData.id("prop_break_v1"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,PropBreak> CODEC=StreamCodec.of((b,p)->{
+            b.writeIdentifier(p.dimension);b.writeBlockPos(p.position);
+        },b->new PropBreak(b.readIdentifier(),b.readBlockPos()));
+        @Override public Type<PropBreak> type(){return TYPE;}
+    }
+
     private static byte[] compress(String json){
         byte[] data=json.getBytes(StandardCharsets.UTF_8);if(data.length>2_000_000)throw new IllegalArgumentException("Jak pose exceeds bounded packet size");
         var deflater=new Deflater(Deflater.BEST_SPEED);
@@ -46,6 +54,7 @@ public final class JakPackets {
         PayloadTypeRegistry.serverboundPlay().register(Input.TYPE,Input.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(Pose.TYPE,Pose.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(EntityTime.TYPE,EntityTime.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(PropBreak.TYPE,PropBreak.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Input.TYPE,(packet,context)->{if(packet.valid())JakPlayers.input(context.player(),packet);});
     }
 }

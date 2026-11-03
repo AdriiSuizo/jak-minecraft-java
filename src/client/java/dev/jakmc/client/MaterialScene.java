@@ -25,15 +25,28 @@ final class MaterialScene {
     private static volatile JsonObject result;
     private static volatile Vec3 subject;
     private static Runnable cleanup;
+    private static Runnable hitProjector;
+    private static volatile boolean thirdHitChecked;
+    private static boolean burstDrawn;
 
     static void initialize(){
         ClientTickEvents.END_CLIENT_TICK.register(client->{
-            if(result==null||++captureTicks<60)return;
-            Screenshot.grab(client.gameDirectory,"jak-materials.png",client.gameRenderer.mainRenderTarget(),1,_->{});
+            if(result==null)return;
+            ++captureTicks;
+            burstDrawn|=JakEffects.drawnBurstVertices>0;
+            if(captureTicks==60){
+                result.getAsJsonObject("actions").addProperty("projector_visible",JakEffects.drawnProjectorVertices>0);
+                Screenshot.grab(client.gameDirectory,"jak-materials.png",client.gameRenderer.mainRenderTarget(),1,_->{});
+            }
+            if(captureTicks==68||captureTicks==76||captureTicks==84)
+                client.getSingleplayerServer().execute(hitProjector);
+            if(captureTicks<110||!thirdHitChecked)return;
+            result.getAsJsonObject("actions").addProperty("projector_break_effect",burstDrawn&&JakEffects.drawnProjectorVertices==0);
+            result.getAsJsonObject("actions").addProperty("original_fire_vertices",JakEffects.drawnBarrelVertices>0);
+            boolean complete=result.getAsJsonObject("actions").entrySet().stream().allMatch(e->e.getValue().getAsBoolean());
+            result.addProperty("reason",complete?"complete":"Material or decoration assertion failed");
             try{
-                result.getAsJsonObject("actions").addProperty("original_fire_vertices",JakEffects.drawnBarrelVertices>0);
-            if(JakEffects.drawnBarrelVertices==0)result.addProperty("reason","Original barrel fire was not drawn");
-            var dir=client.gameDirectory.toPath().resolve("jakmc/evidence/materials");
+                var dir=client.gameDirectory.toPath().resolve("jakmc/evidence/materials");
                 Files.createDirectories(dir);
                 Files.writeString(dir.resolve("result.json"),result.toString());
             }catch(java.io.IOException e){throw new java.io.UncheckedIOException(e);}
@@ -55,6 +68,8 @@ final class MaterialScene {
     static void start(Minecraft client){
         if(client.getSingleplayerServer()==null||client.player==null)throw new IllegalStateException("Open the development world");
         captureTicks=0;
+        thirdHitChecked=false;
+        burstDrawn=false;
         var server=client.getSingleplayerServer();
         var uuid=client.player.getUUID();
         server.execute(()->{
@@ -81,6 +96,10 @@ final class MaterialScene {
             var barrelPos=barrelFloor.above();
             var initialBarrelFloor=level.getBlockState(barrelFloor);
             var initialBarrel=level.getBlockState(barrelPos);
+            var projectorFloor=base.west();
+            var projectorPos=projectorFloor.above();
+            var initialProjectorFloor=level.getBlockState(projectorFloor);
+            var initialProjector=level.getBlockState(projectorPos);
             cleanup=()->{
                 level.setBlockAndUpdate(soil,initialFloor);
                 level.setBlockAndUpdate(base,initial);
@@ -88,6 +107,8 @@ final class MaterialScene {
                 level.setBlockAndUpdate(propPos,initialProp);
                 level.setBlockAndUpdate(barrelFloor,initialBarrelFloor);
                 level.setBlockAndUpdate(barrelPos,initialBarrel);
+                level.setBlockAndUpdate(projectorPos,initialProjector);
+                level.setBlockAndUpdate(projectorFloor,initialProjectorFloor);
                 p.setItemInHand(hand,previous);
             };
             var layer=JakBlocks.BLOCKS.get("barrio_losa_capa");
@@ -108,7 +129,7 @@ final class MaterialScene {
                     .filter(stack->stack.is(layer.asItem())).mapToInt(ItemStack::getCount).sum()==3);
                 tests.addProperty("material_catalog",JakBlocks.BLOCKS.size()>1000);
                 tests.addProperty("native_door",JakBlocks.BLOCKS.values().stream().anyMatch(block->block instanceof net.minecraft.world.level.block.DoorBlock));
-                subject=Vec3.atBottomCenterOf(base).add(1.1,.65,0);
+                subject=Vec3.atBottomCenterOf(base).add(.5,.9,0);
                 level.setBlockAndUpdate(sample,JakBlocks.BLOCKS.get("barrio_losa").defaultBlockState());
                 level.setBlockAndUpdate(propPos,Blocks.AIR.defaultBlockState());
                 var tray=JakBlocks.BLOCKS.get("objeto_haven_bandeja_bar");
@@ -136,6 +157,29 @@ final class MaterialScene {
                     &&n.equals(north.getShape(level,propPos))&&e.equals(east.getShape(level,propPos)));
                 tests.addProperty("barrel_light_and_lifecycle",level.getBlockState(barrelPos).getLightEmission()==12
                     &&level.getBlockEntity(barrelPos) instanceof dev.jakmc.content.JakProps.FireBarrel);
+                var projector=JakBlocks.BLOCKS.get("objeto_haven_propaganda_bloque");
+                level.setBlockAndUpdate(projectorFloor,JakBlocks.BLOCKS.get("barrio_losa").defaultBlockState());
+                level.setBlockAndUpdate(projectorPos,projector.defaultBlockState());
+                tests.addProperty("projector_grid",level.getBlockEntity(projectorPos) instanceof dev.jakmc.content.JakProps.Projector
+                    &&level.getBlockState(projectorPos.above()).isAir());
+                int[] hitCount={0};
+                hitProjector=()->{
+                    var old=level.getBlockState(projectorPos);
+                    var mode=p.gameMode.getGameModeForPlayer();
+                    p.setGameMode(GameType.SURVIVAL);
+                    try{old.attack(level,projectorPos,p);}finally{p.setGameMode(mode);}
+                    var current=level.getBlockState(projectorPos);
+                    int hit=++hitCount[0];
+                    var drops=level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+                        new net.minecraft.world.phys.AABB(projectorPos).inflate(1),item->item.getItem().is(projector.asItem()));
+                    boolean ok=hit<3?current.is(projector)&&current.getValue(dev.jakmc.content.JakProps.HITS)==hit&&drops.isEmpty()
+                        :current.isAir()&&drops.size()==1&&drops.getFirst().getItem().getCount()==1;
+                    if(hit==3)drops.forEach(net.minecraft.world.entity.Entity::discard);
+                    client.execute(()->{
+                        tests.addProperty("projector_hit_"+hit,ok);
+                        if(hit==3)thirdHitChecked=true;
+                    });
+                };
             }finally{
                 p.setGameMode(previousMode);
             }

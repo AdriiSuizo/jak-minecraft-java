@@ -12,6 +12,13 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.fabricmc.fabric.api.networking.v1.PlayerLookup;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import dev.jakmc.network.JakPackets;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -34,6 +41,9 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 public final class JakProps {
     public record Model(int id,String path,Block block,JsonArray triangles){}
     public static final int FIRE_BARREL=94;
+    public static final int PROJECTOR=86;
+    public static final IntegerProperty HITS=IntegerProperty.create("hits",0,2);
+    private static BlockEntityType<Projector> projectorType;
     private static BlockEntityType<FireBarrel> fireBarrelType;
     public static final Map<Integer,Model> MODELS=new LinkedHashMap<>();
 
@@ -48,7 +58,11 @@ public final class JakProps {
             var loot=ResourceKey.create(Registries.LOOT_TABLE,name.withPrefix("blocks/"));
             var properties=BlockBehaviour.Properties.ofLegacyCopy(Blocks.TERRACOTTA).noOcclusion()
                 .setId(blockKey).overrideLootTable(Optional.of(loot));
-            var block=index==FIRE_BARREL?new BarrelBlock(properties.lightLevel(_ ->12),cell):new PropBlock(properties,cell);
+            Block block=switch(index){
+                case FIRE_BARREL -> new BarrelBlock(properties.lightLevel(_ ->12),cell);
+                case PROJECTOR -> new ProjectorBlock(properties.lightLevel(_ ->7),cell);
+                default -> new PropBlock(properties,cell);
+            };
             Registry.register(BuiltInRegistries.BLOCK,blockKey,block);
             var itemKey=ResourceKey.create(Registries.ITEM,name);
             Registry.register(BuiltInRegistries.ITEM,itemKey,new BlockItem(block,new Item.Properties().setId(itemKey).useBlockDescriptionPrefix()));
@@ -59,6 +73,9 @@ public final class JakProps {
         fireBarrelType=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
             Identifier.fromNamespaceAndPath("jak","burning_barrel"),
             new BlockEntityType<>(FireBarrel::new,java.util.Set.of(barrel)));
+        projectorType=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
+            Identifier.fromNamespaceAndPath("jak","praxis_projector"),
+            new BlockEntityType<>(Projector::new,java.util.Set.of(MODELS.get(PROJECTOR).block())));
     }
 
     public static int turns(Direction direction){
@@ -72,6 +89,45 @@ public final class JakProps {
 
     public static final class FireBarrel extends BlockEntity {
         FireBarrel(BlockPos pos,BlockState state){super(fireBarrelType,pos,state);}
+    }
+
+    public static final class Projector extends BlockEntity {
+        long lastHit=Long.MIN_VALUE;
+        Projector(BlockPos pos,BlockState state){super(projectorType,pos,state);}
+    }
+
+    public static boolean hitProjector(ServerLevel level,BlockPos pos,Player player){
+        var state=level.getBlockState(pos);
+        if(!(state.getBlock() instanceof ProjectorBlock)||!(level.getBlockEntity(pos) instanceof Projector projector))return false;
+        if(player.isSpectator()||!level.mayInteract(player,pos)||projector.lastHit==level.getGameTime())return true;
+        projector.lastHit=level.getGameTime();
+        int hits=state.getValue(HITS);
+        if(hits<2){
+            level.setBlockAndUpdate(pos,state.setValue(HITS,hits+1));
+            level.levelEvent(null,2001,pos,Block.getId(state));
+        }else{
+            if(!level.destroyBlock(pos,false,player))return true;
+            if(!player.hasInfiniteMaterials())Block.popResource(level,pos,new net.minecraft.world.item.ItemStack(state.getBlock()));
+            var cue=new JakPackets.PropBreak(level.dimension().identifier(),pos);
+            for(var watcher:PlayerLookup.tracking(level,pos))
+                if(ServerPlayNetworking.canSend(watcher,JakPackets.PropBreak.TYPE))ServerPlayNetworking.send(watcher,cue);
+        }
+        return true;
+    }
+
+    private static final class ProjectorBlock extends PropBlock implements EntityBlock {
+        ProjectorBlock(Properties properties,JsonObject cell){super(properties,cell);}
+        @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){
+            super.createBlockStateDefinition(builder);
+            builder.add(HITS);
+        }
+        @Override protected void attack(BlockState state,Level level,BlockPos pos,Player player){
+            if(level instanceof ServerLevel server)hitProjector(server,pos,player);
+        }
+        @Override protected float getDestroyProgress(BlockState state,Player player,BlockGetter level,BlockPos pos){
+            return player.hasInfiniteMaterials()?1:0;
+        }
+        @Override public BlockEntity newBlockEntity(BlockPos pos,BlockState state){return new Projector(pos,state);}
     }
 
     private static final class BarrelBlock extends PropBlock implements EntityBlock {

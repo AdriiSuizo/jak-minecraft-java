@@ -93,8 +93,8 @@ def material_resources(definitions):
         (languages/(language+'.json')).write_text(json.dumps(translations,ensure_ascii=False),encoding='utf-8')
 
 def decorations(catalog):
-    # The projector, minigame and mirror need their original runtime behavior.
-    supported=(87,89,90,91,92,94,95,96,97,98,99,100,103,104)
+    # The minigame and mirror need their original runtime behavior.
+    supported=(86,87,89,90,91,92,94,95,96,97,98,99,100,103,104)
     (catalog/'decorations.json').write_text(json.dumps(supported),encoding='utf-8')
     items=DEST/'assets/jak/items'
     models=DEST/'assets/jak/models/item'
