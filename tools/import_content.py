@@ -35,11 +35,11 @@ def authored_boxes(path):
 def configure_materials(definitions):
     for row in definitions:
         kind,vanilla=row['look']['kind'],row['look'].get('vanilla','')
-        if vanilla=='carved_pumpkin':
+        if vanilla in ('carved_pumpkin','stone','sea_lantern'):
             boxes=authored_boxes(row['path'])
             if boxes is not None:
-                row['look']={'kind':'authored','boxes':boxes}
-                kind='authored'
+                kind='authored' if vanilla=='carved_pumpkin' else 'static_authored'
+                row['look']={'kind':kind,'boxes':boxes,'vanilla':vanilla}
         row['ready']=not row['path'].startswith('objeto_') and (kind!='native' or vanilla in NATIVE_MATERIALS)
 
 def material_resources(definitions):
@@ -56,7 +56,8 @@ def material_resources(definitions):
         path,look=row['path'],row['look']
         if not row['ready']:continue
         kind,vanilla=look['kind'],look.get('vanilla','')
-        entry={'type':'minecraft:item','name':'jak:'+path}
+        drop='altar_turbotabla_vacio' if path=='altar_turbotabla' else path
+        entry={'type':'minecraft:item','name':'jak:'+drop}
         functions=[]
         conditions=[]
         if kind=='layers':

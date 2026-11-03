@@ -22,6 +22,7 @@ public final class JakPlayers {
     public static void controlForProbe(ServerPlayer player,boolean controlled){if(controlled){CONTROLLED.add(player.getUUID());probeInput(player,0,0,0);}else{CONTROLLED.remove(player.getUUID());PROBE_INPUT.remove(player.getUUID());}}
     public static void probeInput(ServerPlayer p,int held,int pressed,float forward){PROBE_INPUT.put(p.getUUID(),new JakPackets.Input(0,held,pressed,0,forward,0,0,p.getYRot(),p.getXRot(),0,0));}
     private static final Map<UUID,Session> LIVE=new HashMap<>();
+    private static final int BOARD_BUTTON=1<<7;
     private static final Map<net.minecraft.world.level.block.state.BlockState,Integer> FLOOR_SOUNDS=new IdentityHashMap<>();
     private static final class Session implements AutoCloseable {
         final long nativeId;
@@ -33,7 +34,7 @@ public final class JakPlayers {
         Vec3 last;
         JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0,0,0);
         int pressed;
-        boolean shield,shieldHit;
+        boolean shield,shieldHit,altarMount,usingBoard;
         long lastInput;
         float entityRate=1;
         JakLeaper mount;
@@ -87,6 +88,15 @@ public final class JakPlayers {
     public static void mountHit(ServerPlayer player,JakLeaper mount,Vec3 at){
         var session=LIVE.get(player.getUUID());
         if(session!=null&&session.mount==mount)session.mountHit=at;
+    }
+
+    public static boolean onBoard(ServerPlayer player){
+        Session session=LIVE.get(player.getUUID());
+        return session!=null&&session.usingBoard;
+    }
+
+    public static void requestAltarMount(ServerPlayer player){
+        LIVE.computeIfAbsent(player.getUUID(),id->new Session(player)).altarMount=true;
     }
 
     public static boolean blockWithLightShield(ServerPlayer player){
@@ -160,8 +170,10 @@ public final class JakPlayers {
                 s.mountHit=null;
             }
         }
+        int boardRequest=s.altarMount&&s.craft==null&&s.mount==null&&!p.isInWater()?BOARD_BUTTON:0;
+        s.altarMount=false;
         ByteBuffer b=s.controls.clear();
-        b.putInt(fresh&&flight==null?input.held():0).putInt(flight==null?edges:0);
+        b.putInt((fresh&&flight==null?input.held():0)|boardRequest).putInt(flight==null?edges|boardRequest:0);
         b.putFloat(fresh&&flight==null?input.strafe():0).putFloat(fresh&&flight==null?input.forward():0);
         b.putFloat(fresh?input.rightX():0).putFloat(fresh?input.rightY():0).putFloat(fresh?input.brake():0).putFloat(fresh?input.throttle():0);
         b.putFloat(input.yaw()).putFloat(input.pitch());
@@ -224,6 +236,7 @@ public final class JakPlayers {
             pose.addProperty("board",false);
             pose.getAsJsonArray("events").asList().clear();
         }
+        s.usingBoard=pose.get("board").getAsBoolean();
         if(!Double.isFinite(position.x)||!Double.isFinite(position.y)||!Double.isFinite(position.z))throw new IllegalStateException("Nonfinite Jak pose");
         if(s.mount!=null){
             var ride=pose.get("ride");

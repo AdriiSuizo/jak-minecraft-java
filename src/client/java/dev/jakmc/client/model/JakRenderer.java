@@ -48,11 +48,19 @@ public final class JakRenderer {
             bodyScale=1.94f/together;
             standingHeight=together*bodyScale;
             JakMod.LOG.info("Jak + Daxter original height {} m; Minecraft scale {}; standing ears at 1.94 blocks",together,bodyScale);
-            board=new GltfModel(root.resolve("board-lod0.glb"),"board");
+            boardModel();
             gun=new GltfModel(root.resolve("gun-lod0.glb"),"gun");
             JakMod.LOG.info("Original Jak, Daxter, board and Morph Gun models loaded into Minecraft renderer");
         }catch(IOException e){throw new IllegalStateException("Cannot load original Jak models",e);}
     }
+    static GltfModel boardModel(){
+        if(board==null){
+            try{board=new GltfModel(RuntimeConfig.assets.resolve("levels/common/board-lod0.glb"),"board");}
+            catch(IOException e){throw new java.io.UncheckedIOException("Cannot load the original JET-Board",e);}
+        }
+        return board;
+    }
+
     public static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector){
         var pose=JakPoses.get(state.id);if(pose==null)return false;
         var client=Minecraft.getInstance();if(client.level==null)return false;

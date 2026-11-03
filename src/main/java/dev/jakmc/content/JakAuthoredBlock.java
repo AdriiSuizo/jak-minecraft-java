@@ -20,22 +20,35 @@ final class JakAuthoredBlock extends HorizontalDirectionalBlock {
     JakAuthoredBlock(Properties properties, JsonArray boxes) {
         super(properties);
         registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH));
-        for (int turns = 0; turns < shapes.length; turns++) {
-            VoxelShape shape = Shapes.empty();
-            for (var row : boxes) {
-                var box = row.getAsJsonArray();
-                double x0 = box.get(0).getAsDouble(), y0 = box.get(1).getAsDouble(), z0 = box.get(2).getAsDouble();
-                double x1 = box.get(3).getAsDouble(), y1 = box.get(4).getAsDouble(), z1 = box.get(5).getAsDouble();
-                for (int turn = 0; turn < turns; turn++) {
-                    double nextMinX = 16 - z1, nextMaxX = 16 - z0;
-                    z0 = x0;
-                    z1 = x1;
-                    x0 = nextMinX;
-                    x1 = nextMaxX;
-                }
-                shape = Shapes.or(shape, Block.box(x0, y0, z0, x1, y1, z1));
+        for (int turns = 0; turns < shapes.length; turns++) shapes[turns]=shape(boxes,turns);
+    }
+
+    static VoxelShape shape(JsonArray boxes,int turns){
+        VoxelShape shape=Shapes.empty();
+        for(var row:boxes){
+            var box=row.getAsJsonArray();
+            double x0=box.get(0).getAsDouble(),y0=box.get(1).getAsDouble(),z0=box.get(2).getAsDouble();
+            double x1=box.get(3).getAsDouble(),y1=box.get(4).getAsDouble(),z1=box.get(5).getAsDouble();
+            for(int turn=0;turn<turns;turn++){
+                double nextMinX=16-z1,nextMaxX=16-z0;
+                z0=x0;z1=x1;x0=nextMinX;x1=nextMaxX;
             }
-            shapes[turns] = shape;
+            shape=Shapes.or(shape,Block.box(x0,y0,z0,x1,y1,z1));
+        }
+        return shape;
+    }
+
+    static class Fixed extends Block {
+        private final VoxelShape shape;
+        Fixed(Properties properties,JsonArray boxes){
+            super(properties);
+            shape=JakAuthoredBlock.shape(boxes,0);
+        }
+        @Override protected VoxelShape getShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){
+            return shape;
+        }
+        @Override protected VoxelShape getCollisionShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){
+            return shape;
         }
     }
 

@@ -20,7 +20,11 @@ public final class InputScene {
  private static final Set<String> STATES=new TreeSet<>();private static final Set<UUID> ITEMS=new HashSet<>();
  public record CameraView(Vec3 position,float yaw,float pitch){}
  private static CameraView view;
- public static CameraView camera(){return view==null?MaterialScene.camera():view;}
+ public static CameraView camera(){
+  if(view!=null)return view;
+  var altar=AltarScene.camera();
+  return altar!=null?altar:MaterialScene.camera();
+ }
  public static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(InputScene::tick);}
  public static void start(Minecraft c){start(c,false);}
  private static void start(Minecraft c,boolean outdoor){start(c,outdoor,c.player.position());}
