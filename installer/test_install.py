@@ -10,8 +10,8 @@ class InstallerChecks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             parent=Path(temp)/'OpenGOAL';active=parent/'active'
             for game in ('jak1','jak2','jak3'):(active/game/'data').mkdir(parents=True)
-            self.assertEqual(installer.normalize_opengoal(parent),active)
-            self.assertEqual(installer.normalize_opengoal(active/'jak2'),active)
+            self.assertEqual(installer.normalize_opengoal(parent),active.resolve())
+            self.assertEqual(installer.normalize_opengoal(active/'jak2'),active.resolve())
             self.assertIsNone(installer.normalize_opengoal(Path(temp)/'missing'))
 
     def test_profile_merge_preserves_accounts_worlds_and_other_profiles(self):
