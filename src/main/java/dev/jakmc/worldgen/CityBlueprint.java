@@ -5,6 +5,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import dev.jakmc.JakMod;
 import dev.jakmc.content.JakAssemblies;
 import dev.jakmc.content.JakKrimsonGate;
+import dev.jakmc.content.JakBlocks;
 import dev.jakmc.content.JakProps;
 import java.io.BufferedInputStream;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -43,6 +44,7 @@ final class CityBlueprint {
     record Patrol(BlockPos start,BlockPos end,Direction facing){}
     record Garage(BlockPos pos,Direction facing,boolean duneHopper){}
     private record Prop(int kind,BlockPos origin,int turns){}
+    private record Facade(JakAssemblies.Model model,Direction direction){}
     private static final Rotation[] ROTATIONS={Rotation.NONE,Rotation.CLOCKWISE_90,Rotation.CLOCKWISE_180,Rotation.COUNTERCLOCKWISE_90};
     private final Map<Long,Fragment> chunks;
     final List<Garage> garages;
@@ -63,6 +65,7 @@ final class CityBlueprint {
         var garages=new ArrayList<Garage>();
         var routes=new LinkedHashMap<BlockPos,java.util.EnumSet<Direction>>();
         var gates=new LinkedHashMap<BlockPos,BlockState>();
+        var facades=new LinkedHashMap<BlockPos,Facade>();
         var missing=new TreeSet<String>();
         var bounds=new int[]{Integer.MAX_VALUE,Integer.MAX_VALUE,Integer.MAX_VALUE,
             Integer.MIN_VALUE,Integer.MIN_VALUE,Integer.MIN_VALUE};
@@ -99,6 +102,11 @@ final class CityBlueprint {
                     BlockState state=states[index];
                     if(state==null)continue;
                     put(cells,bounds,pos,state);
+                    if(name.startsWith("jak:")){
+                        int propertyStart=name.indexOf('[');
+                        var facade=JakAssemblies.FACADES.get(name.substring(4,propertyStart<0?name.length():propertyStart));
+                        if(facade!=null)facades.put(pos,new Facade(facade,sourceDirection(name)));
+                    }
                     if(state.getBlock() instanceof JakKrimsonGate)gates.put(pos,state);
                 }
                 int bytes=data.readInt();
@@ -113,6 +121,19 @@ final class CityBlueprint {
                 }
             }
         }catch(IOException failure){throw new UncheckedIOException(failure);}
+        facades.forEach((anchor,facade)->{
+            var model=facade.model();
+            var state=cell(cells,anchor);
+            if(state==null||!state.is(JakBlocks.BLOCKS.get(model.path())))return;
+            for(var part:model.parts()){
+                var relative=part.offset().subtract(model.anchor());
+                var at=anchor.offset(rotate(relative,JakProps.turns(facade.direction())));
+                var present=cell(cells,at);
+                // Neighbouring door, floor and wall cells take precedence over decorative projection.
+                if(!at.equals(anchor)&&present!=null&&!present.isAir())continue;
+                put(cells,bounds,at,part.block().defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,facade.direction()));
+            }
+        });
         gates.forEach((at,base)->{
             Direction facing=base.getValue(BlockStateProperties.HORIZONTAL_FACING);
             Direction lateral=facing.getClockWise();
@@ -167,6 +188,8 @@ final class CityBlueprint {
         String name=source.split("\\[",2)[0];
         if(name.startsWith("jak:garaje_")||name.equals("jak:pieza_haven_fuego")||name.equals("jak:pieza_haven_follaje"))
             return null;
+        // The source uses facing for its guard marker; the concrete block has no orientation.
+        if(name.equals("jak:krimson_puesto"))source=name;
         try{return BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK,source,false).blockState();}
         catch(CommandSyntaxException e){
             missing.add(source);
@@ -218,6 +241,11 @@ final class CityBlueprint {
                     part.block().defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,facing));
             }
         }
+    }
+
+    private static BlockState cell(Map<Long,Int2ObjectOpenHashMap<BlockState>> cells,BlockPos at){
+        var chunk=cells.get(key(at.getX()>>4,at.getZ()>>4));
+        return chunk==null?null:chunk.get((at.getY()<<8)|((at.getZ()&15)<<4)|(at.getX()&15));
     }
 
     private static void put(Map<Long,Int2ObjectOpenHashMap<BlockState>> cells,int[] bounds,BlockPos pos,BlockState state){

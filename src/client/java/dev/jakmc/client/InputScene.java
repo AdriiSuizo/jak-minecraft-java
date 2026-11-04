@@ -23,6 +23,7 @@ public final class InputScene {
  public static CameraView camera(){
   if(view!=null)return view;
   if(ScaleScene.camera()!=null)return ScaleScene.camera();
+  if(SitesScene.camera()!=null)return SitesScene.camera();
   if(CityScene.camera()!=null)return CityScene.camera();
   if(SpydroidScene.camera()!=null)return SpydroidScene.camera();
   if(VentScene.camera()!=null)return VentScene.camera();

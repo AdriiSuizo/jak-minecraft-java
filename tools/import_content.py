@@ -1,5 +1,6 @@
 """Build private Minecraft resources from the source export. No retail assets are tracked."""
 from pathlib import Path
+from import_facades import export_facades
 import gzip,hashlib,json,math,shutil,struct
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -243,12 +244,14 @@ def decorations(catalog):
     roots=json.loads((SOURCE/'wall-roots.json').read_text(encoding='utf-8'))
     for id,root in roots.items():
         assemblies[int(id)]=[math.floor(value+1e-6) for value in root]
+    assemblies.update(export_facades(SOURCE/'source-pack/assets/jak/models/block',catalog/'objects'))
     (catalog/'assemblies.json').write_text(json.dumps(assemblies),encoding='utf-8')
     rows=[]
     for id in (*supported,*assemblies):
-        source=json.loads((SOURCE/'objects'/f'{id}.json').read_text(encoding='utf-8'))
+        root=catalog if id>=108 else SOURCE
+        source=json.loads((root/'objects'/f'{id}.json').read_text(encoding='utf-8'))
         path=source['path']
-        sprite=source['cells'][0]['triangles'][0]['texture']
+        sprite=next(t['texture'] for cell in source['cells'] for t in cell['triangles'])
         item={'model':{'type':'minecraft:special','base':'jak:item/'+path,
               'model':{'type':'jakmc:prop','id':id}}}
         (items/f'{path}.json').write_text(json.dumps(item),encoding='utf-8')
@@ -293,8 +296,8 @@ def main():
     definitions=json.loads((SOURCE/'blocks.json').read_text(encoding='utf-8'))
     configure_materials(definitions)
     (catalog/'blocks.json').write_text(json.dumps(definitions,separators=(',',':')),encoding='utf-8')
-    material_resources(definitions+decorations(catalog))
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)
+    material_resources(definitions+decorations(catalog))
     seal_track_meshes(catalog)
     import_blueprints(('haven','spargus','palace','swamp_hut','snow_fort'))
     receipts=[]

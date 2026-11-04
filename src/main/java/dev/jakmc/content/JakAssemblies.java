@@ -41,8 +41,9 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 /** Native grid assemblies use one inventory item and an owned, bounded set of Minecraft block states. */
 public final class JakAssemblies {
     public record PartModel(Block block,BlockPos offset,JsonArray triangles){}
-    public record Model(int id,String path,int extent,BlockPos size,List<PartModel> parts){}
+    public record Model(int id,String path,int extent,BlockPos size,BlockPos anchor,List<PartModel> parts){}
     public static final Map<Integer,Model> MODELS=new LinkedHashMap<>();
+    public static final Map<String,Model> FACADES=new LinkedHashMap<>();
 
     private record Removed(ServerLevel level,BlockPos origin,Assembly assembly){}
     private static final Set<Removed> REMOVING=new HashSet<>();
@@ -55,7 +56,9 @@ public final class JakAssemblies {
             int id=Integer.parseInt(entry.getKey());
             var source=JakBlocks.resource("/data/jakmc/catalog/objects/"+id+".json").getAsJsonObject();
             var assembly=new Assembly(source,position(entry.getValue().getAsJsonArray()));
-            MODELS.put(id,new Model(id,assembly.path,assembly.extent,assembly.size,List.copyOf(assembly.models)));
+            var model=new Model(id,assembly.path,assembly.extent,assembly.size,assembly.anchorOffset,List.copyOf(assembly.models));
+            MODELS.put(id,model);
+            if(source.get("group").getAsString().equals("facade"))FACADES.put(assembly.path,model);
             JakBlocks.BLOCKS.put(assembly.path,assembly.anchor);
             if(assembly.rail)railBlocks.add(assembly.anchor);
         }
@@ -72,7 +75,7 @@ public final class JakAssemblies {
         final BlockPos anchorOffset;
         final int extent;
         final BlockPos size;
-        final boolean wallMounted;
+        final boolean wallMounted,soft;
         final boolean track,rail;
         final List<Part> parts=new ArrayList<>();
         final List<PartModel> models=new ArrayList<>();
@@ -86,7 +89,8 @@ public final class JakAssemblies {
             size=position(source.getAsJsonArray("size"));
             this.extent=Math.max(size.getY(),Math.max(size.getX(),size.getZ()));
             boolean palm=source.get("group").getAsString().equals("palmera");
-            wallMounted=source.get("soft").getAsBoolean();
+            soft=source.get("soft").getAsBoolean();
+            wallMounted=soft||source.has("wallMounted")&&source.get("wallMounted").getAsBoolean();
             String group=source.get("group").getAsString();
             rail=group.equals("rail");
             track=rail||group.equals("track");
@@ -121,6 +125,7 @@ public final class JakAssemblies {
             item=Registry.register(BuiltInRegistries.ITEM,key,
                 new AssemblyItem(anchor,new Item.Properties().setId(key).useBlockDescriptionPrefix(),this));
         }
+        Direction support(Direction facing){return !wallMounted?Direction.DOWN:soft?facing:facing.getOpposite();}
     }
 
     private static BlockPos rotatedOffset(BlockPos offset,Direction direction){
@@ -152,7 +157,7 @@ public final class JakAssemblies {
         @Override public BlockState getStateForPlacement(BlockPlaceContext context){
             if(!assembly.wallMounted)return super.getStateForPlacement(context);
             var face=context.getClickedFace();
-            return face.getAxis().isHorizontal()?defaultBlockState().setValue(FACING,face.getOpposite()):null;
+            return face.getAxis().isHorizontal()?defaultBlockState().setValue(FACING,assembly.soft?face.getOpposite():face):null;
         }
 
         @Override public Item asItem(){
@@ -160,14 +165,14 @@ public final class JakAssemblies {
         }
 
         @Override protected VoxelShape getCollisionShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){
-            if(assembly!=null&&assembly.wallMounted)return net.minecraft.world.phys.shapes.Shapes.empty();
+            if(assembly!=null&&assembly.soft)return net.minecraft.world.phys.shapes.Shapes.empty();
             return trunk==null?super.getCollisionShape(state,level,at,context):trunk[JakProps.turns(state.getValue(BlockStateProperties.HORIZONTAL_FACING))];
         }
 
         @Override protected BlockState updateShape(BlockState state,net.minecraft.world.level.LevelReader level,
             net.minecraft.world.level.ScheduledTickAccess ticks,BlockPos at,Direction changed,BlockPos neighbor,
             BlockState neighborState,net.minecraft.util.RandomSource random){
-            Direction support=assembly.wallMounted?state.getValue(FACING):Direction.DOWN;
+            Direction support=assembly.support(state.getValue(FACING));
             if(relative.equals(BlockPos.ZERO)&&changed==support
                 &&!neighborState.isFaceSturdy(level,neighbor,support.getOpposite()))return Blocks.AIR.defaultBlockState();
             return state;
@@ -326,7 +331,7 @@ public final class JakAssemblies {
             var player=context.getPlayer();
             var origin=context.getClickedPos();
             Direction direction=state.getValue(BlockStateProperties.HORIZONTAL_FACING);
-            Direction attachedTo=assembly.wallMounted?direction:Direction.DOWN;
+            Direction attachedTo=assembly.support(direction);
             var support=origin.relative(attachedTo);
             if(!level.getBlockState(support).isFaceSturdy(level,support,attachedTo.getOpposite()))return Map.of();
             var planned=new LinkedHashMap<BlockPos,BlockState>();

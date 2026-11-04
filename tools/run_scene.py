@@ -72,6 +72,10 @@ def run():
         shutil.copyfile(result,evidence/'result.json')
         if scene in ('weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','spydroid','powers','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','cars','cities','sites','zoomers') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
         if scene!='sites':shutil.copyfile(image,evidence/'screen.png')
+        if scene=='sites':
+            for name in ('sites-haven.png','sites-spargus.png'):
+                shot=ROOT/'run/screenshots'/name
+                if shot.exists() and shot.stat().st_mtime_ns>=capture_after:shutil.copyfile(shot,evidence/name)
         if scene=='menus':
             for name in ('menus-search.png','menus-trade.png'):
                 shutil.copyfile(ROOT/'run/screenshots'/name,evidence/name)

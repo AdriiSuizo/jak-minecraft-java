@@ -2,11 +2,13 @@ package dev.jakmc.client;
 
 import com.google.gson.JsonObject;
 import dev.jakmc.JakData;
+import dev.jakmc.content.JakAssemblies;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -28,6 +30,8 @@ final class SitesScene {
     private static BoundingBox bounds;
     private static BlockPos origin;
     private static Runnable restore;
+    private static volatile InputScene.CameraView view;
+    static InputScene.CameraView camera(){return view;}
     private static java.util.UUID owner;
     static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(SitesScene::tick);}
     static void start(Minecraft client){
@@ -73,14 +77,21 @@ final class SitesScene {
     }
     private static void tick(Minecraft client){
         if(!active)return;
-        if(++ticks<85)return;
-        active=false;
+        int t=++ticks;
         var server=client.getSingleplayerServer();
-        server.execute(()->{
+        if(t==85)server.execute(()->{
             var p=server.getPlayerList().getPlayer(owner);
-            if(p==null)return;
-            inspect(p);index++;locate(client,p);
+            if(p!=null)inspect(p);
         });
+        if(t==100&&view!=null)Screenshot.grab(client.gameDirectory,"sites-"+SITES[index]+".png",
+            client.gameRenderer.mainRenderTarget(),1,_-> {});
+        if(t==104){
+            active=false;view=null;
+            server.execute(()->{
+                var p=server.getPlayerList().getPlayer(owner);
+                if(p!=null){index++;locate(client,p);}
+            });
+        }
     }
     private static void inspect(ServerPlayer player){
         var level=player.level();
@@ -88,9 +99,25 @@ final class SitesScene {
         String expected=index<2?"jak1":site;
         int chests=0,assigned=0,items=0;
         boolean sourceLoot=true;
+        var facadeBlocks=new java.util.HashMap<net.minecraft.world.level.block.Block,String>();
+        var facadeCounts=new java.util.TreeMap<String,Integer>();
+        String portal=index==2?"barrio_portal_doble":"sparg_portal_doble";
+        if(index>=2)JakAssemblies.FACADES.forEach((name,model)->model.parts().forEach(part->facadeBlocks.put(part.block(),name)));
+        BlockPos[] doorway={null};
+        int[] doors={0};
         for(int x=bounds.minX()>>4;x<=bounds.maxX()>>4;x++)for(int z=bounds.minZ()>>4;z<=bounds.maxZ()>>4;z++){
             var chunk=level.getChunk(x,z,net.minecraft.world.level.chunk.status.ChunkStatus.FULL,false);
             if(!(chunk instanceof net.minecraft.world.level.chunk.LevelChunk loaded))continue;
+            if(index>=2)loaded.findBlocks(state->facadeBlocks.containsKey(state.getBlock()),(at,state)->{
+                if(!bounds.isInside(at))return;
+                String name=facadeBlocks.get(state.getBlock());
+                facadeCounts.merge(name,1,Integer::sum);
+                if(!name.equals(portal)||!BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().equals(name))return;
+                var lower=at.below(3);
+                if(!(level.getBlockState(lower).getBlock() instanceof net.minecraft.world.level.block.DoorBlock))return;
+                doors[0]++;
+                if(doorway[0]==null||at.distSqr(bounds.getCenter())<doorway[0].distSqr(bounds.getCenter()))doorway[0]=at.immutable();
+            });
             for(var entry:loaded.getBlockEntities().entrySet()){
                 if(!(entry.getValue() instanceof ChestBlockEntity chest)||!bounds.isInside(entry.getKey()))continue;
                 chests++;
@@ -112,11 +139,26 @@ final class SitesScene {
         info.addProperty("found",true);info.addProperty("x",bounds.getCenter().getX());info.addProperty("z",bounds.getCenter().getZ());
         info.addProperty("chests",chests);info.addProperty("lootTables",assigned);info.addProperty("generatedItems",items);
         info.addProperty("matchesEra",sourceLoot&&items>0);
+        if(index>=2){
+            var parts=new JsonObject();facadeCounts.forEach(parts::addProperty);
+            info.add("facades",parts);info.addProperty("doorsBelowPortal",doors[0]);
+            info.addProperty("hasFacades",doors[0]>0&&facadeCounts.size()==(index==2?4:2));
+            if(doorway[0]!=null){
+                var state=level.getBlockState(doorway[0]);
+                var facing=state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING);
+                var centre=Vec3.atCenterOf(doorway[0]).add(0,-1.1,0);
+                var eye=centre.add(facing.getStepX()*5.4+.6,.8,facing.getStepZ()*5.4+.6);
+                var look=centre.subtract(eye);
+                view=new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-look.x,look.z)),
+                    (float)-Math.toDegrees(Math.atan2(look.y,look.horizontalDistance())));
+            }
+        }
         result.add(site,info);
     }
     private static void finish(Minecraft client){
         boolean ok=result.asMap().values().stream().allMatch(row->row.getAsJsonObject().has("matchesEra")
-            &&row.getAsJsonObject().get("matchesEra").getAsBoolean());
+            &&row.getAsJsonObject().get("matchesEra").getAsBoolean()
+            &&(!row.getAsJsonObject().has("hasFacades")||row.getAsJsonObject().get("hasFacades").getAsBoolean()));
         result.addProperty("reason",ok?"complete":"Natural site acceptance failed");
         try{
             var dir=client.gameDirectory.toPath().resolve("jakmc/evidence/sites");
