@@ -875,6 +875,12 @@ impl Particles {
     }
 
     /// Whether a group `name` tagged `tag` is still launching.
+    pub fn follow_board_joint(&mut self, joint: Vec3) {
+        for tag in [0xb0a2_d000, 0xb0a2_c000] {
+            self.move_tagged(tag, |_| joint);
+        }
+    }
+
     pub fn tagged(&self, tag: u64, name: &str) -> bool {
         self.launches.iter().any(|l| l.tag == Some(tag) && l.group == name)
     }
@@ -2232,7 +2238,7 @@ impl crate::Jak {
     /// board drawn this frame even when rendering faster than the 60 Hz clock.
     pub fn sync_board_particle_joint(&mut self,joint:Vec3) {
         if let Some(particles)=self.particles.as_mut() {
-            for tag in [0xb0a2_d000,0xb0a2_c000] {particles.move_tagged(tag,|_|joint);}
+            particles.follow_board_joint(joint);
         }
     }
 

@@ -199,7 +199,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxDraw(mut env:JNIEnv,_:JClass,id:jlong,dt:f32,view:JByteBuffer,sprites:JByteBuffer,bolts:JByteBuffer)->jlong{
  let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||->Result<jlong,String>{
   let bytes=|b:&JByteBuffer|->Result<(*mut u8,usize),String>{Ok((env.get_direct_buffer_address(b).map_err(|e|e.to_string())?,env.get_direct_buffer_capacity(b).map_err(|e|e.to_string())?))};
-  let(v,n)=bytes(&view)?;if n!=44||!dt.is_finite(){return Err("Invalid particle view".into());}
+  let(v,n)=bytes(&view)?;if !matches!(n,44|56)||!dt.is_finite(){return Err("Invalid particle view".into());}
   let view=unsafe{std::slice::from_raw_parts(v,n)};
   let(a,n)=bytes(&sprites)?;let(b,m)=bytes(&bolts)?;if n%44!=0||m%44!=0{return Err("Invalid particle draw buffers".into());}
   let out=unsafe{std::slice::from_raw_parts_mut(a,n)};let bolt_out=unsafe{std::slice::from_raw_parts_mut(b,m)};
@@ -229,6 +229,10 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
    while let Some(c)=f.queue.pop_front(){stepped=c.is_step();match c{WireCommand::Particle(c)=>c.apply(&mut f.particles)?,WireCommand::Weapon(c)=>f.weapons.sync(c.visual)?}if stepped{break;}}
    // Effects keep aging after the authoritative producer disconnects/stops.
    if !stepped{f.particles.step(1./60.);f.weapons.age(1./60.);}
+  }
+  if view.len()==56 {
+   let board=vec(view,44)*BLOCK;
+   if board.is_finite(){f.particles.follow_board_joint(board);}
   }
   let mut count=0;
   let eye=vec(view,0)*BLOCK;let forward=vec(view,12).normalize_or(Vec3::NEG_Z);let up=vec(view,24).normalize_or(Vec3::Y);let right=forward.cross(up).normalize_or(Vec3::X);

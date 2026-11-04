@@ -4,8 +4,10 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import dev.jakmc.content.JakAssemblies;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -32,6 +34,46 @@ public final class MinecraftCollision {
             if(hit.getType()==net.minecraft.world.phys.HitResult.Type.MISS)return 1;
             return (float)(start.distanceTo(hit.getLocation())/start.distanceTo(end));
         }
+        /** Native ladder column, facing away from the supporting wall. Coordinates are relative to the session. */
+        public float[] ladder(float x,float y,float z){
+            Vec3 feet=origin.add(x,y,z);
+            var center=BlockPos.containing(feet);
+            var probe=new BlockPos.MutableBlockPos();
+            BlockPos best=null;
+            Direction facing=null;
+            double distance=Double.POSITIVE_INFINITY;
+            for(int px=center.getX()-1;px<=center.getX()+1;px++){
+                for(int pz=center.getZ()-1;pz<=center.getZ()+1;pz++){
+                    for(int py=center.getY()-1;py<=center.getY()+1;py++){
+                        if(feet.y>py+1.001)continue;
+                        Direction side=ladderFacing(probe.set(px,py,pz));
+                        if(side==null)continue;
+                        int dx=side.getStepX(),dz=side.getStepZ();
+                        double vx=feet.x-(px+.5+.01*dx),vz=feet.z-(pz+.5+.01*dz);
+                        double along=vx*dx+vz*dz,lateral=Math.abs(vx*dz-vz*dx);
+                        double squared=vx*vx+vz*vz;
+                        if(along<-.16||along>.65||lateral>.48||squared>=distance)continue;
+                        best=probe.immutable();
+                        facing=side;
+                        distance=squared;
+                    }
+                }
+            }
+            if(best==null)return null;
+            int px=best.getX(),pz=best.getZ(),bottom=best.getY(),top=bottom+1;
+            while(bottom>level.getMinY()&&ladderFacing(probe.set(px,bottom-1,pz))==facing)bottom--;
+            while(top<=level.getMaxY()&&ladderFacing(probe.set(px,top,pz))==facing)top++;
+            int dx=facing.getStepX(),dz=facing.getStepZ();
+            return new float[]{(float)(px+.5+.01*dx-origin.x),y,(float)(pz+.5+.01*dz-origin.z),
+                dx,0,dz,(float)(bottom-origin.y),(float)(top-origin.y)};
+        }
+
+        private Direction ladderFacing(BlockPos pos){
+            if(!level.hasChunkAt(pos))return null;
+            var state=level.getBlockState(pos);
+            return state.getBlock() instanceof LadderBlock?state.getValue(LadderBlock.FACING):null;
+        }
+
         public java.util.List<java.util.List<Vec3>> rails(Vec3 at){
             if(!(level instanceof net.minecraft.server.level.ServerLevel server))return java.util.List.of();
             var anchors=new java.util.ArrayList<JakAssemblies.RailAnchor>();

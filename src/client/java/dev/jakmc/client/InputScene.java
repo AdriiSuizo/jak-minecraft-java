@@ -28,6 +28,8 @@ public final class InputScene {
   if(SpydroidScene.camera()!=null)return SpydroidScene.camera();
   if(VentScene.camera()!=null)return VentScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
+  var ladder=LadderScene.camera();
+  if(ladder!=null)return ladder;
   var track=TrackScene.camera();
   if(track!=null)return track;
   var altar=AltarScene.camera();

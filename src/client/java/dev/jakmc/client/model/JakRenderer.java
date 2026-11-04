@@ -12,11 +12,15 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import java.io.IOException;
+import java.util.Map;
+import java.util.WeakHashMap;
+import net.minecraft.world.entity.Entity;
 
 public final class JakRenderer {
     private static final String[] FIRE_BODY={"jakb-gun-red-fire","jakb-gun-red-fire-2","jakb-gun-red-fire","jakb-gun-yellow-fire","jakb-gun-yellow-fire","jakb-gun-yellow-fire-3","jakb-gun-blue-fire-single","jakb-gun-blue-fire-2","jakb-gun-blue-fire-single","jakb-gun-dark-fire","jakb-gun-dark-fire","jakb-gun-dark-fire"};
     private static final String[] FIRE_GUN={"gun-gun-red-fire","gun-gun-red-fire-2","gun-gun-red-fire-3","gun-gun-yellow-fire","gun-gun-yellow-fire-2","gun-gun-yellow-fire-3","gun-gun-blue-fire-single","gun-gun-blue-fire-2","gun-gun-blue-fire-3-single","gun-gun-dark-fire","gun-gun-dark-fire-2","gun-gun-dark-fire-3"};
     private static GltfModel body,daxter,board,gun,wings,shield;
+    private static final Map<Entity,JakChannels.Transition> transitions=new WeakHashMap<>();
     private static float bodyScale;
     private static float floorOffset;
     private static boolean ridingLoaded,pilotLoaded;
@@ -38,6 +42,11 @@ public final class JakRenderer {
             shield=new GltfModel(root.resolve("jakb-shield-shield-lod0.glb"),"light_shield");
             shield.attachmentAnimationsFrom(clips,"jakb-shield-");
             daxter=new GltfModel(root.resolve("daxter-lod0.glb"),"daxter");
+            var ladderArt=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ladderAnimations()).getAsJsonObject();
+            body.originalAnimations(ladderArt,"jakb-ladder-");
+            daxter.originalAnimations(ladderArt,"daxter-ladder-");
+            if(!body.hasClip("jakb-ladder-up")||!daxter.hasClip("daxter-ladder-up"))
+                throw new IOException("Original ladder joint tracks are unavailable");
             var standing=body.pose("jakb-stance-loop",0);
             Vector3f anchor=body.joint(standing,"LshoulderPad").getTranslation(new Vector3f());
             var bodyBounds=body.bounds(standing,new Matrix4f());
@@ -61,7 +70,8 @@ public final class JakRenderer {
         return board;
     }
 
-    public static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector){
+    public static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
+                                 net.minecraft.client.renderer.state.level.CameraRenderState camera){
         var pose=JakPoses.get(state.id);
         var client=Minecraft.getInstance();if(client.level==null)return false;
         var actor=client.level.getEntity(state.id);
@@ -75,7 +85,13 @@ public final class JakRenderer {
         renderSerial++;lastEntityId=state.id;
         var flight=pose.raw().get("hellcat") instanceof com.google.gson.JsonObject craft?craft:null;
         stack.pushPose();
-        stack.rotateDegrees(Axis.YP,-pose.yaw());
+        float elapsed=Math.clamp((System.nanoTime()-pose.received())/1e9f,0,.05f);
+        var boardFrame=pose.boardAt(elapsed);
+        if(boardFrame==null)stack.rotateDegrees(Axis.YP,-pose.yaw());
+        else {
+            stack.mulPose(new Matrix4f().rotation(boardFrame.rotation()));
+            stack.translate(0,boardFrame.lift(),0);
+        }
         if(flight!=null){
             var hull=Minecraft.getInstance().level.getEntity(flight.get("entity").getAsInt());
             if(hull instanceof dev.jakmc.entity.JakHellcat cat&&flight.get("boarding").getAsFloat()<0){
@@ -84,23 +100,42 @@ public final class JakRenderer {
             }
             loadPilot();
         }
+        if(pose.raw().has("ladderWeight")){
+            // Vanilla's rung plane is 15.2/16 from the open edge. The capsule sits
+            // at .49 while the authored hands reach .39 model metres forward.
+            float ladder=pose.raw().get("ladderWeight").getAsFloat();
+            if(ladder>0)stack.translate(0,0,(.46f-.39f*bodyScale)*ladder);
+        }
         stack.scale(bodyScale,bodyScale,bodyScale);stack.translate(0,floorOffset,0);
-        float elapsed=Math.clamp((System.nanoTime()-pose.received())/1e9f,0,.05f);
         float frame=pose.frame()+(pose.raw().has("frameRate")?pose.raw().get("frameRate").getAsFloat()*elapsed:0);
         var ride=pose.raw().get("ride");
         boolean mounted=ride!=null&&ride.isJsonObject();
-        int frames=body.frames(pose.clip());if(pose.raw().has("loop")&&pose.raw().get("loop").getAsBoolean())frame%=frames;
+        int frames=body.frames(pose.clip());
+        if(pose.raw().has("loop")&&pose.raw().get("loop").getAsBoolean()){
+            float period=pose.raw().has("framePeriod")?pose.raw().get("framePeriod").getAsFloat():frames;
+            if(period>0)frame-=Math.floor(frame/period)*period;
+        }
+        boolean climbing=pose.raw().get("state").getAsString().equals("target-ladder");
         boolean flut=mounted&&ride.getAsJsonObject().has("flut")&&ride.getAsJsonObject().get("flut").getAsBoolean();
         if(mounted)loadRide(flut);
         var skeleton=flut?body.retargetRider(flutRider,flutRiderRest,
                 JakLeaperRenderer.ridePose(flutRider,"jakb1-",pose,elapsed),jakRest):
-            mounted?JakLeaperRenderer.ridePose(body,"jakb-",pose,elapsed):body.pose(pose.clip(),frame);
+            mounted?JakLeaperRenderer.ridePose(body,"jakb-",pose,elapsed):JakChannels.sample(body,false,pose,boardFrame,frame);
         if(flight!=null)skeleton=pilotPose(body,"jakb",flight,elapsed);
+        var daxPose=flight!=null?pilotPose(daxter,"daxter",flight,elapsed):
+            mounted?JakLeaperRenderer.ridePose(daxter,"daxter-",pose,elapsed):JakChannels.sample(daxter,true,pose,boardFrame,frame);
+        if(mounted||flight!=null)transitions.remove(actor);
+        else{
+            var next=new JakChannels.Pair(skeleton,daxPose);
+            var mixed=transitions.computeIfAbsent(actor,key->new JakChannels.Transition()).blend(body,daxter,next,pose,elapsed);
+            skeleton=mixed.body();
+            daxPose=mixed.daxter();
+        }
         int gunKind=JakItems.GUNS.indexOf(state.getMainHandItemStack().getItem());
         var gunState=pose.raw().getAsJsonObject("gun");
         boolean gunOut=gunState!=null&&gunState.get("out").getAsBoolean();
         boolean shieldUp=pose.raw().has("shield")&&pose.raw().get("shield").getAsBoolean();
-        if(!mounted&&gunKind>=0&&gunOut&&!shieldUp&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
+        if(!climbing&&!pose.board()&&!mounted&&gunKind>=0&&gunOut&&!shieldUp&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
             String upper=switch(gunKind/3){case 0->"jakb-gun-stance";case 1->"jakb-gun-stance-yellow";case 2->"jakb-gun-stance-blue";default->"jakb-gun-stance-dark";};
             float age=0;var g=pose.raw().getAsJsonObject("gun");
             if(g!=null&&g.get("out").getAsBoolean()){
@@ -118,7 +153,7 @@ public final class JakRenderer {
         boolean aiming=pose.raw().has("aim")&&pose.raw().get("aim").getAsBoolean();
         float lookYaw=pose.raw().has("lookYaw")?pose.raw().get("lookYaw").getAsFloat():pose.yaw();
         if(actor==client.player)lookYaw=actor.getYRot();
-        float twist=aiming?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(pose.yaw()-lookYaw)),-1.6f,1.6f):0;
+        float twist=aiming&&!climbing?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(pose.yaw()-lookYaw)),-1.6f,1.6f):0;
         skeleton=body.jakForm(skeleton,pose.dark(),twist);
         boolean luminous=pose.raw().has("lightInterp")&&pose.raw().get("lightInterp").getAsFloat()>0;
         boolean asleep=actor instanceof net.minecraft.world.entity.LivingEntity living&&living.isSleeping();
@@ -135,26 +170,34 @@ public final class JakRenderer {
             stack.popPose();
         }
         drawShield(state,pose,skeleton,stack,collector,shieldUp,elapsed);
-        stack.pushPose();
+        var boardJoint=pose.board()?rigid(body.joint(skeleton,"board")):null;
         Vector3f shoulder=body.joint(skeleton,"LshoulderPad").getTranslation(new Vector3f());
-        stack.translate(shoulder.x,shoulder.y,shoulder.z);stack.scale(1/1.4f,1/1.4f,1/1.4f);
-        String daxClip=pose.clip().replace("jakb-","daxter-");
-        if(!daxter.hasClip(daxClip))daxClip="daxter-stance-loop";
-        var daxPose=flight!=null?pilotPose(daxter,"daxter",flight,elapsed):mounted?JakLeaperRenderer.ridePose(daxter,"daxter-",pose,elapsed):daxter.pose(daxClip,frame);
+        var daxAnchor=boardJoint!=null?boardJoint:new Matrix4f().translation(shoulder);
+        stack.pushPose();
+        stack.mulPose(daxAnchor);
+        stack.scale(1/1.4f,1/1.4f,1/1.4f);
         if(ScaleScene.active()){
             var b=body.bounds(skeleton,new Matrix4f());
-            var d=daxter.bounds(daxPose,new Matrix4f().translation(shoulder).scale(1/1.4f));
+            var d=daxter.bounds(daxPose,new Matrix4f(daxAnchor).scale(1/1.4f));
             currentTop=(Math.max(b[1].y,d[1].y)+floorOffset)*bodyScale;
         }
         daxter.submitEyes(daxPose,stack,collector,state.lightCoords,asleep);stack.popPose();
-        if(pose.board()){
-            stack.pushPose();stack.mulPose(rigid(body.joint(skeleton,"board")));board.submit(board.poseAtTime("board-open",Float.MAX_VALUE),stack,collector,state.lightCoords);stack.popPose();
+        if(boardJoint!=null||!actor.getAttachedOrCreate(JakData.BOARD).isEmpty()){
+            boolean folding=boardFrame!=null&&boardFrame.closing();
+            String clip=boardJoint==null||folding?"board-close":"board-open";
+            float age=Float.MAX_VALUE;
+            if(boardFrame!=null){
+                age=elapsed+(folding?pose.raw().getAsJsonObject("transition").get("stateAge").getAsFloat():boardFrame.age());
+                if(age>=board.duration(clip))age=Float.MAX_VALUE;
+            }
+            stack.pushPose();
+            stack.mulPose(boardJoint!=null?boardJoint:rigid(body.joint(skeleton,"board")));
+            Vector3f socket=stack.last().pose().getTranslation(new Vector3f());
+            JakEffects.boardSocket(state.id,camera.pos.add(socket.x,socket.y,socket.z));
+            board.submit(board.poseAtTime(clip,age),stack,collector,state.lightCoords);
+            stack.popPose();
         }
-        else if(!actor.getAttachedOrCreate(JakData.BOARD).isEmpty()){
-            stack.pushPose();stack.mulPose(rigid(body.joint(skeleton,"board")));
-            board.submit(board.poseAtTime("board-close",Float.MAX_VALUE),stack,collector,state.lightCoords);stack.popPose();
-        }
-        if(!mounted&&flight==null){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
+        if(!pose.board()&&!mounted&&flight==null&&!climbing){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
         stack.popPose();return true;
     }
     private static void submitCarRider(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,

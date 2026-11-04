@@ -5,10 +5,38 @@ import dev.jakmc.network.JakPackets;
 import dev.jakmc.player.JakPlayers;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Mth;
+import org.joml.Quaternionf;
 import java.util.*;
 
 public final class JakPoses {
-    public record Pose(Vec3 position,float yaw,String clip,float frame,boolean board,boolean dark,boolean light,JsonObject raw,long received){}
+    public record BoardPose(Quaternionf rotation,float lift,float phase,float ahead,float side,float duck,
+                            boolean stance,float grindFrame,boolean closing,float age) {
+        static BoardPose read(JsonObject json) {
+            var q=json.getAsJsonArray("rotation");
+            var grind=json.get("grindFrame");
+            return new BoardPose(new Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat()),
+                json.get("lift").getAsFloat(),json.get("phase").getAsFloat(),json.get("ahead").getAsFloat(),
+                json.get("side").getAsFloat(),json.get("duck").getAsFloat(),json.get("stance").getAsBoolean(),
+                grind.isJsonNull()?Float.NaN:grind.getAsFloat(),json.get("closing").getAsBoolean(),json.get("age").getAsFloat());
+        }
+
+        BoardPose interpolate(BoardPose from,float fraction) {
+            if(from==null||fraction>=1)return this;
+            float grind=Float.isFinite(from.grindFrame)&&Float.isFinite(grindFrame)?Mth.lerp(fraction,from.grindFrame,grindFrame):grindFrame;
+            return new BoardPose(new Quaternionf(from.rotation).slerp(rotation,fraction),
+                Mth.lerp(fraction,from.lift,lift),Mth.lerp(fraction,from.phase,phase),
+                Mth.lerp(fraction,from.ahead,ahead),Mth.lerp(fraction,from.side,side),Mth.lerp(fraction,from.duck,duck),
+                stance,grind,closing,age);
+        }
+    }
+
+    public record Pose(Vec3 position,float yaw,String clip,float frame,boolean board,boolean dark,boolean light,
+                       JsonObject raw,long received,BoardPose boardPose,BoardPose boardFrom) {
+        public BoardPose boardAt(float elapsed) {
+            return boardPose==null?null:boardPose.interpolate(boardFrom,Math.clamp(elapsed*20,0,1));
+        }
+    }
     // Follow server snapshots on a render clock shared by the local avatar and camera.
     // Keep the collision entity at the latest authoritative position.
     private static Vec3 from, presented;
@@ -29,10 +57,17 @@ public final class JakPoses {
         var client=Minecraft.getInstance();if(client.level==null)return;
         JsonObject json=JsonParser.parseString(p.json()).getAsJsonObject();
         Vec3 position=JakPlayers.vector(json.getAsJsonArray("pos")).add(p.originX(),p.originY(),p.originZ());
-        var pose=new Pose(position,json.get("yaw").getAsFloat(),json.get("clip").getAsString(),json.get("frame").getAsFloat(),json.get("board").getAsBoolean(),json.get("dark").getAsBoolean(),json.get("light").getAsBoolean(),json,System.nanoTime());
-        Pose previous=POSES.put(p.entityId(),pose);
+        long now=System.nanoTime();
+        long nextSession=json.get("session").getAsLong();
+        BoardPose board=json.get("boardPose") instanceof JsonObject b?BoardPose.read(b):null;
+        Pose previous=POSES.get(p.entityId());
+        boolean continuous=previous!=null&&previous.raw().get("session").getAsLong()==nextSession
+            &&previous.position().distanceToSqr(position)<=16;
+        var boardFrom=board!=null&&continuous?previous.boardAt((now-previous.received())/1e9f):null;
+        var pose=new Pose(position,json.get("yaw").getAsFloat(),json.get("clip").getAsString(),json.get("frame").getAsFloat(),
+            json.get("board").getAsBoolean(),json.get("dark").getAsBoolean(),json.get("light").getAsBoolean(),json,now,board,boardFrom);
+        POSES.put(p.entityId(),pose);
         if(client.player!=null&&client.player.getId()==p.entityId()){
-            long nextSession=json.get("session").getAsLong();
             from=previous==null||from==null||session!=nextSession||previous.position().distanceToSqr(position)>16
                 ?position:sample(previous,pose.received());
             session=nextSession;

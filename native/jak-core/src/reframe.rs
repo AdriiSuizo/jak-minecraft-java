@@ -100,6 +100,9 @@ impl Jak {
             let n = frame.dir(ledge.normal);
             ledge.normal = Vec3::new(n.x, 0.0, n.z).normalize_or(ledge.normal);
         }
+        if let Some(ladder) = self.ladder.as_mut() {
+            ladder.reframe(&frame);
+        }
         // Rails are the map's own: a ride on one does not survive the move.
         self.grind.ride = None;
         self.cache = Default::default();

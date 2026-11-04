@@ -19,7 +19,7 @@ mod effects;
 mod hellcat_host;
 mod wheeled_host;
 mod hover_host;
-static RIDE_ART: OnceLock<HashMap<String, art_group::ArtAnim>> = OnceLock::new();
+static EXTRA_ART: OnceLock<HashMap<String, art_group::ArtAnim>> = OnceLock::new();
 static ANIMS:OnceLock<Arc<jak_core::anim::Anims>>=OnceLock::new();
 
 pub const ABI_VERSION: u32 = 3;
@@ -44,7 +44,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_animationMetadata(m
  }));
  match result {Ok(Ok(s))=>match env.new_string(s){Ok(v)=>v.into_raw(),Err(_)=>std::ptr::null_mut()},Ok(Err(e))=>{let _=env.throw_new("java/lang/IllegalStateException",e);std::ptr::null_mut()},Err(_)=>{let _=env.throw_new("java/lang/IllegalStateException","NPC animation metadata panic");std::ptr::null_mut()}}
 }
-struct Session { jak:Jak, world:World, actors:Actors, audio:audio::JakSoundQueue, power_held:bool, dark_pending:bool, joint_rotations:Vec<Quat> }
+struct Session { jak:Jak, world:World, actors:Actors, audio:audio::JakSoundQueue, power_held:bool, dark_pending:bool, joint_rotations:Vec<Quat>, board_started:Option<i64> }
 #[derive(Default)]
 struct World { tris:Vec<Tri>,query:Option<GlobalRef>,error:Option<String> }
 static JVM:OnceLock<JavaVM>=OnceLock::new();
@@ -93,6 +93,35 @@ impl CollideWorld for World {
    lo.cmple(max).all() && hi.cmpge(min).all()
   }).copied());
  }
+
+ fn ladder(&mut self, feet: Vec3) -> Option<jak_core::ladder::LadderSpan> {
+  let query=self.query.as_ref()?;
+  let result=(||->Result<_,String>{
+   let mut env=JVM.get().ok_or("Minecraft JVM unavailable")?.attach_current_thread().map_err(|e|e.to_string())?;
+   let at=feet/BLOCK;
+   let result=env.with_local_frame(8,|env|->jni::errors::Result<Option<[f32;8]>>{
+    let value=env.call_method(query.as_obj(),"ladder","(FFF)[F",&[
+     JValue::Float(at.x),JValue::Float(at.y),JValue::Float(at.z)
+    ])?.l()?;
+    if value.is_null(){return Ok(None);}
+    let array=jni::objects::JFloatArray::from(value);
+    let mut span=[0.;8];
+    env.get_float_array_region(&array,0,&mut span)?;
+    Ok(Some(span))
+   });
+   if result.is_err(){let _=env.exception_clear();}
+   result.map_err(|e|format!("Minecraft ladder callback: {e}"))
+  })();
+  match result {
+   Ok(Some(span))=>Some(jak_core::ladder::LadderSpan{
+    anchor:Vec3::from_slice(&span[..3])*BLOCK,away:Vec3::from_slice(&span[3..6]),
+    bottom:span[6]*BLOCK,top:span[7]*BLOCK
+   }),
+   Ok(None)=>None,
+   Err(error)=>{self.error=Some(error);None}
+  }
+ }
+
 }
 fn pat(flags:u32)->Pat{
  let mode=match flags&3{1=>PatMode::Wall,2=>PatMode::Obstacle,3=>PatMode::Halfpipe,_=>PatMode::Ground};
@@ -173,7 +202,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_create(mut env:JNIE
   jak.size=0.64;jak.foot_smooth_step=Some(1.05*BLOCK);jak.board_smooth_step=Some(1.05*BLOCK);jak.flut_smooth_step=Some(1.05*BLOCK);
   jak.edge_grab_min_height=2.*BLOCK;
   let mut s=lock_sessions()?;s.next+=1;let id=s.next;
-  s.live.insert(id,Session{jak,world:World::default(),actors:Actors::default(),audio:audio::JakSoundQueue::default(),power_held:false,dark_pending:false,joint_rotations:Vec::new()});Ok(id as jlong)
+  s.live.insert(id,Session{jak,world:World::default(),actors:Actors::default(),audio:audio::JakSoundQueue::default(),power_held:false,dark_pending:false,joint_rotations:Vec::new(),board_started:None});Ok(id as jlong)
  })
 }
 #[unsafe(no_mangle)]
@@ -200,9 +229,9 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
     }));
    }
   }
-  let ride_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-")||name.starts_with("jakb-pilot-car-")||name.starts_with("daxter-pilot-car-")||name.starts_with("jakb-pilot-wcar-")||name.starts_with("jakb-pilot-bike-")||name.starts_with("daxter-pilot-bike-"))
+  let extra_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-ladder-")||name.starts_with("daxter-ladder-")||name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-")||name.starts_with("jakb-pilot-car-")||name.starts_with("daxter-pilot-car-")||name.starts_with("jakb-pilot-wcar-")||name.starts_with("jakb-pilot-bike-")||name.starts_with("daxter-pilot-bike-"))
    .map(|(name,art)|(name.clone(),art.clone())).collect();
-  RIDE_ART.set(ride_art).map_err(|_|"riding art configuration raced")?;
+  EXTRA_ART.set(extra_art).map_err(|_|"extra animation configuration raced")?;
   let rows:Vec<_>=authored.iter().filter_map(|(name,a)|{
    let n=a.align.as_ref().map(Vec::len).or_else(||a.joints.as_ref().map(Vec::len))?;
    Some((name.as_str(),jak_core::anim::AnimInfo{frames:n.min(65535) as u16,speed:a.speed,artist_base:a.artist_base,artist_step:a.artist_step}))
@@ -398,6 +427,11 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
        body.sample(&mut s.jak,&mut s.joint_rotations);
    }
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
+   if s.jak.state.is_board() {
+    s.board_started.get_or_insert(s.jak.time);
+   } else {
+    s.board_started=None;
+   }
    let frame_events=s.jak.take_events();
    for event in &frame_events{
     if let Event::FlutSlam{pos}=event{
@@ -437,7 +471,37 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    json!({"pos":pos(at),"yaw":(-forward.x).atan2(forward.z).to_degrees()})
   });
   let j=&s.jak;
-  let frame_rate=if before_clip==j.chan.anim&&j.chan.frame>=before_frame{((j.chan.frame-before_frame)/(steps as f32/60.)).clamp(-240.,240.)}else{0.};
+  let ladder_cycle=j.chan.is_any(&[jak_core::anim::LADDER_UP,jak_core::anim::LADDER_DOWN]);
+  let frame_period=if ladder_cycle||matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}) {
+   j.anims.max(j.chan.anim)
+  } else { 0. };
+  let frame_rate=if before_clip==j.chan.anim{
+   let mut delta=j.chan.frame-before_frame;
+   if frame_period>0. {delta-=(delta/frame_period).round()*frame_period;}
+   (delta/(steps as f32/60.)).clamp(-240.,240.)
+  } else { 0. };
+  let state_age=(j.time-j.state_time) as f32/300.;
+  let board_pose=s.board_started.map(|started|{
+   use jak_core::{State,anim::BOARD_TURN,board_anim::TURN_FRAMES};
+   let spring=&j.board.anim;
+   let phase=(spring.shown_frame(j.time-j.state_time)+TURN_FRAMES)/(2.*TURN_FRAMES);
+   let grind_frame=(j.state==State::BoardGrind).then(||{
+    let lean=(f32::from(j.pad.leftx)-128.)/128.;
+    let artist=(3.*lean+0.5*jak_core::math::sin(145.63556*(j.time-j.state_time) as f32)).clamp(-5.,5.);
+    j.anims.aframe(j.chan.anim,artist)
+   });
+   json!({
+    "rotation":j.orientation().to_array(),"lift":j.control.draw_offset_y/BLOCK,
+    "phase":phase,"ahead":spring.tween[0],"side":spring.tween[1],"duck":spring.duck,
+    "stance":j.chan.is(BOARD_TURN)||j.state==State::BoardDuckStance,"grindFrame":grind_frame,
+    "closing":j.state==State::BoardGetOff,"age":(j.time-started) as f32/300.
+   })
+  });
+  let walk_mix=j.chan.mix.map(|mix|json!({
+   "clips":mix.anims().map(|anim|anim.name()),"up":mix.up,"side":mix.side,"run":mix.run
+  }));
+  let transition=json!({"stateAge":state_age,"pushTick":j.push.tick,
+    "pushAge":(j.time-j.push.tick) as f32/300.,"pushDuration":j.push.ticks as f32/300.});
   let gun=json!({"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
   let wings=j.lightjak.wings.filter(|w|w.shown).map(|w|{
    let rate=before_wings.filter(|before|before.anim==w.chan.anim&&w.chan.frame>=before.frame)
@@ -449,23 +513,34 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
    json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}),"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
+  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"ladderWeight":j.ladder_pose_weight(),"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_ridingAnimations(env:JNIEnv,_:JClass)->jstring{
- let rows:HashMap<&str,Value>=RIDE_ART.get().into_iter().flat_map(|bank|bank.iter())
-  .filter_map(|(name,art)|Some((name.as_str(),json!({"speed":art.speed,"joints":art.joints.as_ref()?}))))
+fn extra_animations(env: JNIEnv, ladder: bool) -> jstring {
+ let rows:HashMap<&str,Value>=EXTRA_ART.get().into_iter().flat_map(|bank|bank.iter())
+  .filter(|(name,_)|name.contains("-ladder-")==ladder)
+  .filter_map(|(name,art)|Some((name.as_str(),json!({"speed":art.speed,"joints":art.joints.as_ref()?,
+    "prejoint":if ladder{art.prejoint.as_ref()}else{None}}))))
   .collect();
  env.new_string(json!(rows).to_string()).map_or(std::ptr::null_mut(),|s|s.into_raw())
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_ridingAnimations(env:JNIEnv,_:JClass)->jstring{
+ extra_animations(env,false)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_ladderAnimations(env:JNIEnv,_:JClass)->jstring{
+ extra_animations(env,true)
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_mountReady(_env:JNIEnv,_:JClass)->jni::sys::jboolean{
  u8::from(ANIMS.get().is_some_and(|a|a.max(jak_core::anim::FLUT1_GET_ON)>24.)
-   &&RIDE_ART.get().is_some_and(|a|a.get("jakb-flut-get-on").is_some_and(|c|c.joints.is_some())))
+   &&EXTRA_ART.get().is_some_and(|a|a.get("jakb-flut-get-on").is_some_and(|c|c.joints.is_some())))
 }
 
 #[unsafe(no_mangle)]

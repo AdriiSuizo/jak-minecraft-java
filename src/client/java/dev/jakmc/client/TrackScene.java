@@ -31,31 +31,51 @@ import net.minecraft.world.phys.Vec3;
 final class TrackScene {
     private static final int BOARD=1<<7;
     private static final int JUMP=1;
-    private static int ticks,railTicks,jumpRelease;
-    private static boolean jumped,blasterContact;
+    private static int ticks,railTicks;
+    private static volatile boolean jumped;
+    private static ServerPlayer approachingRail;
+    private static long jumpRelease;
+    private static boolean blasterContact,opening,folding,offAfterFold;
+    private static float minGrindFrame,maxGrindFrame,maxTilt;
     private static double maxHeight,maxGrindDistance,grindStart;
     private static JsonObject checks;
     private static com.google.gson.JsonArray rampTrace;
     private static Vec3 ramp,rail;
     private static InputScene.CameraView view;
     private static CameraType previousCamera;
-    private static Runnable cleanup,toRail,deploy,move,jump,toRange,fire;
+    private static Runnable cleanup,toRail,deploy,move,toRange,fire,clearGun;
 
     static InputScene.CameraView camera(){return view;}
 
     static void initialize(){
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.START_SERVER_TICK.register(server->{
+            var p=approachingRail;
+            if(p==null)return;
+            long time=p.level().getGameTime();
+            if(!jumped&&JakPlayers.onBoard(p)&&p.getZ()>=rail.z-1.85&&p.getZ()<=rail.z+.2){
+                jumped=true;
+                jumpRelease=time+4;
+                JakPlayers.probeInput(p,JUMP,JUMP,1);
+            }
+            if(jumped&&time==jumpRelease)JakPlayers.probeInput(p,0,0,1);
+        });
         ClientTickEvents.END_CLIENT_TICK.register(client->{
             if(checks==null||client.player==null)return;
             ++ticks;
             var server=client.getSingleplayerServer();
             var pose=JakPoses.get(client.player.getId());
-            if(ticks==22||ticks==122)server.execute(deploy);
+            if(ticks==22||ticks==122||ticks==246||ticks==274)server.execute(deploy);
             if(ticks==25||ticks==125)server.execute(move);
+            if(ticks==29&&pose!=null){
+                var target=pose.position().add(0,.8,0);
+                view=cameraAt(target.add(3,1.8,-3.4),target);
+            }
             if(ticks==32)
                 Screenshot.grab(client.gameDirectory,"jak-track.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
             if(ticks==105)server.execute(toRail);
             if(ticks==214)server.execute(toRange);
             if(ticks==230)server.execute(fire);
+            if(ticks==237)server.execute(clearGun);
             if(pose!=null&&ticks>=230&&pose.raw().has("events")){
                 Vec3 origin=pose.position().subtract(JakPlayers.vector(pose.raw().getAsJsonArray("pos")));
                 for(var raw:pose.raw().getAsJsonArray("events")){
@@ -68,6 +88,16 @@ final class TrackScene {
                 }
             }
             if(pose!=null&&pose.board()){
+                var visual=pose.boardPose();
+                if(visual!=null){
+                    if(ticks<=26&&visual.age()>0&&visual.age()<.4f)opening=true;
+                    if(ticks>=274&&visual.closing())folding=true;
+                    maxTilt=Math.max(maxTilt,(float)Math.hypot(visual.rotation().x,visual.rotation().z));
+                    if(Float.isFinite(visual.grindFrame())){
+                        minGrindFrame=Math.min(minGrindFrame,visual.grindFrame());
+                        maxGrindFrame=Math.max(maxGrindFrame,visual.grindFrame());
+                    }
+                }
                 var at=pose.position();
                 if(ticks<102&&at.z>=ramp.z&&at.z<=ramp.z+6.8)
                     maxHeight=Math.max(maxHeight,at.y-ramp.y);
@@ -79,11 +109,6 @@ final class TrackScene {
                     sample.add("state",pose.raw().get("state"));
                     rampTrace.add(sample);
                 }
-                if(ticks>130&&ticks<210&&!jumped&&at.z>=rail.z-1.85&&at.z<=rail.z+.2){
-                    jumped=true;jumpRelease=ticks+4;
-                    server.execute(jump);
-                }
-                if(ticks==jumpRelease)server.execute(move);
                 if(ticks>130&&pose.raw().get("state").getAsString().equals("board-grind")){
                     if(++railTicks==1)grindStart=at.z;
                     if(railTicks==6){
@@ -96,10 +121,15 @@ final class TrackScene {
                     maxGrindDistance=Math.max(maxGrindDistance,Math.abs(at.z-grindStart));
                 }
             }
-            if(ticks<263)return;
+            if(folding&&pose!=null&&!pose.board())offAfterFold=true;
+            if(ticks<310)return;
             checks.addProperty("yellow_blaster_ramp_impact",blasterContact);
             checks.addProperty("rode_above_ramp_base",maxHeight>=1);
             checks.addProperty("native_grind",railTicks>3&&maxGrindDistance>=1);
+            checks.addProperty("opening_clock",opening);
+            checks.addProperty("native_root_tilt",maxTilt>.04f);
+            checks.addProperty("grind_artist_frames",maxGrindFrame-minGrindFrame>.02f);
+            checks.addProperty("native_fold",folding&&offAfterFold);
             var result=new JsonObject();
             result.add("actions",checks);
             result.addProperty("rampHeight",maxHeight);
@@ -107,6 +137,9 @@ final class TrackScene {
             result.addProperty("railTicks",railTicks);
             result.addProperty("grindBlocks",maxGrindDistance);
             result.addProperty("jumped",jumped);
+            result.addProperty("maxTilt",maxTilt);
+            if(Float.isFinite(minGrindFrame))result.addProperty("minGrindFrame",minGrindFrame);
+            if(Float.isFinite(maxGrindFrame))result.addProperty("maxGrindFrame",maxGrindFrame);
             result.addProperty("lastPose",pose==null?"missing":pose.raw().get("state").getAsString());
             result.addProperty("reason",checks.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?
                 "complete":"Track assertion failed");
@@ -128,9 +161,12 @@ final class TrackScene {
         if(server==null||client.player==null)throw new IllegalStateException("Open the development world");
         previousCamera=client.options.getCameraType();
         client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
-        ticks=railTicks=jumpRelease=0;
+        ticks=railTicks=0;
         jumped=false;
-        blasterContact=false;
+        blasterContact=opening=folding=offAfterFold=false;
+        maxTilt=0;
+        minGrindFrame=Float.POSITIVE_INFINITY;
+        maxGrindFrame=Float.NEGATIVE_INFINITY;
         rampTrace=new com.google.gson.JsonArray();
         maxHeight=maxGrindDistance=0;
         var uuid=client.player.getUUID();
@@ -184,15 +220,17 @@ final class TrackScene {
             JakPlayers.controlForProbe(p,true);
             deploy=()->JakPlayers.probeInput(p,BOARD,BOARD,0);
             move=()->JakPlayers.probeInput(p,0,0,1);
-            jump=()->JakPlayers.probeInput(p,JUMP,JUMP,1);
             var railsEntry=Vec3.atBottomCenterOf(railAnchor.north(7)).add(-.5,0,0);
             toRail=()->{
+                approachingRail=p;
+                jumpRelease=Long.MIN_VALUE;
                 p.teleportTo(railsEntry.x,railsEntry.y,railsEntry.z);
                 p.setYRot(0);
                 p.setOnGround(true);
                 JakPlayers.probeInput(p,0,0,0);
             };
             toRange=()->{
+                approachingRail=null;
                 p.teleportTo(entry.x,entry.y,entry.z);
                 p.setYRot(0);
                 p.setXRot(0);
@@ -201,7 +239,12 @@ final class TrackScene {
                 JakPlayers.probeInput(p,0,0,0);
             };
             fire=()->JakPlayers.probeInput(p,64,64,0);
+            clearGun=()->{
+                p.setItemInHand(InteractionHand.MAIN_HAND,ItemStack.EMPTY);
+                JakPlayers.probeInput(p,0,0,0);
+            };
             cleanup=()->{
+                approachingRail=null;
                 snapshot.forEach(level::setBlockAndUpdate);
                 JakPlayers.controlForProbe(p,false);
                 p.setAttached(JakData.BOARD,stored);

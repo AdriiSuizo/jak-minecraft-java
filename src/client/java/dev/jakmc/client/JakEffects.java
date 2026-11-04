@@ -33,11 +33,12 @@ public final class JakEffects {
  private static final Map<Integer,Identifier> TEXTURES=new HashMap<>();
  private static final Set<Integer> MISSING=new HashSet<>();
  private static String[] names;
- private static final ByteBuffer VIEW=NativeJak.buffer(44),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
+ private static final ByteBuffer VIEW=NativeJak.buffer(56),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
  public static long gemCollectBursts,spydroidBursts;
  public static int drawnVertices,drawnLightningVertices,drawnDarkVertices,drawnBarrelVertices,drawnProjectorVertices,drawnBurstVertices,drawnVentVertices,drawnSandVertices;
  private static final class Owner implements AutoCloseable {
   final long handle;final Vec3 origin;long received=System.nanoTime(),lastDraw;
+  Vec3 boardSocket;
   int collector=-1;long pickupAt=Long.MIN_VALUE;boolean pickupStart;
   Owner(Vec3 origin,long handle){this.origin=origin;this.handle=handle;}
   public void close(){NativeJak.fxDestroy(handle);}
@@ -67,6 +68,11 @@ public final class JakEffects {
     if(handle!=0){BURSTS.add(new Owner(packet.at(),handle));spydroidBursts++;}
    });
   ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->clear());
+ }
+ // Entity submits precede COLLECT_SUBMITS. Consume the same frame's visible joint once.
+ public static void boardSocket(int entity,Vec3 position){
+  var owner=OWNERS.get(entity);
+  if(owner!=null)owner.boardSocket=position.subtract(owner.origin);
  }
  public static void receive(int entity,Vec3 origin,JsonObject packet){
   if(!packet.has("effects"))return;
@@ -239,6 +245,11 @@ public final class JakEffects {
   VIEW.clear();VIEW.putFloat((float)eye.x).putFloat((float)eye.y).putFloat((float)eye.z);
   VIEW.putFloat(forward.x).putFloat(forward.y).putFloat(forward.z).putFloat(up.x).putFloat(up.y).putFloat(up.z);
   VIEW.putFloat(client.options.fov().get().floatValue()).putFloat(client.getWindow().getHeight());
+  Vec3 board=fx.boardSocket;
+  VIEW.putFloat(board==null?Float.NaN:(float)board.x)
+      .putFloat(board==null?Float.NaN:(float)board.y)
+      .putFloat(board==null?Float.NaN:(float)board.z);
+  fx.boardSocket=null;
   float dt=client.isPaused()?0:fx.lastDraw==0?1/60f:Math.clamp((now-fx.lastDraw)/1e9f,0,.1f);fx.lastDraw=now;
   long counts=NativeJak.fxDraw(fx.handle,dt,VIEW,SPRITES,BOLTS);
   drawnLightningVertices+=(int)(counts>>>32);

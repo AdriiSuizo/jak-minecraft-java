@@ -20,6 +20,17 @@ pub struct Ride {
     to: Vec3,
     began: i64,
 }
+impl Ride {
+    pub(crate) fn reframe(&mut self, frame: &crate::reframe::Frame) {
+        let anchor = self.span.anchor;
+        self.span.bottom = frame.point(anchor.with_y(self.span.bottom)).y;
+        self.span.top = frame.point(anchor.with_y(self.span.top)).y;
+        self.span.anchor = frame.point(anchor);
+        self.span.away = frame.dir(self.span.away).with_y(0.0).normalize_or(self.span.away);
+        self.from = frame.point(self.from);
+        self.to = frame.point(self.to);
+    }
+}
 impl Jak {
     /// Keep the native 0.39 m ladder pose at the rung plane while the
     /// collision capsule stays outside Minecraft's thicker ladder shape.

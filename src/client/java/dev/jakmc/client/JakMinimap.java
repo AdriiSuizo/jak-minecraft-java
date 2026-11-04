@@ -40,7 +40,7 @@ public final class JakMinimap {
     private static float presentedYaw;
     static void initialize(){
         ClientTickEvents.END_CLIENT_TICK.register(JakMinimap::tick);
-        ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->clear(client));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->client.execute(()->clear(client)));
     }
     private static void clear(Minecraft client){
         if(texture!=null){client.getTextureManager().release(MAP);texture=null;}

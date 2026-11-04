@@ -48,7 +48,10 @@ public final class GltfModel {
     public static float materialSeconds(){var c=Minecraft.getInstance();return c.level==null?0:(c.level.getGameTime()+c.getDeltaTracker().getGameTimeDeltaPartialTick(false))/20f;}
     private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,String material,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals){}
     private record Channel(int node,String path,float[] times,float[] values,int components,boolean step){}
-    private record Clip(List<Channel> channels,float duration){}
+    private record Clip(List<Channel> channels,float duration,int frames){
+        Clip(List<Channel> channels,float duration){this(channels,duration,channels.stream().mapToInt(c->c.times.length).max().orElse(1));}
+    }
+    record LocalPose(Vector3f[] translations,Quaternionf[] rotations,Vector3f[] scales,float[] morphs){}
     public record Posed(Matrix4f[] globals,Matrix4f[] skin,float[] morphs,Vector3f[] translations,Quaternionf[] rotations,Vector3f[] scales){}
 
     public GltfModel(Path file,String key)throws IOException {
@@ -140,8 +143,7 @@ public final class GltfModel {
             Path export=file.getParent().getParent().getParent();
             var art=JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.animationMetadata(export.toString(),originalName,false)).getAsJsonObject();
             for(var entry:art.entrySet()){
-                var a=entry.getValue().getAsJsonObject();if(!a.has("prejoint")||a.get("prejoint").isJsonNull())continue;
-                var rows=a.getAsJsonArray("prejoint");Matrix4f[] matrices=new Matrix4f[rows.size()];for(int i=0;i<matrices.length;i++)matrices[i]=new Matrix4f().set(array(rows.get(i).getAsJsonArray()));prejoints.put(entry.getKey(),matrices);
+                readPrejoint(entry.getKey(),entry.getValue().getAsJsonObject());
             }
         }
         if(compensateScale&&Set.of("grunt","flitter","mantis").contains(originalName)){
@@ -158,6 +160,13 @@ public final class GltfModel {
     public void prepare(Posed pose){prepared.computeIfAbsent(pose,p->{var geometry=new ArrayList<float[]>();for(Surface surface:surfaces)geometry.add(skin(surface,p));return List.copyOf(geometry);});}
     public void animationsFrom(GltfModel source){readAnimations(source,null);}
     public void attachmentAnimationsFrom(GltfModel source,String prefix){readAnimations(source,prefix);}
+    private void readPrejoint(String clip,JsonObject art){
+        if(!(art.get("prejoint") instanceof JsonArray rows))return;
+        Matrix4f[] matrices=new Matrix4f[rows.size()];
+        for(int i=0;i<matrices.length;i++)matrices[i]=new Matrix4f().set(array(rows.get(i).getAsJsonArray()));
+        prejoints.put(clip,matrices);
+    }
+
     void originalAnimations(JsonObject art,String prefix){
         for(var entry:art.entrySet()){
             String name=entry.getKey();
@@ -185,6 +194,7 @@ public final class GltfModel {
                 channels.add(new Channel(node,"scale",times,scales,3,false));
             }
             clips.put(name,new Clip(channels,times[times.length-1]));
+            readPrejoint(name,clip);
         }
     }
     private void readAnimations(GltfModel source,String attachmentPrefix){
@@ -209,7 +219,9 @@ public final class GltfModel {
         }
     }
     public Posed pose(String name,float frame){return pose(name,frame,false);}
-    public Posed pose(String name,float frame,boolean preserveAlign){
+    public Posed pose(String name,float frame,boolean preserveAlign){return resolve(localPose(name,frame,preserveAlign));}
+    LocalPose localPose(String name,float frame){return localPose(name,frame,false);}
+    private LocalPose localPose(String name,float frame,boolean preserveAlign){
         Clip clip=clips.get(name);Vector3f[] t=new Vector3f[nodes.length],s=new Vector3f[nodes.length];Quaternionf[] r=new Quaternionf[nodes.length];float[] morphs=defaultMorphs.clone();
         for(int i=0;i<nodes.length;i++){t[i]=new Vector3f(nodes[i].t);s[i]=new Vector3f(nodes[i].s);r[i]=new Quaternionf(nodes[i].r);}
         if(clip!=null)for(Channel c:clip.channels){
@@ -233,9 +245,10 @@ public final class GltfModel {
             }
         }
         if(!preserveAlign&&compensateScale&&namedNodes.containsKey("align")){int i=namedNodes.get("align");t[i].set(nodes[i].t);r[i].set(nodes[i].r);s[i].set(nodes[i].s);}
-        Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);
-        Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
-        return new Posed(globals,skin,morphs,t,r,s);
+        return new LocalPose(t,r,s,morphs);
+    }
+    Posed resolve(LocalPose pose){
+        return compose(pose.translations,pose.rotations,pose.scales,pose.morphs);
     }
     private Matrix4f global(int i,Matrix4f[] g,Vector3f[] t,Quaternionf[] r,Vector3f[] s){
         if(g[i]!=null)return g[i];var local=new Matrix4f().translationRotateScale(t[i],r[i],s[i]);
@@ -309,6 +322,28 @@ public final class GltfModel {
         Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,to.morphs,t,r,s);
     }
+    void resetAlignment(LocalPose pose){
+        resetJoint(pose,namedNodes.get("align"));
+        resetJoint(pose,namedNodes.get("prejoint"));
+    }
+    private void resetJoint(LocalPose pose,Integer index){
+        if(index==null)return;
+        Node rest=nodes[index];
+        pose.translations[index].set(rest.t);
+        pose.rotations[index].set(rest.r);
+        pose.scales[index].set(rest.s);
+    }
+
+    // These samples belong to the current mixer. Compose global and skin matrices once.
+    LocalPose blendLocal(LocalPose from,LocalPose to,float weight){
+        for(int i=0;i<nodes.length;i++){
+            from.translations[i].lerp(to.translations[i],weight);
+            from.scales[i].lerp(to.scales[i],weight);
+            from.rotations[i].slerp(to.rotations[i],weight);
+        }
+        return new LocalPose(from.translations,from.rotations,from.scales,to.morphs);
+    }
+
     Posed attachJoint(Posed pose,String joint,String anchor,Vector3f offset){
         int node=namedNodes.get(joint),parent=nodes[node].parent;
         var at=new Matrix4f(pose.globals[parent]).invert().mul(pose.globals[namedNodes.get(anchor)]).translate(offset);
@@ -337,7 +372,7 @@ public final class GltfModel {
     Vector3f localTranslation(Posed pose,String joint){return new Vector3f(pose.translations[namedNodes.get(joint)]);}
     public Matrix4f jointAt(Posed pose,int originalIndex){return pose.globals[joints[originalIndex]];}
     public Matrix4f joint(Posed pose,String name){Integer node=namedNodes.get(name);if(node==null)throw new IllegalArgumentException("Required original joint missing: "+name);return pose.globals[node];}
-    public Posed poseAtTime(String name,float seconds){Clip clip=clips.get(name);if(clip==null)throw new IllegalArgumentException("Required original clip missing: "+name);if(seconds==Float.MAX_VALUE)return terminalPoses.computeIfAbsent(name,k->{Posed p=pose(k,frames(k)-1);prepare(p);return p;});int frames=clip.channels.stream().mapToInt(c->c.times.length).max().orElse(1);return pose(name,clip.duration>0?Math.clamp(seconds/clip.duration,0,1)*(frames-1):0);}
+    public Posed poseAtTime(String name,float seconds){Clip clip=clips.get(name);if(clip==null)throw new IllegalArgumentException("Required original clip missing: "+name);if(seconds==Float.MAX_VALUE)return terminalPoses.computeIfAbsent(name,k->{Posed p=pose(k,frames(k)-1);prepare(p);return p;});int frames=clip.frames;return pose(name,clip.duration>0?Math.clamp(seconds/clip.duration,0,1)*(frames-1):0);}
     public Posed overlayUpper(Posed base,String name,float seconds){
         Posed upper=poseAtTime(name,seconds);Integer root=namedNodes.get("upper_body");if(root==null)throw new IllegalArgumentException("Original upper_body joint missing");
         for(int i=0;i<nodes.length;i++)for(int ancestor=i;ancestor>=0;ancestor=nodes[ancestor].parent)if(ancestor==root){base.translations[i].set(upper.translations[i]);base.rotations[i].set(upper.rotations[i]);base.scales[i].set(upper.scales[i]);break;}
@@ -381,7 +416,7 @@ public final class GltfModel {
     }
     public boolean hasClip(String name){return clips.containsKey(name);}
     public float duration(String name){Clip clip=clips.get(name);return clip==null?0:clip.duration;}
-    public int frames(String name){Clip clip=clips.get(name);return clip==null?1:clip.channels.stream().mapToInt(c->c.times.length).max().orElse(1);}
+    public int frames(String name){Clip clip=clips.get(name);return clip==null?1:clip.frames;}
     public float height(Posed posed){
         Vector3f[] b=bounds(posed,new Matrix4f());return b[1].y-b[0].y;
     }
