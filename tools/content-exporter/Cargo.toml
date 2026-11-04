@@ -5,6 +5,6 @@ edition="2024"
 license="Apache-2.0"
 [workspace]
 [dependencies]
-minecraft_terrain={path="../../.local/export-source/minecraft_terrain"}
+minecraft_terrain={path="../content-source/terrain"}
 serde_json="1"
 image={version="0.25",default-features=false,features=["png"]}

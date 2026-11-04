@@ -253,7 +253,7 @@ def decorations(catalog):
         root=catalog if id>=108 else SOURCE
         source=json.loads((root/'objects'/f'{id}.json').read_text(encoding='utf-8'))
         path=source['path']
-        sprite=next(t['texture'] for cell in source['cells'] for t in cell['triangles'])
+        sprite=min(t['texture'] for cell in source['cells'] for t in cell['triangles'])
         item={'model':{'type':'minecraft:special','base':'jak:item/'+path,
               'model':{'type':'jakmc:prop','id':id}}}
         (items/f'{path}.json').write_text(json.dumps(item),encoding='utf-8')

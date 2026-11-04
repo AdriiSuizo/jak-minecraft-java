@@ -1,5 +1,34 @@
 # Jak Worlds for Minecraft Java
 
+## Installer / Instalador (Windows)
+
+Download the installer RAR from the [private releases](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
+Extract the whole archive and run `JakMod-Installer.exe`. Choose **es** or **en**,
+confirm the detected OpenGOAL folder and the Minecraft folder, then install.
+The official launcher will offer **26.3.jakmod**. The installer uses your own
+Jak 1, II and 3 installation to create all game resources locally.
+
+Descarga el RAR desde las [versiones privadas](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
+Extrae todo el archivo y ejecuta `JakMod-Installer.exe`. Elige **es** o **en**,
+confirma las carpetas detectadas e instala. El launcher oficial ofrecerá
+**26.3.jakmod**. Usa tus propios Jak 1, II y 3 instalados en OpenGOAL para
+generar los recursos localmente.
+
+Launch vanilla Minecraft Java **26.3** once before installing; close the game
+and launcher while installing. Normal saves are preserved in their existing
+folder. JakMod uses `.minecraft/instances/jakmod`. Keep OpenGOAL installed.
+No game files are included in Git or the downloadable installer.
+See [Español](installer/README-ES.md) / [English](installer/README-EN.md).
+
+Maintainers: `python tools/build_installer.py` builds a code-only mod,
+the standalone bilingual installer and a real RAR. The build-only construction
+source is included under `tools/content-source`; the old mashup checkout is
+not required. Run `python installer/test_install.py` and
+`python tools/audit_distribution.py --package dist/JakMod-Installer` before
+uploading. Generated assets and final locally merged game JARs stay private.
+
+## Development port
+
 Development port of the Jak systems from the Rust mashup into actual Minecraft Java. Targets Minecraft 26.3, Fabric Loader 0.20.1, Fabric API 0.165.0+26.3 and Java 25. MW2 and Skate 3 content are excluded; the original Jak JET-Board is included.
 
 Minecraft owns registries, inventories, screens, entities, saves and collision shapes. A small versioned JNI library runs the existing pure Rust Jak simulation. Owned OpenGOAL exports provide the original models, animations, particle definitions and SFX; generated assets and all development saves are ignored by Git.

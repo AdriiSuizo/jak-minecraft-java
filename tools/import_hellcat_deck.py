@@ -105,7 +105,7 @@ def relief(verts, indices):
         raise ValueError('HellCat hull contains no collision surface')
     return dict(min=[min_x,min_y,min_z],max=[max_x,max_y,max_z],size=[nx,nz],cell=CELL,top=top)
 
-if __name__ == '__main__':
+def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('export',type=Path)
     parser.add_argument('--helldog',action='store_true',help='Read the original black Hell Dog from a Jak II export')
@@ -119,3 +119,5 @@ if __name__ == '__main__':
     dest.parent.mkdir(parents=True,exist_ok=True)
     dest.write_text(json.dumps(deck,separators=(',',':'))+'\n',encoding='utf-8')
     print(f"{deck['size'][0]}x{deck['size'][1]} cells, {sum(y is not None for y in deck['top'])} occupied")
+
+if __name__ == '__main__': main()

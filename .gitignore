@@ -10,3 +10,4 @@ tools/content-exporter/target/
 src/generated/
 __pycache__/
 *.pyc
+dist/

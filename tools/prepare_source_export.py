@@ -35,7 +35,7 @@ def prepare():
     cargo=cargo.replace('diag.workspace = true','diag = { path = "'+str(SOURCE/'crates/diag').replace('\\','/')+'" }')
     put(DEST/'Cargo.toml',cargo.encode())
     exporter=ROOT/'tools/content-exporter/Cargo.toml'
-    text=exporter.read_text(encoding='utf-8').replace('../../../2010-rust-rewrite-mashup-trabajo/crates/minecraft_terrain','../../.local/export-source/minecraft_terrain')
+    text=exporter.read_text(encoding='utf-8').replace('../../../2010-rust-rewrite-mashup-trabajo/crates/minecraft_terrain','../content-source/terrain')
     put(exporter,text.encode())
     put(ROOT/'.local/export-source/provenance.json',json.dumps(receipt,indent=2).encode())
     print(f'Prepared isolated source snapshot: {len(receipt)} files; reference unchanged')

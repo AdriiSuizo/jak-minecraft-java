@@ -88,6 +88,18 @@ jar {
  from('LICENSE-FABRIC-TEMPLATE')
 }
 
+// The downloadable jar contains code only. The installer recreates the ignored
+// resources from the player's OpenGOAL installation and merges them locally.
+tasks.register('distributionJar', Jar) {
+ dependsOn tasks.named('jar')
+ archiveClassifier = 'installer-code'
+ def privateFiles = provider { fileTree('src/generated/resources').files.collect {
+  file('src/generated/resources').toPath().relativize(it.toPath()).toString().replace('\\','/')
+ } as Set }
+ from({ zipTree(tasks.named('jar').get().archiveFile.get().asFile) })
+ exclude { privateFiles.get().contains(it.path) }
+}
+
 
 def devWorld = providers.gradleProperty("jakmcDevWorld").orElse("New World (1)")
 loom.runs.client {

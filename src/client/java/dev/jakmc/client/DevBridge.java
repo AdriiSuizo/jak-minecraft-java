@@ -7,6 +7,7 @@ import java.util.*;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.*;
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
@@ -15,10 +16,18 @@ import net.minecraft.client.input.InputWithModifiers;
 /** Development-only file bridge. All game operations execute on the client/server owner thread. */
 public final class DevBridge {
     private static Path dir;
+    private static boolean productionProbe;
     private static final String SESSION=UUID.randomUUID().toString();
     private static final InputWithModifiers PRESS=new InputWithModifiers(){public int input(){return 40;}public int modifiers(){return 0;}};
     public static void initialize(){
-        if(!FabricLoader.getInstance().isDevelopmentEnvironment()||!Boolean.getBoolean("jakmc.devBridge"))return;
+        if(!Boolean.getBoolean("jakmc.devBridge"))return;
+        if(!FabricLoader.getInstance().isDevelopmentEnvironment()){
+            String token=System.getProperty("jakmc.productionProbe","");
+            if(!token.matches("[a-f0-9]{32}"))return;
+            Path permit=FabricLoader.getInstance().getGameDir().resolve("jakmc/allow-production-probe");
+            try{if(!Files.readString(permit).equals(token))return;}catch(Exception absent){return;}
+            productionProbe=true;
+        }
         dir=FabricLoader.getInstance().getGameDir().resolve("jakmc/bridge");
         try{
             Files.createDirectories(dir);
@@ -38,9 +47,26 @@ public final class DevBridge {
             if(!request.has("session")||!SESSION.equals(request.get("session").getAsString()))throw new IllegalArgumentException("Stale request belongs to a different game process");
             String id=request.get("id").getAsString();if(!id.matches("[a-zA-Z0-9_-]+"))throw new IllegalArgumentException("Invalid request id");
             String op=request.get("op").getAsString();JsonObject out=new JsonObject();
+            if(productionProbe&&!Set.of("observe","package_status","package_capture","quit").contains(op))throw new IllegalArgumentException("Operation unavailable in packaged-artifact check");
             switch(op){
                 case "observe" -> observe(client,out);
                 case "scale_scene" -> {ScaleScene.start(client);out.addProperty("scheduled",true);}
+                case "package_status" -> {
+                    if(!productionProbe)throw new IllegalArgumentException("Packaged-artifact check only");
+                    client.options.setCameraType(CameraType.THIRD_PERSON_FRONT);
+                    var renderer=dev.jakmc.client.model.JakRenderer.class;
+                    out.addProperty("actor_drawn",client.player!=null&&dev.jakmc.client.model.JakRenderer.lastEntityId==client.player.getId());
+                    out.addProperty("cinematic_draws",dev.jakmc.client.model.JakRenderer.cinematicRenderSerial);
+                    out.addProperty("standing_height",dev.jakmc.client.model.JakRenderer.standingHeight);
+                    out.addProperty("source_pose",client.player!=null&&JakPoses.get(client.player.getId())!=null);
+                    for(String resource:List.of("/assets/jakmc/sounds.json","/assets/jakmc/flut/eye_open.png","/assets/jakmc/hellcat/deck.json","/data/jakmc/catalog/haven.jbp","/data/jakmc/catalog/spargus.jbp")){
+                        try(var in=renderer.getResourceAsStream(resource)){out.addProperty(resource,in!=null&&in.read()!=-1);}
+                    }
+                }
+                case "package_capture" -> {
+                    if(!productionProbe)throw new IllegalArgumentException("Packaged-artifact check only");
+                    Screenshot.grab(client.gameDirectory,"installed-jak.png",client.gameRenderer.mainRenderTarget(),1,message->JakMod.LOG.info("Installed package screenshot: {}",message.getString()));
+                }
                 case "create_world" -> {if(client.getSingleplayerServer()!=null)throw new IllegalStateException("An existing world is already open");CreateWorldScreen.openFresh(client,()->{});out.addProperty("scheduled",true);}
                 case "click" -> {
                     var screen=client.gui.screen();if(screen==null)throw new IllegalStateException("No screen");
