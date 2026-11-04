@@ -27,6 +27,9 @@ not required. Run `python installer/test_install.py` and
 `python tools/audit_distribution.py --package dist/JakMod-Installer` before
 uploading. Generated assets and final locally merged game JARs stay private.
 
+Pending gameplay fixes and parity work / Pendientes de jugabilidad y paridad:
+[FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). The installer does not certify complete gameplay parity.
+
 ## Development port
 
 Development port of the Jak systems from the Rust mashup into actual Minecraft Java. Targets Minecraft 26.3, Fabric Loader 0.20.1, Fabric API 0.165.0+26.3 and Java 25. MW2 and Skate 3 content are excluded; the original Jak JET-Board is included.

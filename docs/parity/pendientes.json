@@ -1,0 +1,405 @@
+{
+  "date": "2026-11-04",
+  "java_commit": "d2761d8d90a7ce7545dd141a6ca0e16195a3d41a",
+  "reference": "../2010-rust-rewrite-mashup-trabajo",
+  "items": [
+    {
+      "id": "F01",
+      "group": "Agua y colisiones",
+      "title": "Salida del agua al saltar",
+      "state": "Reportado",
+      "evidence": "El salto desde natación apenas permite salir del agua. swim.rs coincide con el mashup; revisar el puente de altura de agua, escala y transición a salto.",
+      "references": "native/jak-core/src/swim.rs; native/jak-jni/src/lib.rs; src/main/java/dev/jakmc/player/JakPlayers.java",
+      "acceptance": "Salir del agua y alcanzar una orilla normal con el impulso/animación de Jak, sin reentrada prematura en natación ni teletransporte."
+    },
+    {
+      "id": "F02",
+      "group": "Agua y colisiones",
+      "title": "Flut Flut: penetración de paredes",
+      "state": "Reportado + puente parcial",
+      "evidence": "La entidad tiene volumen Minecraft, pero montada recibe setPos desde la simulación de Jak. El volumen del pájaro y el del jinete deben concordar con el barrido nativo.",
+      "references": "src/main/java/dev/jakmc/entity/JakFlutFlut.java; src/main/java/dev/jakmc/entity/JakLeaper.java; src/main/java/dev/jakmc/player/JakPlayers.java:updateMount",
+      "acceptance": "Paredes, esquinas, techos y pasos estrechos detienen el conjunto por su volumen real."
+    },
+    {
+      "id": "F03",
+      "group": "Agua y colisiones",
+      "title": "Flut Flut: daño al rozar una pared",
+      "state": "Reportado",
+      "evidence": "La penetración causa daño y puede realimentar la reacción de montura. Se corrige el contacto; no se sustituye por invulnerabilidad.",
+      "references": "src/main/java/dev/jakmc/entity/JakLeaper.java:hurtServer; native/jak-core/src/flut.rs",
+      "acceptance": "Acercarse o caminar junto a una pared no resta vida ni activa una reacción de golpe falsa."
+    },
+    {
+      "id": "F04",
+      "group": "Agua y colisiones",
+      "title": "Leaper: mismo puente de colisión de montura",
+      "state": "Parcial",
+      "evidence": "Comparte la actualización de posición de la montura con Flut Flut; la corrección debe cubrir también al lagarto.",
+      "references": "src/main/java/dev/jakmc/player/JakPlayers.java:updateMount; src/main/java/dev/jakmc/entity/JakLeaper.java",
+      "acceptance": "Colisión conjunta correcta del lagarto y jinete al montar, conducir, saltar y bajar."
+    },
+    {
+      "id": "F05",
+      "group": "Agua y colisiones",
+      "title": "Zoomers: casco y contacto con bloques",
+      "state": "Reportado por familia",
+      "evidence": "Ajustar el volumen barrido, la rotación y el contacto del casco en sus seis variantes, conservando la simulación original.",
+      "references": "src/main/java/dev/jakmc/entity/JakVehicle.java; native/jak-jni/src/hover_host.rs",
+      "acceptance": "No atravesar esquinas, suelo ni techo; mantener el paso suave de desniveles y ambas alturas de circulación."
+    },
+    {
+      "id": "F06",
+      "group": "Agua y colisiones",
+      "title": "Hellcat y Helldog: colisión del casco completo",
+      "state": "Reportado por familia",
+      "evidence": "La cubierta transitable no certifica el volumen exterior de la nave al volar o girar.",
+      "references": "src/main/java/dev/jakmc/entity/JakHellcat.java; src/main/java/dev/jakmc/entity/HellcatDeck.java; native/jak-jni/src/hellcat_host.rs",
+      "acceptance": "Casco y extremos paran ante bloques en cualquier orientación; la cubierta conserva sus colisiones y daños por etapas."
+    },
+    {
+      "id": "F07",
+      "group": "Agua y colisiones",
+      "title": "Saltadunas y Arenatiburón: ruedas, casco y esquinas",
+      "state": "Reportado por familia",
+      "evidence": "Cubrir el vehículo completo, además de los contactos verticales de ruedas ya implementados.",
+      "references": "src/main/java/dev/jakmc/entity/JakVehicle.java; native/jak-jni/src/wheeled_host.rs",
+      "acceptance": "No introducir carrocería/ruedas en bloques; subir un bloque y desniveles diagonales sin choque falso ni frenazo, con aterrizaje y suspensión conservados."
+    },
+    {
+      "id": "F08",
+      "group": "Daño al mundo y explosiones",
+      "title": "Golpes cuerpo a cuerpo contra bloques",
+      "state": "Ausencia confirmada",
+      "evidence": "Los eventos strike sin actor solo consultan hitProjector; no hay una ruta general de daño al mundo.",
+      "references": "src/main/java/dev/jakmc/player/JakPlayers.java:applyEvent",
+      "acceptance": "Puñetazo, giro y ataques aplicables afectan al bloque alcanzado con dureza, permisos, efectos y drops coherentes."
+    },
+    {
+      "id": "F09",
+      "group": "Daño al mundo y explosiones",
+      "title": "Impactos de armas contra bloques",
+      "state": "Ausencia confirmada",
+      "evidence": "Los impactos sin actor solo tratan la propaganda. Completar también las rutas de armamento de vehículos que correspondan.",
+      "references": "src/main/java/dev/jakmc/player/JakPlayers.java:applyEvent; src/main/java/dev/jakmc/entity/JakHellcat.java:applyEvent; src/main/java/dev/jakmc/entity/WheeledWeapons.java",
+      "acceptance": "Impactos reales sobre hierba, decoración y bloques; comportamiento según arma y material, con autoría del servidor y sin roturas duplicadas."
+    },
+    {
+      "id": "F10",
+      "group": "Daño al mundo y explosiones",
+      "title": "Explosiones del Morph Gun que ya rompían terreno",
+      "state": "Regresión de port confirmada",
+      "evidence": "JNI sí emite explosion; Java no lo despacha. El host original aplica poderes TNT Red3=4, Dark1=3, Dark3=9 y Yellow3=1.5.",
+      "references": "native/jak-jni/src/lib.rs:event; src/main/java/dev/jakmc/player/JakPlayers.java:applyEvent; origen crates/render_anim/src/jak.rs:3519",
+      "acceptance": "Recuperar destrucción y cráter de Super Nova y las otras tres variantes, usando resistencia/drops del anfitrión y sin sumar dos veces el daño a entidades."
+    },
+    {
+      "id": "F11",
+      "group": "Daño al mundo y explosiones",
+      "title": "Hellcat/Helldog: romper vegetación y terreno",
+      "state": "Ausencia confirmada + petición actual",
+      "evidence": "blast y explode terminan en sonido en el adaptador Java; los impactos a actores siguen otra ruta.",
+      "references": "src/main/java/dev/jakmc/entity/JakHellcat.java:applyEvent",
+      "acceptance": "La explosión afecta al mundo, incluida hierba, con resistencia y drops Minecraft; el daño a criaturas se conserva una sola vez."
+    },
+    {
+      "id": "F12",
+      "group": "Daño al mundo y explosiones",
+      "title": "Hellcat/Helldog: onda expansiva",
+      "state": "Petición actual",
+      "evidence": "Completar la onda y su respuesta física/visual coordinadas; un sonido o daño directo a un actor no completan esta mecánica.",
+      "references": "native/jak-core/src/hellcat.rs; native/jak-jni/src/hellcat_host.rs; src/main/java/dev/jakmc/entity/JakHellcat.java; src/client/java/dev/jakmc/client/VehicleEffects.java",
+      "acceptance": "Onda visible y empuje con obstrucción por el entorno, sin daño a través de paredes ni doble impulso."
+    },
+    {
+      "id": "F13",
+      "group": "Daño al mundo y explosiones",
+      "title": "Hellcat/Helldog: reducir radio",
+      "state": "Petición actual",
+      "evidence": "Reducir de forma coherente el alcance de daño, empuje y presentación de la explosión.",
+      "references": "native/jak-core/src/hellcat.rs; native/jak-jni/src/hellcat_host.rs; src/client/java/dev/jakmc/client/VehicleEffects.java",
+      "acceptance": "Radio más pequeño que el actual, común a ambos modelos y consistente con lo que se ve; no cambiar solo el tamaño de un sprite."
+    },
+    {
+      "id": "F14",
+      "group": "Daño al mundo y explosiones",
+      "title": "Destrucción completa de Zoomers y coches",
+      "state": "Parcial confirmado",
+      "evidence": "JakVehicle.wreck expulsa pasajeros, reproduce un sonido y elimina la entidad. Falta el ciclo completo de destrucción del vehículo.",
+      "references": "src/main/java/dev/jakmc/entity/JakVehicle.java:wreck; origen crates/render_anim/src/zoomers.rs y wheeled_cars.rs",
+      "acceptance": "Conectar los estados, restos, efectos y consecuencias originales aplicables, manteniendo persistencia y una única eliminación."
+    },
+    {
+      "id": "F15",
+      "group": "Objetos y mando",
+      "title": "L2: interacción y uso Minecraft",
+      "state": "Cambio solicitado; asignación actual distinta",
+      "evidence": "L2 está usado como apuntado general; la interacción nativa usa Triangle y parte de R2.",
+      "references": "src/client/java/dev/jakmc/client/JakInput.java:poll; src/client/java/dev/jakmc/client/input/JakMenuControls.java",
+      "acceptance": "L2 abre/usa bloques y entidades y la función secundaria del objeto; conserva el apuntado del Morph Gun cuando no corresponde una interacción."
+    },
+    {
+      "id": "F16",
+      "group": "Objetos y mando",
+      "title": "R2: golpear, romper y acción primaria",
+      "state": "Cambio solicitado; puente parcial",
+      "evidence": "La clasificación actual deja R2 sin ataque para varias categorías y lo dirige a BOARD por defecto. La colocación depende de apuntar.",
+      "references": "src/client/java/dev/jakmc/client/JakInput.java:triggerFor y poll",
+      "acceptance": "Mano vacía, bloques, herramientas y armas responden a R2 con la acción apropiada; minado mantenido, golpes y uso no se pierden."
+    },
+    {
+      "id": "F17",
+      "group": "Objetos y mando",
+      "title": "Prioridades entre objeto, tabla, montura, poderes y conducción",
+      "state": "Parcial",
+      "evidence": "Evitar que una acción reserve el gatillo y anule las demás. El bloqueo busy actual incluye agua/montura.",
+      "references": "src/client/java/dev/jakmc/client/JakInput.java",
+      "acceptance": "Usar puertas/objetos donde corresponde sin desmontar o desplegar la tabla por error. En conducción se conservan R2 acelerador y L2 freno; L3/poderes y zoom R3 mantienen su función."
+    },
+    {
+      "id": "F18",
+      "group": "Objetos y mando",
+      "title": "Presentación del uso de objetos nativos en la mano de Jak",
+      "state": "Parcial",
+      "evidence": "La comprobación de Morph Gun en primera persona no cubre todas las animaciones de uso de Minecraft en el esqueleto Jak.",
+      "references": "src/client/java/dev/jakmc/client/model/JakRenderer.java; src/client/java/dev/jakmc/client/model/GltfItemRenderer.java",
+      "acceptance": "Comer, beber, usar herramientas y objetos cargables con acción real, posición/animación coherentes y sin fragmentos ni doble mano."
+    },
+    {
+      "id": "F19",
+      "group": "Movimiento, combate y actores",
+      "title": "Manos del agarre calibradas al cuerpo cinematográfico",
+      "state": "Pendiente documentado",
+      "evidence": "El muestreador de boca del arma está cerrado; el feedback separado de las manos para los bordes conserva su pendiente.",
+      "references": "native/jak-jni/src/body_joints.rs; native/jak-core/src/step.rs; docs/PORTING-DELTA.md",
+      "acceptance": "Las manos coinciden con el borde visible durante agarre, giro, subida y suelta, con distintas alturas y posturas."
+    },
+    {
+      "id": "F20",
+      "group": "Movimiento, combate y actores",
+      "title": "Grunt: caída articulada original",
+      "state": "Ausencia confirmada",
+      "evidence": "El original tiene solver de 47 articulaciones. El render Java aplica una inclinación global de caída a determinados clips, no ese solver.",
+      "references": "origen crates/render_anim/src/grunt_ragdoll.rs; src/client/java/dev/jakmc/client/model/JakEnemyRenderer.java",
+      "acceptance": "Portar articulaciones, restricciones, contactos, golpes adicionales, recuperación frontal/trasera y muerte manteniendo la caída."
+    },
+    {
+      "id": "F21",
+      "group": "Movimiento, combate y actores",
+      "title": "Reacciones completas a impactos por especie",
+      "state": "Parcial documentado",
+      "evidence": "Hay estados de herido, caída y recuperación; quedan diferencias concretas por actor y ataques especiales.",
+      "references": "src/main/java/dev/jakmc/entity/JakEnemy.java; src/main/java/dev/jakmc/entity/KrimsonGuard.java; docs/PORTING-DELTA.md",
+      "acceptance": "Cada golpe conecta una sola vez y muestra aturdimiento/recuperación de su especie; conservar animaciones y tiempos originales."
+    },
+    {
+      "id": "F22",
+      "group": "Movimiento, combate y actores",
+      "title": "Volúmenes de golpe y drops durante caídas físicas",
+      "state": "Parcial ligado a ragdoll",
+      "evidence": "El volumen y el punto de caída de la gema deben seguir al cuerpo/cabeza físicos; un actor inclinado visualmente no completa ese recorrido.",
+      "references": "src/main/java/dev/jakmc/entity/JakEnemy.java:dropCustomDeathLoot; src/main/java/dev/jakmc/content/GemPhysics.java; origen grunt_ragdoll.rs",
+      "acceptance": "Acierto y gema en la posición real del cuerpo caído, sin zona golpeable de pie ni doble drop."
+    },
+    {
+      "id": "F23",
+      "group": "Movimiento, combate y actores",
+      "title": "Multitudes y recuperación de rutas urbanas",
+      "state": "Parcial documentado",
+      "evidence": "Existen patrullas y navegación Minecraft. Falta cerrar el comportamiento del conjunto en calles/puertas/vecinos frente al original.",
+      "references": "src/main/java/dev/jakmc/entity/KrimsonGuard.java; src/main/java/dev/jakmc/worldgen/JakCityStructure.java; origen settlement_crowd.rs y creature_navigation.rs",
+      "acceptance": "Destinos estables, salida de atascos y tránsito entre vecinos; sin eses continuas ni alternancia de rutas imposibles."
+    },
+    {
+      "id": "F24",
+      "group": "Movimiento, combate y actores",
+      "title": "Nidos, bandas y reposición de enemigos",
+      "state": "Pendiente de integración",
+      "evidence": "El origen conserva nidos por hábitat, miembros de banda y tiempos de reposición; no basta el spawn nativo independiente.",
+      "references": "origen crates/render_anim/src/jak_enemies.rs; src/main/java/dev/jakmc/entity/JakEnemy.java; docs/PORTING-DELTA.md",
+      "acceptance": "Recuperar las familias y reposiciones correspondientes sin multiplicar enemigos en interiores ni invadir otras dimensiones."
+    },
+    {
+      "id": "F25",
+      "group": "Presentación y efectos",
+      "title": "Primera persona de poderes/cuerpo fuera del Morph Gun",
+      "state": "Pendiente documentado",
+      "evidence": "Los doce Morph Guns ya tienen su vista original; el resto conserva una entrada distinta en el inventario.",
+      "references": "src/client/java/dev/jakmc/client/model/JakFirstPerson.java; src/client/java/dev/jakmc/client/model/JakRenderer.java",
+      "acceptance": "Poderes, escudo, alas y acciones aplicables con manos/cuerpo/efectos correctos en esa vista."
+    },
+    {
+      "id": "F26",
+      "group": "Presentación y efectos",
+      "title": "Distorsión y composición de efectos originales",
+      "state": "Pendiente documentado",
+      "evidence": "Las bibliotecas originales de partículas están conectadas; quedan familias/pases como la distorsión de la imagen del anfitrión Rust.",
+      "references": "origen crates/render_gpu/src/drawsurf/jak_distort.rs; src/client/java/dev/jakmc/client/JakEffects.java; docs/PORTING-DELTA.md",
+      "acceptance": "Integrar cada pase pendiente respetando orientación, alfa, profundidad, anclajes y coste; sin sustituirlo por un brillo genérico."
+    },
+    {
+      "id": "F27",
+      "group": "Presentación y efectos",
+      "title": "Voces y diálogos de habitantes",
+      "state": "Pendiente documentado",
+      "evidence": "Los sonidos de pasos, golpes, armas y vehículos no completan las voces/diálogos de los actores.",
+      "references": "docs/CURRENT-PORT-HANDOFF.md: native citizens; origen audio/src/jak.rs y jak2_villagers.rs",
+      "acceptance": "Conectar las voces disponibles y sus disparadores, sin voces duplicadas ni sonidos inventados."
+    },
+    {
+      "id": "F28",
+      "group": "Presentación y efectos",
+      "title": "Vibración original del mando",
+      "state": "Ausencia confirmada",
+      "evidence": "El origen consume Event::Hurt.buzz mediante buzz_hurts. No aparece un consumidor de rumble/buzz en el adaptador SDL/JNI actual.",
+      "references": "origen crates/render_anim/src/jak.rs:buzz_hurts; native/jak-jni/src/lib.rs:event; src/client/java/dev/jakmc/client/input/SdlGamepad.java",
+      "acceptance": "Recuperar los pulsos y tiempos del origen mediante SDL, vinculados al mando que controla al jugador."
+    },
+    {
+      "id": "F29",
+      "group": "Ciudades, biomas y decoración",
+      "title": "Catálogo de objetos todavía sin adaptación activa",
+      "state": "Parcial medido",
+      "evidence": "114 definiciones de objeto; 31 IDs activos y 83 candidatos sin ruta activa de decoración/ensamblaje. Ver anexo.",
+      "references": "src/main/java/dev/jakmc/content/JakProps.java; src/main/java/dev/jakmc/content/JakAssemblies.java; tools/import_content.py; docs/parity/catalogo-no-activo.json",
+      "acceptance": "Adaptar los detalles útiles a módulos sólidos y colocables. No reintroducir anillos/pasarelas descartados ni bloques casi vacíos para subir el contador."
+    },
+    {
+      "id": "F30",
+      "group": "Ciudades, biomas y decoración",
+      "title": "Variedad procedural de barrios y edificios",
+      "state": "Parcial confirmado",
+      "evidence": "CityBlueprint carga un plan por sitio; orientación, terreno y contenido variable no sustituyen las familias/layouts del generador original.",
+      "references": "src/main/java/dev/jakmc/worldgen/JakCityStructure.java; src/main/java/dev/jakmc/worldgen/CityBlueprint.java; tools/content-exporter/src/main.rs",
+      "acceptance": "Generar variedad con el terreno y semilla conservando torre rodeada de ciudad, bar, garajes, interiores y circulación."
+    },
+    {
+      "id": "F31",
+      "group": "Ciudades, biomas y decoración",
+      "title": "Biomas/regiones y vegetación de Jak",
+      "state": "Parcial documentado",
+      "evidence": "Hay ciudades y sitios nativos y materiales regionales. Falta el cotejo/adaptación completa de Wasteland, nieve, pantano y su vegetación/encuentros.",
+      "references": "docs/PORTING-DELTA.md; src/main/resources/data/jakmc/tags/worldgen/biome; origen jak_lands.rs, wasteland.rs, snowy.rs y swamp.rs",
+      "acceptance": "Mantener los rasgos originales en mundos normales, transiciones coherentes, Spargus solo en desiertos y población automática solo en Overworld."
+    },
+    {
+      "id": "F32",
+      "group": "Ciudades, biomas y decoración",
+      "title": "Iluminación y materiales híbridos Jak/Minecraft",
+      "state": "Parcial documentado",
+      "evidence": "Existen luz Minecraft y adaptación de materiales. Quedan diferencias de brillo, sombras, iluminación original y presentación uniforme entre actores y mundo.",
+      "references": "docs/PORTING-DELTA.md; src/client/java/dev/jakmc/client/model/GltfModel.java; src/client/java/dev/jakmc/client/JakAtmosphere.java",
+      "acceptance": "Conservar oscuridad/spawns e iluminación decorativa real, sin niebla gris artificial sobre modelos ni transparencias de material incorrectas."
+    },
+    {
+      "id": "F33",
+      "group": "Rendimiento",
+      "title": "Objetivo de 150 FPS y estabilidad de exploración",
+      "state": "Objetivo abierto",
+      "evidence": "El recorrido aceptado de siete biomas no acredita 150 FPS sostenidos. Sus percentiles y pausas están conservados en el handoff.",
+      "references": "docs/CURRENT-PORT-HANDOFF.md: hellcat_crossing-20261104-170512",
+      "acceptance": "Optimizar sin recortar detalle/población/distancia ni ritmos de simulación; publicar p95/p99/picos y trayectos prolongados."
+    },
+    {
+      "id": "F34",
+      "group": "Lejanos — al final de la cola",
+      "title": "Terreno lejano: continuidad de material y color",
+      "state": "Port pendiente",
+      "evidence": "El LOD del anfitrión Rust y su corrección roca/tierra no tienen una integración equivalente en Java.",
+      "references": "origen crates/minecraft_terrain/src/far_terrain.rs; docs/PORTING-DELTA.md",
+      "acceptance": "Transición cercana/lejana con mismo material, altura y tono; sin cambio brusco de roca a tierra."
+    },
+    {
+      "id": "F35",
+      "group": "Lejanos — al final de la cola",
+      "title": "Torre visible como modelo lejano",
+      "state": "Port pendiente",
+      "evidence": "La torre física de la ciudad no incluye por sí misma la representación lejana solicitada.",
+      "references": "origen crates/minecraft_terrain/src/far_tower.rs; docs/PORTING-DELTA.md",
+      "acceptance": "Silueta, cabeza y cuernos reconocibles a distancia; sustitución y oclusión correctas al acercarse."
+    },
+    {
+      "id": "F36",
+      "group": "Lejanos — al final de la cola",
+      "title": "Mejora de calidad de los lowpoly",
+      "state": "Petición previa abierta",
+      "evidence": "Conservar el orden del usuario: después del resto, mejorar los lejanos, no restaurar solo una versión mínima.",
+      "references": "docs/PORTING-DELTA.md; origen far_terrain.rs y far_tower.rs",
+      "acceptance": "Más coherencia de silueta, colores y materiales con presupuesto de geometría/streaming medido."
+    }
+  ],
+  "checks": [
+    {
+      "id": "V01",
+      "title": "Magnitudes físicas frente a escala visual",
+      "acceptance": "Cotejar BLOCK=6400, jak.size=0.64 y dimensiones/canales del cuerpo; el origen asigna visual_scale. Relacionado con salto, agua y monturas, todavía sin atribuirle por sí solo los fallos reportados."
+    },
+    {
+      "id": "V02",
+      "title": "Cadencia real de combos y autoapuntado",
+      "acceptance": "Comparar entradas y respuesta con Jak, especialmente el tercer golpe oscuro, sobre objetivos y alturas distintos. Hay correcciones anteriores; no se etiquetan otra vez como ausentes."
+    },
+    {
+      "id": "V03",
+      "title": "Bordes, escaleras y pasos diagonales",
+      "acceptance": "Conservar los casos aprobados y cerrar alturas, esquinas, medio bloque y dirección diagonal del jugador, tabla y monturas."
+    },
+    {
+      "id": "V04",
+      "title": "Tabla: secuencias sobre construcción del jugador",
+      "acceptance": "Encadenar rail, salto, truco, rampa y aterrizaje, con geometría que cruza celdas. No sustituye el circuito ya probado."
+    },
+    {
+      "id": "V05",
+      "title": "Reloj compartido en todas las variantes",
+      "acceptance": "Hay correcciones de interpolación de cámara/cuerpo/mano/vehículo; falta contrastar cada variante y el movimiento rápido después de nuevos cambios de colisión."
+    },
+    {
+      "id": "V06",
+      "title": "Cámara y oclusión",
+      "acceptance": "Contrastar paredes, suelos y espacios cerrados sin cortes internos, corona de caras, saltos bruscos ni efecto sobre objetos de mano."
+    },
+    {
+      "id": "V07",
+      "title": "Monjes y patrullas montadas",
+      "acceptance": "Ya se generan monjes montados y se transfieren al robar la montura; comprobar el ciclo natural y sus animaciones/reacciones, no reimplementarlo como si faltara."
+    },
+    {
+      "id": "V08",
+      "title": "Vivienda, profesión y comercio naturales",
+      "acceptance": "Hay aldeanos/POI/comercios/camas y reposición nativa; cerrar el ciclo natural y la capacidad de viviendas en ciudades de distintas semillas."
+    },
+    {
+      "id": "V09",
+      "title": "Piedras y eco en grupos y posiciones difíciles",
+      "acceptance": "Las correcciones previas existen. Contrastar muchas unidades, mano, paredes, caída, atracción y drops de todas las especies, incluyendo la caída articulada pendiente."
+    },
+    {
+      "id": "V10",
+      "title": "Efectos por familia, agua y clima",
+      "acceptance": "Contrastar gotas/ripples horizontales, ataque de tabla, capas alfa y niebla/tormentas entre biomas; conservar las familias ya verificadas y reparar las diferencias concretas."
+    },
+    {
+      "id": "V11",
+      "title": "Guardado y cambios de dimensión completos",
+      "acceptance": "Se usan UUID/guardado nativo. Completar combinaciones de vehículos, monturas, objetos sueltos, inventario y reinicio real; evitar equiparar una caché de sesión con persistencia en disco."
+    }
+  ],
+  "inherited": [
+    {
+      "id": "H01",
+      "title": "Eco amarillo de Jak 1 como proyectil",
+      "evidence": "La función existe sin consumidor también en el mashup. Es trabajo heredado pendiente, no una regresión nueva causada por el instalador."
+    },
+    {
+      "id": "H02",
+      "title": "Gestión de misión del circuito, anillos, fuego y compuertas originales",
+      "evidence": "El cierre original ya la dejaba incompleta. El circuito físico, sus rampas/raíles/altar y el portón Krimson son elementos distintos."
+    },
+    {
+      "id": "H03",
+      "title": "Atracción/recogida original completa de gemas",
+      "evidence": "El origen ya documentaba límites de atracción; la física adaptada y la recogida existentes no cierran todos los comportamientos del juego original."
+    }
+  ]
+}

@@ -1,0 +1,426 @@
+{
+  "description": "Metadatos del catálogo de adaptación, sin mallas, texturas ni recursos de los juegos. Los candidatos no son automáticamente regresiones ni deben restaurarse literalmente.",
+  "counts": {
+    "blocks": 1297,
+    "unready_blocks": 130,
+    "objects_registered": 31,
+    "unexposed_objects": 83
+  },
+  "candidates": [
+    {
+      "id": 0,
+      "path": "objeto_spargus_escalones_1",
+      "group": "escalones"
+    },
+    {
+      "id": 1,
+      "path": "objeto_spargus_roca_1",
+      "group": "roca"
+    },
+    {
+      "id": 2,
+      "path": "objeto_spargus_roca_2",
+      "group": "roca"
+    },
+    {
+      "id": 3,
+      "path": "objeto_spargus_roca_3",
+      "group": "roca"
+    },
+    {
+      "id": 4,
+      "path": "objeto_spargus_planta_1",
+      "group": "planta"
+    },
+    {
+      "id": 5,
+      "path": "objeto_spargus_planta_2",
+      "group": "planta"
+    },
+    {
+      "id": 6,
+      "path": "objeto_spargus_planta_3",
+      "group": "planta"
+    },
+    {
+      "id": 7,
+      "path": "objeto_spargus_palmera_1",
+      "group": "palmera"
+    },
+    {
+      "id": 8,
+      "path": "objeto_spargus_palmera_2",
+      "group": "palmera"
+    },
+    {
+      "id": 9,
+      "path": "objeto_spargus_palmera_3",
+      "group": "palmera"
+    },
+    {
+      "id": 10,
+      "path": "objeto_spargus_barril_1",
+      "group": "barril"
+    },
+    {
+      "id": 11,
+      "path": "objeto_haven_planta_1",
+      "group": "planta"
+    },
+    {
+      "id": 12,
+      "path": "objeto_haven_planta_2",
+      "group": "planta"
+    },
+    {
+      "id": 13,
+      "path": "objeto_haven_planta_3",
+      "group": "planta"
+    },
+    {
+      "id": 14,
+      "path": "objeto_villarrefugio_banco_1",
+      "group": "banco"
+    },
+    {
+      "id": 15,
+      "path": "objeto_villarrefugio_banco_2",
+      "group": "banco"
+    },
+    {
+      "id": 16,
+      "path": "objeto_villarrefugio_banco_3",
+      "group": "banco"
+    },
+    {
+      "id": 17,
+      "path": "objeto_villarrefugio_barril_1",
+      "group": "barril"
+    },
+    {
+      "id": 18,
+      "path": "objeto_villarrefugio_barril_2",
+      "group": "barril"
+    },
+    {
+      "id": 19,
+      "path": "objeto_villarrefugio_barril_3",
+      "group": "barril"
+    },
+    {
+      "id": 20,
+      "path": "objeto_villarrefugio_planta_1",
+      "group": "planta"
+    },
+    {
+      "id": 21,
+      "path": "objeto_villarrefugio_planta_2",
+      "group": "planta"
+    },
+    {
+      "id": 22,
+      "path": "objeto_villarrefugio_planta_3",
+      "group": "planta"
+    },
+    {
+      "id": 23,
+      "path": "objeto_villarrefugio_farol_1",
+      "group": "farol"
+    },
+    {
+      "id": 24,
+      "path": "objeto_montana_barril_1",
+      "group": "barril"
+    },
+    {
+      "id": 25,
+      "path": "objeto_montana_barril_2",
+      "group": "barril"
+    },
+    {
+      "id": 26,
+      "path": "objeto_montana_barril_3",
+      "group": "barril"
+    },
+    {
+      "id": 27,
+      "path": "objeto_montana_pino_1",
+      "group": "pino"
+    },
+    {
+      "id": 28,
+      "path": "objeto_montana_pino_2",
+      "group": "pino"
+    },
+    {
+      "id": 29,
+      "path": "objeto_montana_pino_3",
+      "group": "pino"
+    },
+    {
+      "id": 30,
+      "path": "objeto_pantano_roca_1",
+      "group": "roca"
+    },
+    {
+      "id": 31,
+      "path": "objeto_pantano_roca_2",
+      "group": "roca"
+    },
+    {
+      "id": 32,
+      "path": "objeto_pantano_roca_3",
+      "group": "roca"
+    },
+    {
+      "id": 33,
+      "path": "objeto_pantano_barril_1",
+      "group": "barril"
+    },
+    {
+      "id": 34,
+      "path": "objeto_pantano_barril_2",
+      "group": "barril"
+    },
+    {
+      "id": 35,
+      "path": "objeto_pantano_barril_3",
+      "group": "barril"
+    },
+    {
+      "id": 36,
+      "path": "objeto_pantano_planta_1",
+      "group": "planta"
+    },
+    {
+      "id": 37,
+      "path": "objeto_pantano_planta_2",
+      "group": "planta"
+    },
+    {
+      "id": 38,
+      "path": "objeto_pantano_planta_3",
+      "group": "planta"
+    },
+    {
+      "id": 39,
+      "path": "objeto_spargus_escalera_2",
+      "group": "escalera"
+    },
+    {
+      "id": 40,
+      "path": "objeto_spargus_marco_1",
+      "group": "marco"
+    },
+    {
+      "id": 41,
+      "path": "objeto_spargus_marco_2",
+      "group": "marco"
+    },
+    {
+      "id": 42,
+      "path": "objeto_spargus_marco_3",
+      "group": "marco"
+    },
+    {
+      "id": 43,
+      "path": "objeto_spargus_pared_2",
+      "group": "pared"
+    },
+    {
+      "id": 44,
+      "path": "objeto_spargus_pared_3",
+      "group": "pared"
+    },
+    {
+      "id": 45,
+      "path": "objeto_spargus_tejado_1",
+      "group": "tejado"
+    },
+    {
+      "id": 46,
+      "path": "objeto_spargus_tejado_2",
+      "group": "tejado"
+    },
+    {
+      "id": 47,
+      "path": "objeto_spargus_tejado_3",
+      "group": "tejado"
+    },
+    {
+      "id": 48,
+      "path": "objeto_haven_suelo_1",
+      "group": "suelo"
+    },
+    {
+      "id": 49,
+      "path": "objeto_haven_suelo_2",
+      "group": "suelo"
+    },
+    {
+      "id": 50,
+      "path": "objeto_haven_suelo_3",
+      "group": "suelo"
+    },
+    {
+      "id": 51,
+      "path": "objeto_haven_pared_1",
+      "group": "pared"
+    },
+    {
+      "id": 52,
+      "path": "objeto_haven_pared_2",
+      "group": "pared"
+    },
+    {
+      "id": 53,
+      "path": "objeto_haven_marco_1",
+      "group": "marco"
+    },
+    {
+      "id": 54,
+      "path": "objeto_haven_marco_2",
+      "group": "marco"
+    },
+    {
+      "id": 55,
+      "path": "objeto_haven_marco_3",
+      "group": "marco"
+    },
+    {
+      "id": 56,
+      "path": "objeto_haven_tejado_1",
+      "group": "tejado"
+    },
+    {
+      "id": 57,
+      "path": "objeto_haven_tejado_2",
+      "group": "tejado"
+    },
+    {
+      "id": 58,
+      "path": "objeto_villarrefugio_suelo_1",
+      "group": "suelo"
+    },
+    {
+      "id": 59,
+      "path": "objeto_villarrefugio_suelo_2",
+      "group": "suelo"
+    },
+    {
+      "id": 60,
+      "path": "objeto_villarrefugio_suelo_3",
+      "group": "suelo"
+    },
+    {
+      "id": 61,
+      "path": "objeto_villarrefugio_pared_1",
+      "group": "pared"
+    },
+    {
+      "id": 62,
+      "path": "objeto_villarrefugio_pared_2",
+      "group": "pared"
+    },
+    {
+      "id": 63,
+      "path": "objeto_villarrefugio_pared_3",
+      "group": "pared"
+    },
+    {
+      "id": 64,
+      "path": "objeto_villarrefugio_tejado_1",
+      "group": "tejado"
+    },
+    {
+      "id": 65,
+      "path": "objeto_villarrefugio_tejado_2",
+      "group": "tejado"
+    },
+    {
+      "id": 66,
+      "path": "objeto_villarrefugio_tejado_3",
+      "group": "tejado"
+    },
+    {
+      "id": 67,
+      "path": "objeto_montana_pared_1",
+      "group": "pared"
+    },
+    {
+      "id": 68,
+      "path": "objeto_montana_pared_2",
+      "group": "pared"
+    },
+    {
+      "id": 69,
+      "path": "objeto_montana_pared_3",
+      "group": "pared"
+    },
+    {
+      "id": 70,
+      "path": "objeto_montana_suelo_1",
+      "group": "suelo"
+    },
+    {
+      "id": 71,
+      "path": "objeto_montana_suelo_2",
+      "group": "suelo"
+    },
+    {
+      "id": 72,
+      "path": "objeto_montana_suelo_3",
+      "group": "suelo"
+    },
+    {
+      "id": 73,
+      "path": "objeto_montana_tejado_1",
+      "group": "tejado"
+    },
+    {
+      "id": 74,
+      "path": "objeto_montana_tejado_2",
+      "group": "tejado"
+    },
+    {
+      "id": 75,
+      "path": "objeto_pantano_suelo_1",
+      "group": "suelo"
+    },
+    {
+      "id": 76,
+      "path": "objeto_pantano_suelo_2",
+      "group": "suelo"
+    },
+    {
+      "id": 77,
+      "path": "objeto_pantano_suelo_3",
+      "group": "suelo"
+    },
+    {
+      "id": 78,
+      "path": "objeto_haven_bidon_1",
+      "group": "barril"
+    },
+    {
+      "id": 79,
+      "path": "objeto_haven_bidon_2",
+      "group": "barril"
+    },
+    {
+      "id": 80,
+      "path": "objeto_haven_puesto",
+      "group": "puesto"
+    },
+    {
+      "id": 81,
+      "path": "objeto_haven_propaganda",
+      "group": "poste"
+    },
+    {
+      "id": 85,
+      "path": "objeto_haven_propaganda_ajustada",
+      "group": "poste"
+    }
+  ]
+}

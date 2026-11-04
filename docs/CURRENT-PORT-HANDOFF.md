@@ -2,12 +2,14 @@
 
 Updated 2026-11-04. Continue the full Jak port from the read-only original Rust mashup. Do not repeat recon or the accepted enemy/weapon takes without a relevant change. No MW2 content or Skate 3; Jak's JET-Board remains in scope. The user wants complete mechanics, effects, sound and normal Minecraft interaction, not only models.
 
+Current actionable backlog: [FIXES-PENDIENTES.md](FIXES-PENDIENTES.md), 36 open work items, 11 targeted comparisons and 3 inherited incomplete systems. The newest user reports reopen water exit, mount/vehicle collisions, world damage and native item controls. This inventory changes no gameplay.
+
 ## Projects and ownership
 
 - Write/build/run only `C:/Users/vieir/Desktop/Repo/jak-minecraft-java` (own Git). Original Rust reference: `C:/Users/vieir/Desktop/Repo/2010-rust-rewrite-mashup-trabajo`, read-only. LSC4 and GTA SA are read-only workflow references; never build or instrument there.
 - Minecraft 26.3, Fabric Loader 0.20.1, API 0.165.0+26.3, Loom 1.19.3, JDK 25, Gradle 9.8. Exact MC source jars live under the project's `.gradle/loom-cache/minecraftMaven`. This MC renderer uses SDL/RenderPearl; avoid stale GLFW/Blaze3D API assumptions.
-- All launches use `run/`, with the owner's OpenGOAL exports under Documents/Jak OpenGOAL. No personal `.minecraft` profile/saves touched. Generated resources, retail audio/GLBs/PNGs, DLLs, saves and evidence are ignored and must stay out of Git/public distribution.
-- Installer/publishing deferred by user. Own adapters/native source Apache 2.0, retained Fabric template license in LICENSE-FABRIC-TEMPLATE. No push/publish performed.
+- Development launches use isolated saves, with the owner's OpenGOAL exports under Documents/Jak OpenGOAL. The authorized frozen installer has also updated `.minecraft/instances/jakmod`; existing saves were preserved. Verification takes use private copies rather than personal worlds. Generated resources, retail audio/GLBs/PNGs, DLLs, saves and evidence are ignored and must stay out of Git/public distribution.
+- Private repository and bilingual installer were subsequently authorized and released: `AdriiSuizo/jak-minecraft-java`, tag `v0.1.0-dev`, profile `26.3.jakmod`. Retail assets are generated locally, excluded from Git/release. Public publication is not authorized. Own adapters/native source Apache 2.0, retained Fabric template license in LICENSE-FABRIC-TEMPLATE.
 
 ## Working checkpoint
 

@@ -17,6 +17,6 @@ All Jak work is in scope. The order below is an implementation dependency order,
 | Equipment and UI | actual Minecraft | board own saved slot, working creative search and normal vanilla screens |
 | Visuals and compatibility | Java rendering plus OpenGOAL | stable occlusion, no clone fog/LOD overrides; native save/dimensions |
 
-Installer and public distribution are deferred by explicit user instruction. Assets are generated locally from owned game exports and not committed. Build, unit checks and visible real-game behavior have separate acceptance entries; none substitutes for the other.
+The user subsequently authorized the private repository and bilingual Windows installer. The private development release registers 26.3.jakmod and generates assets locally from owned OpenGOAL installations; game assets are not committed or distributed. Public publication has not been requested. Build, unit checks and visible real-game behavior have separate acceptance entries; none substitutes for the other.
 
-Current implementation and exact remaining integration: [CURRENT-PORT-HANDOFF.md](CURRENT-PORT-HANDOFF.md). The original source references above remain oracles, not acceptance of completed Java features.
+Current actionable backlog: [FIXES-PENDIENTES.md](FIXES-PENDIENTES.md), with separate confirmed omissions, user reports and verification cases. Current implementation and remaining integration: [CURRENT-PORT-HANDOFF.md](CURRENT-PORT-HANDOFF.md). The original source references above remain oracles, not acceptance of completed Java features.

@@ -2,6 +2,8 @@
 
 Revisión del 4 de noviembre de 2026. Este inventario sigue el código del mashup y la evidencia de ejecución del port. Una función puede conservar su implementación en el núcleo Rust y seguir necesitando el puente con Minecraft para funcionar durante una partida.
 
+Lista de trabajo consolidada: [FIXES-PENDIENTES.md](FIXES-PENDIENTES.md). Desglosa los fallos actuales, las omisiones del puente Java y los contrastes todavía abiertos; no todos los puntos generales de este inventario son ausencias confirmadas.
+
 ## Punto de partida y repositorios
 
 - El punto de partida común es el commit `ab43b8a9e923bdc4ad7effb874f6efec155577f1`, con el mando de Skate integrado en el mashup original. La copia `2010-rust-rewrite-mashup` está limpia en `f608f85` y tiene 76 commits posteriores al ancestro. La rama de trabajo `2010-rust-rewrite-mashup-trabajo` está en `8544800` y tiene 10, con 64 rutas modificadas en esos commits.
