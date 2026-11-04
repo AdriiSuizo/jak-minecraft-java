@@ -447,6 +447,12 @@ impl Rig {
     }
 }
 
+/// The first-person rig pivots at Minecraft's eye and lifts the source forearms
+/// a quarter cell up and 0.6 cells forward into view. Camera pitch/yaw remain independent of body steering.
+pub fn view_muzzle(local:Vec3,pitch:f32)->Vec3 {
+    let eye=Vec3::Y*(1.62*crate::BLOCK);
+    eye+Quat::from_rotation_x(pitch)*(local-eye+Vec3::new(0.,0.25,0.6)*crate::BLOCK)
+}
 pub struct PosedGun {
     body: Rig,
     gun: Rig,

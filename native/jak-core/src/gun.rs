@@ -58,6 +58,10 @@ pub struct Gun {
     pub aim_point: Option<Vec3>,
     /// Posed muzzle relative to Jak, supplied by the model host.
     pub muzzle_local: Option<Vec3>,
+    /// Optional view-rig basis. First-person aim must not turn with locomotion.
+    pub muzzle_basis: Option<glam::Quat>,
+    /// Optional host eye offset for preventing a long view weapon crossing walls.
+    pub muzzle_guard: Option<Vec3>,
     pub fire_point: Vec3,
     pub fire_dir: Vec3,
     /// The mode in hand, and when each mode last fired (the dark guns'
@@ -94,6 +98,8 @@ impl Default for Gun {
             aim_dir: None,
             aim_point: None,
             muzzle_local: None,
+            muzzle_basis: None,
+            muzzle_guard: None,
             fire_point: Vec3::ZERO,
             fire_dir: Vec3::Z,
             kind: GunKind::Yellow1,
@@ -135,12 +141,23 @@ impl Gun {
     }
 
     /// Muzzle and aim from Jak's pose.
-    fn compute_pos(&mut self, c: &Control) {
+    fn compute_pos(&mut self, c: &Control,world:Option<&mut dyn crate::collide::CollideWorld>) {
         let forward = flatten(z_axis(c.quat), crate::math::y_axis(c.quat)).normalize_or(Vec3::Z);
         self.fire_point = self.muzzle_local.filter(|p| p.is_finite()).map_or_else(
             || c.trans + Vec3::new(0.0, MUZZLE_UP, 0.0) + forward * MUZZLE_AHEAD,
-            |local| c.trans + c.quat * local,
+            |local| c.trans + self.muzzle_basis.filter(|q|q.is_finite()).unwrap_or(c.quat) * local,
         );
+        if let (Some(eye),Some(world))=(self.muzzle_guard.filter(|v|v.is_finite()),world) {
+            let start=c.trans+eye;let motion=self.fire_point-start;
+            if motion.length_squared()>1. {
+                let radius=crate::math::meters(0.1875);
+                let mut cache=crate::collide::CollideCache::default();
+                cache.fill_line_sphere(world,start,motion,radius);
+                if let Some(hit)=cache.resolve_moving_sphere(start,radius,motion,-1.,true){
+                    self.fire_point=start+motion*hit.u.max(0.);
+                }
+            }
+        }
         let range = self.kind.track_range();
         if let Some(dir) = self.aim_point.and_then(|p| (p - self.fire_point).try_normalize())
             .or_else(|| self.aim_dir.and_then(Vec3::try_normalize))
@@ -206,6 +223,7 @@ impl Gun {
         c: &Control,
         board_latch: bool,
         charging: bool,
+        world:&mut dyn crate::collide::CollideWorld,
     ) -> Option<GunKind> {
         let elapsed = |since: i64, d: i64| now - since >= d;
         if !self.out {
@@ -228,7 +246,7 @@ impl Gun {
             self.end_mode();
             return None;
         }
-        self.compute_pos(c);
+        self.compute_pos(c,Some(world));
         self.active = elapsed(self.get_on_time, seconds(0.1));
         if self.active {
             self.active_time = now;
@@ -342,6 +360,7 @@ impl Jak {
             &self.control,
             self.board.latch,
             charging,
+            world,
         );
         if !self.gun.out {
             self.weapons.cancel_charges();
@@ -357,4 +376,36 @@ impl Jak {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod view_muzzle_tests {
+    use super::*;
+    #[test]
+    fn view_socket_aim_does_not_follow_body_steering() {
+        let mut j=Jak::new(Vec3::new(13.,17.,29.),0.);
+        j.control.quat=glam::Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        j.gun.muzzle_local=Some(Vec3::new(-2.,4.,7.));
+        j.gun.muzzle_basis=Some(glam::Quat::IDENTITY);
+        j.gun.compute_pos(&j.control,None);
+        assert!(j.gun.fire_point.distance(j.control.trans+Vec3::new(-2.,4.,7.))<0.0001);
+        j.gun.muzzle_basis=None;
+        j.gun.compute_pos(&j.control,None);
+        assert!(j.gun.fire_point.distance(j.control.trans+j.control.quat*Vec3::new(-2.,4.,7.))<0.0001);
+    }
+    #[test]
+    fn view_muzzle_cannot_spawn_beyond_a_near_wall() {
+        use crate::collide::{CollideWorld,Tri,Pat};
+        struct Wall;
+        impl CollideWorld for Wall {fn fill(&mut self,_:Vec3,_:Vec3,out:&mut Vec<Tri>){
+            out.extend([Tri{v:[Vec3::new(-10000.,-10000.,1000.),Vec3::new(-10000.,10000.,1000.),Vec3::new(10000.,-10000.,1000.)],pat:Pat::default()},
+                Tri{v:[Vec3::new(10000.,-10000.,1000.),Vec3::new(-10000.,10000.,1000.),Vec3::new(10000.,10000.,1000.)],pat:Pat::default()}]);
+        }}
+        let mut j=Jak::new(Vec3::ZERO,0.);j.gun.muzzle_local=Some(Vec3::new(0.,100.,3000.));
+        j.gun.muzzle_guard=Some(Vec3::Y*100.);j.gun.aim_point=Some(Vec3::new(500.,100.,10000.));
+        j.gun.compute_pos(&j.control,Some(&mut Wall));
+        assert!(j.gun.fire_point.z>0.&&j.gun.fire_point.z<1000.);
+        assert!(j.gun.fire_dir.distance((j.gun.aim_point.unwrap()-j.gun.fire_point).normalize())<0.00001);
+    }
+
 }

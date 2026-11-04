@@ -111,11 +111,23 @@ public final class JakRenderer {
 
     public static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
                                  net.minecraft.client.renderer.state.level.CameraRenderState camera){
+        return submit(state,stack,collector,camera,false);
+    }
+    public static boolean submitFirstPerson(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
+                                 net.minecraft.client.renderer.state.level.CameraRenderState camera){
+        return submit(state,stack,collector,camera,true);
+    }
+    public static long firstPersonSerial,firstPersonFireSerial;
+    public static int firstPersonArmTriangles;
+    public static float firstPersonRetraction=1;
+    public static net.minecraft.world.phys.Vec3 firstPersonMuzzle;
+    private static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
+                                 net.minecraft.client.renderer.state.level.CameraRenderState camera,boolean firstPerson){
         var pose=JakPoses.rendered(state.id);
         var client=Minecraft.getInstance();if(client.level==null)return false;
         var actor=client.level.getEntity(state.id);
         if(actor==null||!actor.getAttachedOrCreate(JakData.ENABLED))return false;
-        if(actor.getVehicle() instanceof dev.jakmc.entity.JakVehicle car&&car.frame()!=null){
+        if(!firstPerson&&actor.getVehicle() instanceof dev.jakmc.entity.JakVehicle car&&car.frame()!=null){
             submitCarRider(actor,state,stack,collector,camera.pos,car,client.getDeltaTracker().getGameTimeDeltaPartialTick(false));
             return true;
         }
@@ -135,9 +147,14 @@ public final class JakRenderer {
         stack.pushPose();
         float elapsed=JakPoses.elapsed(pose);
         var boardFrame=pose.boardAt(elapsed);
-        float shownYaw=portrait?state.bodyRot:flight!=null?pose.yaw():pose.yawAt(elapsed);
+        float shownYaw=firstPerson?client.gameRenderer.mainCamera().yRot():portrait?state.bodyRot:flight!=null?pose.yaw():pose.yawAt(elapsed);
         if(portrait)previewBodyYaw=shownYaw;
-        if(boardFrame==null)stack.rotateDegrees(Axis.YP,-shownYaw);
+        if(firstPerson){
+            stack.rotateDegrees(Axis.YP,-shownYaw);
+            stack.translate(0,1.62,0);
+            stack.rotateDegrees(Axis.XP,client.gameRenderer.mainCamera().xRot());
+            stack.translate(0,-1.62+.25,.6);
+        }else if(boardFrame==null)stack.rotateDegrees(Axis.YP,-shownYaw);
         else {
             stack.mulPose(portrait?new Matrix4f().rotationY((float)Math.toRadians(-shownYaw)):new Matrix4f().rotation(boardFrame.rotation()));
             stack.translate(0,boardFrame.lift(),0);
@@ -152,7 +169,7 @@ public final class JakRenderer {
             }
             loadPilot();
         }
-        if(boardFrame==null&&!mounted&&flight==null){
+        if(!firstPerson&&boardFrame==null&&!mounted&&flight==null){
             var root=pose.rootAt(elapsed);
             // 0.9 original metres, measured above the feet before rotating a dive.
             float pivot=.576f;
@@ -223,11 +240,37 @@ public final class JakRenderer {
         boolean aiming=pose.raw().has("aim")&&pose.raw().get("aim").getAsBoolean();
         float lookYaw=pose.raw().has("lookYaw")?pose.raw().get("lookYaw").getAsFloat():pose.yaw();
         if(actor==client.player)lookYaw=actor.getYRot();
-        float twist=!portrait&&aiming&&!climbing?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(shownYaw-lookYaw)),-1.6f,1.6f):0;
+        float twist=!firstPerson&&!portrait&&aiming&&!climbing?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(shownYaw-lookYaw)),-1.6f,1.6f):0;
         skeleton=body.jakForm(skeleton,pose.dark(),twist);
         boolean luminous=pose.raw().has("lightInterp")&&pose.raw().get("lightInterp").getAsFloat()>0;
         var visibleBody=bodyMesh(actor,state,pose.dark());
         var visibleDaxter=daxterMesh(actor,state);
+        if(firstPerson){
+            if(!pose.board()&&!mounted&&flight==null&&!climbing&&gunOut&&!shieldUp&&!pose.dark()){
+                // Uniform camera-space compression keeps the original view silhouette,
+                // but puts the complete gun in front of nearby Minecraft collision.
+                var viewGun=gunPose(pose,gunKind,elapsed);
+                var muzzle=gun.joint(viewGun,"muzzle").getTranslation(new Vector3f());
+                rigid(body.joint(skeleton,"gun")).transformPosition(muzzle);stack.last().pose().transformPosition(muzzle);
+                var eye=client.gameRenderer.mainCamera().position();var end=eye.add(muzzle.x,muzzle.y,muzzle.z);
+                var obstruction=client.level.clip(new net.minecraft.world.level.ClipContext(eye,end,
+                    net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,actor));
+                firstPersonRetraction=1;
+                if(obstruction.getType()!=net.minecraft.world.phys.HitResult.Type.MISS){
+                    var normal=obstruction.getDirection().getUnitVec3();
+                    double along=Math.abs(end.subtract(eye).dot(normal));
+                    double fraction=eye.distanceTo(obstruction.getLocation())/Math.max(.001,eye.distanceTo(end));
+                    firstPersonRetraction=(float)Math.clamp(fraction-.12/Math.max(.001,along),.04,1);
+                    stack.last().pose().scaleLocal(firstPersonRetraction);
+                }
+                firstPersonArmTriangles=state.isInvisible?0:visibleBody.submitArms(body,skeleton,stack,collector,state.lightCoords,luminous);
+                hand(state,true,skeleton,stack,collector,camera.pos,viewGun);
+                firstPersonSerial++;
+                float age=gunState.get("fireAge").getAsFloat()+elapsed;
+                if(age>=0&&age<.45f)firstPersonFireSerial++;
+            }
+            stack.popPose();return true;
+        }
         visibleBody.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,false);
         if(visibleBody!=body&&visibleDaxter!=daxter&&actor==client.player)cinematicRenderSerial++;
         submitCloth(actor,state,skeleton,stack,collector,camera.pos,pose.raw().get("session").getAsLong());
@@ -513,16 +556,21 @@ public final class JakRenderer {
         var skeleton=JakChannels.sample(body,false,pose,null,pose.frame());
         if(g.get("out").getAsBoolean()&&!pose.dark()&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump")))
             skeleton=overlayGun(skeleton,pose,kind,pose.frame(),body.frames(pose.clip()),0);
-        float twist=pose.raw().get("aim").getAsBoolean()?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(pose.yaw()-pose.raw().get("lookYaw").getAsFloat())),-1.6f,1.6f):0;
+        float twist=pose.raw().get("aim").getAsBoolean()&&!g.get("firstPerson").getAsBoolean()?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(pose.yaw()-pose.raw().get("lookYaw").getAsFloat())),-1.6f,1.6f):0;
         skeleton=body.jakForm(skeleton,pose.dark(),twist);
         var socket=gun.joint(gunPose(pose,kind,0),"muzzle").getTranslation(new Vector3f());
         rigid(body.joint(skeleton,"gun")).transformPosition(socket);socket.add(0,floorOffset,0).mul(bodyScale);
-        var expected=g.getAsJsonArray("rigMuzzle");
+        boolean view=g.get("firstPerson").getAsBoolean();
+        if(view)socket.add(0,-1.62f+.25f,.6f).rotateX((float)Math.toRadians(g.get("viewPitch").getAsFloat())).add(0,1.62f,0);
+        var expected=g.getAsJsonArray(view?"viewMuzzle":"rigMuzzle");
         if(Math.abs(g.get("rigScale").getAsFloat()-bodyScale)>1e-5||Math.abs(g.get("rigFloor").getAsFloat()-floorOffset)>1e-5)
             throw new IllegalStateException("Server/client cinematic calibration differs");
         return socket.distance(new Vector3f(expected.get(0).getAsFloat(),expected.get(1).getAsFloat(),expected.get(2).getAsFloat()));
     }
     private static void hand(AvatarRenderState state,boolean right,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector,net.minecraft.world.phys.Vec3 camera){
+        hand(state,right,skeleton,stack,collector,camera,null);
+    }
+    private static void hand(AvatarRenderState state,boolean right,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector,net.minecraft.world.phys.Vec3 camera,GltfModel.Posed provided){
         var held=right?state.rightHandItemState:state.leftHandItemState;
         var item=right?state.rightHandItemStack:state.leftHandItemStack;
         if(item.isEmpty())return;
@@ -534,7 +582,7 @@ public final class JakRenderer {
         if(kind>=0){
             var source=JakPoses.rendered(state.id);
             var g=source.raw().getAsJsonObject("gun");
-            var gunPose=gunPose(source,kind,JakPoses.elapsed(source));
+            var gunPose=provided!=null?provided:gunPose(source,kind,JakPoses.elapsed(source));
             gun.submit(gunPose,stack,collector,state.lightCoords);
             if(right&&!JakGuiContext.active()&&gun.hasJoint("muzzle")){
                 var muzzle=gun.joint(gunPose,"muzzle").getTranslation(new Vector3f());
@@ -544,6 +592,14 @@ public final class JakRenderer {
                 var worldLaser=camera.add(laser.x,laser.y,laser.z);
                 var direction=dev.jakmc.player.JakPlayers.vector(g.getAsJsonArray("direction"));
                 var client=Minecraft.getInstance();var entity=client.level.getEntity(state.id);
+                if(JakFirstPerson.active()&&entity==client.player){
+                    var view=client.gameRenderer.mainCamera();
+                    var target=view.position().add(new net.minecraft.world.phys.Vec3(view.forwardVector()).scale(40*.64));
+                    var eyeHit=client.level.clip(new net.minecraft.world.level.ClipContext(view.position(),target,
+                        net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,entity));
+                    direction=eyeHit.getLocation().subtract(worldLaser).normalize();
+                    firstPersonMuzzle=worldMuzzle;
+                }
                 var end=worldLaser.add(direction.scale(40*.64));
                 var hit=client.level.clip(new net.minecraft.world.level.ClipContext(worldLaser,end,
                     net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,entity));

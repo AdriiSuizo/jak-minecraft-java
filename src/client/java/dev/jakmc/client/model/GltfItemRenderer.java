@@ -14,6 +14,7 @@ import org.joml.Vector3f;
 
 /** One original model for inventory, dropped item and first-person item rendering. */
 public final class GltfItemRenderer implements SpecialModelRenderer<Void> {
+    public static long originalGunDraws;
     private static final Map<String,GltfModel> MODELS=new java.util.concurrent.ConcurrentHashMap<>();
     private final String file,game,damageTable;
     private final float scale;
@@ -42,6 +43,7 @@ public final class GltfItemRenderer implements SpecialModelRenderer<Void> {
         for(float x:new float[]{bounds[0].x,bounds[1].x})for(float y:new float[]{bounds[0].y,bounds[1].y})for(float z:new float[]{bounds[0].z,bounds[1].z})out.accept(new Vector3f(x,y,z));
     }
     @Override public void submit(Void argument,PoseStack stack,SubmitNodeCollector collector,int light,int overlay,boolean foil,int outline){
+        if(file.equals("gun-lod0.glb"))originalGunDraws++;
         GltfModel model=model();stack.pushPose();if(fitGui){
             if(extents==null)extents=model.bounds(pose(model),new org.joml.Matrix4f());
             var low=extents[0];var high=extents[1];float fit=.78f/Math.max(high.x-low.x,Math.max(high.y-low.y,high.z-low.z));

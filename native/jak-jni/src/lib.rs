@@ -443,7 +443,12 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    if let Some(body)=BODY_JOINTS.get(){
        body.sample(&mut s.jak,&mut s.joint_rotations);
        if let Some(gun)=POSED_GUN.get(){
-           s.jak.gun.muzzle_local=s.jak.gun.equipped.flatten().map(|_|gun.muzzle(&s.jak,gun_twist(&s.jak,manual_aim,yaw)));
+           s.jak.gun.muzzle_local=s.jak.gun.equipped.flatten().map(|_|{
+               let local=gun.muzzle(&s.jak,gun_twist(&s.jak,manual_aim&&!first_person,yaw));
+               if first_person {posed_gun::view_muzzle(local,pitch)}else{local}
+           });
+           s.jak.gun.muzzle_basis=first_person.then_some(facing);
+           s.jak.gun.muzzle_guard=first_person.then_some(Vec3::Y*(1.62*BLOCK));
        }
    }
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
@@ -551,7 +556,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    "lift":j.control.draw_offset_y/BLOCK,"ladderWeight":j.ladder_pose_weight()});
   let transition=json!({"stateAge":state_age,"pushTick":j.push.tick,
     "pushAge":(j.time-j.push.tick) as f32/300.,"pushDuration":j.push.ticks as f32/300.});
-  let gun=json!({"rigMuzzle":POSED_GUN.get().map(|rig|(rig.muzzle(j,gun_twist(j,manual_aim,yaw))/BLOCK).to_array()),"rigScale":POSED_GUN.get().map(|rig|rig.scale),"rigFloor":POSED_GUN.get().map(|rig|rig.floor),"direction":j.gun.fire_dir.to_array(),"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
+  let local_muzzle=POSED_GUN.get().filter(|_|(0..12).contains(&gun)).map(|rig|rig.muzzle(j,gun_twist(j,manual_aim&&!first_person,yaw)));
+  let gun=json!({"firstPerson":first_person,"firePoint":(j.gun.fire_point/BLOCK).to_array(),"viewPitch":read_f(b,36),"viewYaw":read_f(b,32),"viewMuzzle":local_muzzle.filter(|_|first_person).map(|p|(posed_gun::view_muzzle(p,pitch)/BLOCK).to_array()),"rigMuzzle":local_muzzle.map(|p|(p/BLOCK).to_array()),"rigScale":POSED_GUN.get().map(|rig|rig.scale),"rigFloor":POSED_GUN.get().map(|rig|rig.floor),"direction":j.gun.fire_dir.to_array(),"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
   let wings=j.lightjak.wings.filter(|w|w.shown).map(|w|{
    let rate=before_wings.filter(|before|before.anim==w.chan.anim&&w.chan.frame>=before.frame)
        .map_or(0.,|before|((w.chan.frame-before.frame)/(steps as f32/60.)).min(240.));

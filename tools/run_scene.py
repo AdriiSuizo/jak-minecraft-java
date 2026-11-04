@@ -35,11 +35,12 @@ def project_client_running():
 
 
 def run():
-    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['natural_cities','economy','equipment','scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','zoomers'],default='scale');parser.add_argument('--origin',nargs=3,type=float);parser.add_argument('--fresh-world',action='store_true');args=parser.parse_args();scene=args.scene
+    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['first_person','natural_cities','economy','equipment','scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','zoomers'],default='scale');parser.add_argument('--origin',nargs=3,type=float);parser.add_argument('--fresh-world',action='store_true');parser.add_argument('--gun',type=int,choices=range(12));args=parser.parse_args();scene=args.scene
+    if args.gun is not None and scene!='first_person':parser.error('--gun is supported by the first_person scene')
     stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     evidence=ROOT/'.local/evidence'/(scene+'-'+stamp);evidence.mkdir(parents=True)
     result=ROOT/f'run/jakmc/evidence/{scene}/result.json'
-    image=ROOT/('run/screenshots/equipment-survival.png' if scene=='equipment' else 'run/screenshots/economy-drops.png' if scene=='economy' else 'run/screenshots/zoomers-bike.png' if scene=='zoomers' else 'run/screenshots/cities-haven.png' if scene=='cities' else 'run/screenshots/cars-toad.png' if scene=='cars' else 'run/screenshots/jak-track.png' if scene=='track' else 'run/screenshots/jak-ladder.png' if scene=='ladder' else 'run/screenshots/jak-surface-ice.png' if scene=='surface' else 'run/screenshots/jak-altar.png' if scene=='altar' else 'run/screenshots/weather-storm.png' if scene=='weather' else 'run/screenshots/jak-vents.png' if scene=='vents' else 'run/screenshots/jak-materials.png' if scene=='materials' else 'run/screenshots/hellcat-idle.png' if scene=='helldog' else f'run/screenshots/{scene}-idle.png' if scene in ('leaper','flut','hellcat','helldog','hellcat_crossing') else 'run/screenshots/powers-dark.png' if scene=='powers' else 'run/screenshots/jak-dark-run.png' if scene=='dark_motion' else 'run/screenshots/citizens-standing.png' if scene=='citizens' else 'run/screenshots/jak-sleep.png' if scene=='player_sleep' else 'run/screenshots/jak-yakow.png' if scene=='yakow' else 'run/screenshots/collision-perf.png' if scene=='collision_perf' else 'run/screenshots/gems-palm-day.png' if scene=='gems_visual' else 'run/screenshots/gems-world-110.png' if scene=='gems' else 'run/screenshots/menus-anvil.png' if scene=='menus' else 'run/screenshots/input-actions-gui.png' if scene=='input_actions' else 'run/screenshots/input-move-86.png' if scene=='input' else 'run/screenshots/scale-two-block-ceiling.png' if scene=='scale' else 'run/screenshots/weapon-10-28.png' if scene=='rings' else 'run/screenshots/weapon-7-28.png' if scene in ('weapons','rings','input','input_actions') else 'run/screenshots/port-blaster.png' if scene=='effects' else 'run/screenshots/enemy-babak-idle.png' if scene=='enemies' else 'run/screenshots/spydroid-explosion.png' if scene=='spydroid' else 'run/screenshots/enemy-chase-step.png')
+    image=ROOT/('run/screenshots/equipment-survival.png' if scene=='equipment' else 'run/screenshots/economy-drops.png' if scene=='economy' else 'run/screenshots/zoomers-bike.png' if scene=='zoomers' else 'run/screenshots/cities-haven.png' if scene=='cities' else 'run/screenshots/cars-toad.png' if scene=='cars' else 'run/screenshots/jak-track.png' if scene=='track' else 'run/screenshots/jak-ladder.png' if scene=='ladder' else 'run/screenshots/jak-surface-ice.png' if scene=='surface' else 'run/screenshots/jak-altar.png' if scene=='altar' else 'run/screenshots/weather-storm.png' if scene=='weather' else 'run/screenshots/jak-vents.png' if scene=='vents' else 'run/screenshots/jak-materials.png' if scene=='materials' else 'run/screenshots/hellcat-idle.png' if scene=='helldog' else f'run/screenshots/{scene}-idle.png' if scene in ('leaper','flut','hellcat','helldog','hellcat_crossing') else 'run/screenshots/powers-dark.png' if scene=='powers' else 'run/screenshots/jak-dark-run.png' if scene=='dark_motion' else 'run/screenshots/citizens-standing.png' if scene=='citizens' else 'run/screenshots/jak-sleep.png' if scene=='player_sleep' else 'run/screenshots/jak-yakow.png' if scene=='yakow' else 'run/screenshots/collision-perf.png' if scene=='collision_perf' else 'run/screenshots/gems-palm-day.png' if scene=='gems_visual' else 'run/screenshots/gems-world-110.png' if scene=='gems' else 'run/screenshots/menus-anvil.png' if scene=='menus' else 'run/screenshots/input-actions-gui.png' if scene=='input_actions' else 'run/screenshots/input-move-86.png' if scene=='input' else 'run/screenshots/scale-two-block-ceiling.png' if scene=='scale' else f'run/screenshots/view-{7 if args.gun is None else args.gun}-28.png' if scene=='first_person' else 'run/screenshots/weapon-10-28.png' if scene=='rings' else 'run/screenshots/weapon-7-28.png' if scene in ('weapons','rings','input','input_actions') else 'run/screenshots/port-blaster.png' if scene=='effects' else 'run/screenshots/enemy-babak-idle.png' if scene=='enemies' else 'run/screenshots/spydroid-explosion.png' if scene=='spydroid' else 'run/screenshots/enemy-chase-step.png')
     if result.exists():shutil.copyfile(result,evidence/'previous-result.json')
     if scene not in ('sites','new_sites','natural_cities') and image.exists():shutil.copyfile(image,evidence/'previous-screen.png')
     ready=ROOT/'run/jakmc/bridge/ready.json'
@@ -79,15 +80,15 @@ def run():
                     observation=call('observe')
                     if 'player' in observation and observation.get('screen') is None:
                         (evidence/'before.json').write_text(json.dumps(observation,indent=2),encoding='utf-8')
-                        call(scene+'_scene',**({'origin':args.origin} if args.origin is not None else {}));sent=True;break
+                        call(scene+'_scene',**({'origin':args.origin} if args.origin is not None else {}),**({'mode':args.gun} if args.gun is not None else {}));sent=True;break
             time.sleep(.25)
         if not sent:raise RuntimeError('Game exited before the requested scene started')
-        process.wait(timeout=120 if scene in ('enemies','weapons','input','gems','citizens','cities','sites','new_sites','natural_cities') else 90 if scene in ('powers','hellcat_crossing','weather') else 60 if scene=='systems' else 40)
+        process.wait(timeout=120 if scene in ('first_person','enemies','weapons','input','gems','citizens','cities','sites','new_sites','natural_cities') else 90 if scene in ('powers','hellcat_crossing','weather') else 60 if scene=='systems' else 40)
         if process.returncode!=0:raise RuntimeError(f'Native game exited {process.returncode}')
         shutil.copyfile(result,evidence/'result.json')
-        if scene in ('equipment','economy','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','natural_cities','zoomers') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
+        if scene in ('first_person','equipment','economy','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','natural_cities','zoomers') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
         if scene not in ('sites','new_sites','natural_cities'):
-            if scene in ('weapons','rings','dark_motion','surface','player_sleep','yakow') and (not image.exists() or image.stat().st_mtime_ns<capture_after):
+            if scene in ('first_person','weapons','rings','dark_motion','surface','player_sleep','yakow') and (not image.exists() or image.stat().st_mtime_ns<capture_after):
                 raise RuntimeError(f'{scene} completed without a fresh screenshot')
             shutil.copyfile(image,evidence/'screen.png')
         if scene=='surface':
@@ -139,8 +140,8 @@ def run():
         if scene in ('input','input_actions'):
             for capture in (ROOT/'run/screenshots').glob('input-*.png'):
                 if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
-        if scene in ('weapons','rings'):
-            for capture in (ROOT/'run/screenshots').glob('weapon-*.png'):
+        if scene in ('first_person','weapons','rings'):
+            for capture in (ROOT/'run/screenshots').glob('view-*.png' if scene=='first_person' else 'weapon-*.png'):
                 if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         if scene=='effects':
             shutil.copyfile(ROOT/'run/screenshots/port-board-zap.png',evidence/'board.png')
@@ -203,8 +204,9 @@ def run():
         if sent and scene in ('input','input_actions'):
             for capture in (ROOT/'run/screenshots').glob('input-*.png'):
                 if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
-        if sent and scene in ('weapons','rings'):
-            for capture in (ROOT/'run/screenshots').glob('weapon-*.png'):shutil.copyfile(capture,evidence/capture.name)
+        if sent and scene in ('first_person','weapons','rings'):
+            for capture in (ROOT/'run/screenshots').glob('view-*.png' if scene=='first_person' else 'weapon-*.png'):
+                if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         log.close()
         if process.poll() is not None and not project_client_running():
             if previous_options is not None:options.write_bytes(previous_options)

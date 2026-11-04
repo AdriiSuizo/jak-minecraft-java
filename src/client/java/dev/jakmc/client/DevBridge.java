@@ -96,6 +96,7 @@ public final class DevBridge {
                 case "powers_scene" -> {InputScene.startPowers(client);out.addProperty("scheduled",true);}
                 case "input_scene" -> {InputScene.start(client);out.addProperty("scheduled",true);}
                 case "rings_scene" -> {WeaponScene.startRings(client);out.addProperty("scheduled",true);}
+                case "first_person_scene" -> {WeaponScene.startFirstPerson(client);if(request.has("mode"))WeaponScene.onlyMode(request.get("mode").getAsInt());out.addProperty("scheduled",true);}
                 case "weapons_scene" -> {WeaponScene.start(client);out.addProperty("scheduled",true);}
                 case "effects_scene" -> {PortScene.start(client);out.addProperty("scheduled",true);}
                 case "enemies_scene" -> {EnemyScene.start(client);out.addProperty("scheduled",true);}

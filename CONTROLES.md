@@ -10,7 +10,7 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Puñetazo | Cuadrado | X |
 | Ataque giratorio | Círculo | B |
 | Agacharse / rodada al avanzar | L1 | LB |
-| Apuntar con la cámara al hombro | L2 | LT |
+| Apuntar / cámara al hombro en tercera persona | L2 | LT |
 | Disparar Morph Gun / cargar y soltar Wave Concussor | R2 | RT |
 | Colocar bloque seleccionado al apuntar | L2 + R2 | LT + RT |
 | Picar o atacar con herramienta o arma de Minecraft | R2 | RT |
@@ -25,6 +25,7 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Inventario / creativo | Select / Share / Create, o cruceta arriba | Back / View, o cruceta arriba |
 | Casilla anterior / siguiente | Cruceta izquierda / derecha | Cruceta izquierda / derecha |
 | Soltar una unidad | Cruceta abajo | Cruceta abajo |
+| Soltar la pila completa | Mantener cruceta abajo | Mantener cruceta abajo |
 | Pausa / cerrar pantalla | Options | Start / Menu |
 | Cerrar una pantalla | Círculo o Share | B o Back |
 
@@ -57,3 +58,6 @@ Coloca el HellCat desde la pestaña de equipamiento de Jak y acércate al casco.
 
 
 La turbotabla tiene casilla propia en los inventarios nativos de supervivencia y creativo. Puedes equiparla o retirarla con los mismos clics y transferencias rápidas que el resto del equipo, conservando durabilidad y encantamientos. La casilla no sustituye a la mano secundaria. Al morir respeta keepInventory y la maldición de desaparición.
+
+
+En primera persona, el Morph Gun utiliza sus animaciones originales y las manos de Jak. El láser y los efectos siguen la boca del arma al mirar o moverte. Cerca de una pared el arma se retrae y su boca queda delante del bloque para evitar disparar desde el otro lado. Las herramientas normales, la mano secundaria y los inventarios mantienen el comportamiento de Minecraft. Los controles para entrar en primera persona y disparar son los mismos de la tabla.

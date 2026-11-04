@@ -15,6 +15,7 @@ public final class JakClient implements ClientModInitializer {
   JakAtmosphere.initialize();
   JakMinimap.initialize();
   WeatherScene.initialize();
+  dev.jakmc.client.model.JakFirstPerson.initialize();
   JakEffects.initialize();
   JakCreatureWater.initialize();
   DevBridge.initialize();

@@ -37,6 +37,7 @@ public final class GltfModel {
     private final int[] joints;
     private final Matrix4f[] inverseBind;
     private final List<Surface> surfaces=new ArrayList<>();
+    private List<Surface> armSurfaces;
     private final Map<String,Clip> clips=new HashMap<>();
     private final Map<String,Matrix4f[]> prejoints=new HashMap<>();
     private final Map<String,Integer> namedNodes=new HashMap<>();
@@ -494,6 +495,9 @@ public final class GltfModel {
         return new Posed(globals,skin,pose.morphs,pose.translations,pose.rotations,pose.scales);
     }
     public void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous,boolean closedEyes){
+        submitJakBody(pose,stack,collector,light,dark,luminous,closedEyes,surfaces);
+    }
+    private void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous,boolean closedEyes,List<Surface> selected){
         Vector3f[] rim=null;
         if(luminous){
             var camera=Minecraft.getInstance().gameRenderer.mainCamera();
@@ -506,7 +510,45 @@ public final class GltfModel {
                 new Vector3f(up).mul(.8944f).fma(.4472f,forward).normalize()
             };
         }
-        submit(pose,stack,collector,light,1,OverlayTexture.NO_OVERLAY,-1L,dark,rim,null,null,closedEyes);
+        submit(pose,stack,collector,light,1,OverlayTexture.NO_OVERLAY,-1L,dark,rim,null,null,closedEyes,selected);
+    }
+    /** Keep original skinned forearms/fingers; no face, torso or cutscene eyes near the camera. */
+    int submitArms(GltfModel rig,Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean luminous){
+        if(armSurfaces==null){
+            boolean[] arm=new boolean[rig.joints.length];
+            for(int j=0;j<arm.length;j++)for(int node=rig.joints[j];node>=0;node=rig.nodes[node].parent)
+                if(Set.of("Lforarm","Rforarm").contains(rig.nodes[node].name)){arm[j]=true;break;}
+            var result=new ArrayList<Surface>();
+            for(var surface:surfaces){
+                if(surface.weights==null)continue;
+                boolean[] keep=new boolean[surface.positions.length/3];
+                for(int v=0;v<keep.length;v++){
+                    float weight=0,total=0;for(int k=0;k<4;k++){
+                        float w=surface.weights[v*4+k];total+=w;
+                        if(w>0&&arm[surface.joints[v*4+k]])weight+=w;
+                    }
+                    keep[v]=total>0&&weight/total>.5f;
+                }
+                var remap=new LinkedHashMap<Integer,Integer>();var indices=new ArrayList<Integer>();
+                for(int i=0;i<surface.indices.length;i+=3){
+                    int a=surface.indices[i],b=surface.indices[i+1],c=surface.indices[i+2];
+                    if(!keep[a]||!keep[b]||!keep[c])continue;
+                    for(int v:new int[]{a,b,c})indices.add(remap.computeIfAbsent(v,_ ->remap.size()));
+                }
+                if(indices.isEmpty())continue;
+                int[] used=remap.keySet().stream().mapToInt(Integer::intValue).toArray();
+                float[][] mp=new float[surface.morphPositions.length][],mn=new float[surface.morphNormals.length][];
+                for(int i=0;i<mp.length;i++)if(surface.morphPositions[i]!=null)mp[i]=select(surface.morphPositions[i],3,used);
+                for(int i=0;i<mn.length;i++)if(surface.morphNormals[i]!=null)mn[i]=select(surface.morphNormals[i],3,used);
+                result.add(new Surface(select(surface.positions,3,used),select(surface.normals,3,used),select(surface.uv,2,used),
+                    select(surface.colors,4,used),select(surface.weights,4,used),toInts(select(toFloats(surface.joints),4,used)),
+                    indices.stream().mapToInt(Integer::intValue).toArray(),surface.texture,surface.material,surface.translucent,surface.skullGem,mp,mn));
+            }
+            armSurfaces=List.copyOf(result);
+            if(armSurfaces.isEmpty())throw new IllegalStateException("Original cinematic arms could not be selected");
+        }
+        submitJakBody(pose,stack,collector,light,false,luminous,false,armSurfaces);
+        return armSurfaces.stream().mapToInt(s->s.indices.length/3).sum();
     }
     public boolean hasClip(String name){return clips.containsKey(name);}
     public float duration(String name){Clip clip=clips.get(name);return clip==null?0:clip.duration;}
@@ -545,6 +587,9 @@ public final class GltfModel {
         submit(pose,stack,collector,light,1,overlay,-1L,false,null,null,flut,false);
     }
     private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut,boolean closedEyes){
+        submit(posed,stack,collector,light,alpha,overlay,shownMask,dark,rim,effect,flut,closedEyes,surfaces);
+    }
+    private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut,boolean closedEyes,List<Surface> selected){
         if(!pendingTextures.isEmpty()){
             var manager=Minecraft.getInstance().getTextureManager();
             for(var entry:pendingTextures.entrySet()){
@@ -569,13 +614,13 @@ public final class GltfModel {
             }
             pendingTextures.clear();
         }
-        int surfaceNumber=0;var ready=prepared.get(posed);
+        int surfaceNumber=0;var ready=selected==surfaces?prepared.get(posed):null;
         float seconds=materialSeconds();
         int effectFrame=effect==null?0:effect.frame(seconds);
         var camera=Minecraft.getInstance().gameRenderer.mainCamera();
         var viewLeft=effect==LightFormTexture.Form.SHIELD?new Vector3f(camera.leftVector()):null;
         var viewUp=effect==LightFormTexture.Form.SHIELD?new Vector3f(camera.upVector()):null;
-        for(Surface surface:surfaces){
+        for(Surface surface:selected){
             int index=surfaceNumber++;if(segments!=null&&!segments.shown(index,shownMask))continue;
             float[] skinned=ready==null?skin(surface,posed):ready.get(surfaceNumber-1);
             Identifier eye=null;
