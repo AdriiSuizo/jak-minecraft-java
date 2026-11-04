@@ -49,7 +49,7 @@ public final class JakPlayers {
         boolean shield,shieldHit,altarMount,usingBoard,grinding,hostMoved;
         List<List<Vec3>> rails=List.of();
         long lastInput;
-        float entityRate=1;
+        float entityRate=1,bodyRadius=.3f,bodyHeight=1.8f;
         JakLeaper mount;
         JakHellcat craft;
         Vec3 boardingStart;
@@ -137,7 +137,7 @@ public final class JakPlayers {
 
     public static void initialize(){
         ServerTickEvents.START_LEVEL_TICK.register(level->{
-            if(level.tickRateManager().runsNormally())JakEntityClock.of(level).advance();
+            if(level.tickRateManager().runsNormally()){JakEntityClock.of(level).advance();JakWorldDamage.tick(level);}
         });
         ServerTickEvents.END_SERVER_TICK.register(server->{
             var present=new HashSet<UUID>();
@@ -209,7 +209,11 @@ public final class JakPlayers {
         int boardRequest=s.altarMount&&s.craft==null&&s.mount==null&&!p.isInWater()?BOARD_BUTTON:0;
         s.altarMount=false;
         ByteBuffer b=s.controls.clear();
-        b.putInt((fresh&&flight==null?input.held():0)|boardRequest).putInt(flight==null?edges|boardRequest:0);
+        boolean equippedBoard=p.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD);
+        int nativeHeld=(fresh&&flight==null?input.held():0)|boardRequest;
+        int nativePressed=flight==null?edges|boardRequest:0;
+        if(!equippedBoard){nativeHeld&=~BOARD_BUTTON;nativePressed&=~BOARD_BUTTON;}
+        b.putInt(nativeHeld).putInt(nativePressed);
         b.putFloat(fresh&&flight==null?input.strafe():0).putFloat(fresh&&flight==null?input.forward():0);
         b.putFloat(fresh?input.rightX():0).putFloat(fresh?input.rightY():0).putFloat(fresh?input.brake():0).putFloat(fresh?input.throttle():0);
         b.putFloat(input.yaw()).putFloat(input.pitch());
@@ -221,7 +225,7 @@ public final class JakPlayers {
         // remove the stock double-tap sprint multiplier sent by the Minecraft client.
         if(vanillaSprint!=null)speed/=1+vanillaSprint.amount();
         b.putFloat(Float.isFinite(water)?water:0).putFloat((float)(speed/.1));
-        int flags=p.getAttachedOrCreate(JakData.BOARD).isEmpty()?0:1;
+        int flags=p.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD)?1:0;
         if(Float.isFinite(water))flags|=16;
         if(p.hasInfiniteMaterials())flags|=32;
         if(flight!=null)flags|=2;
@@ -244,6 +248,12 @@ public final class JakPlayers {
         s.actorBuffers.reset();var actors=flight!=null?s.noTriangles:MinecraftCollision.actors(p.level(),p,s.origin,region.inflate(256),s.actorBuffers);
         if(flight!=null)relocate(s,vector(flight.getAsJsonArray("seat")),Vec3.ZERO);
         NativeJak.setStats(s.nativeId,p.getHealth()/p.getMaxHealth(),p.getAttachedOrCreate(JakData.AMMO.get(0)),p.getAttachedOrCreate(JakData.AMMO.get(1)),p.getAttachedOrCreate(JakData.AMMO.get(2)),p.getAttachedOrCreate(JakData.AMMO.get(3)));
+        boolean rideBody=s.mount!=null&&!s.mountReleased;
+        float radius=rideBody?s.mount.getBbWidth()/2:.3f,height=rideBody?s.mount.getBbHeight()+1:1.8f;
+        if(radius!=s.bodyRadius||height!=s.bodyHeight){
+            NativeJak.bodyDimensions(s.nativeId,radius,height);
+            s.bodyRadius=radius;s.bodyHeight=height;
+        }
         JsonObject pose=JsonParser.parseString(NativeJak.step(s.nativeId,b,triangles,actors,3)).getAsJsonObject();
         s.shield=pose.get("shield").getAsBoolean();
         s.entityRate=pose.get("entityRate").getAsFloat();
@@ -298,7 +308,17 @@ public final class JakPlayers {
                 channel.addProperty("flut",s.mount instanceof dev.jakmc.entity.JakFlutFlut);
                 if(s.mountReleased)channel.addProperty("fixed",true);
                 if(!s.mountReleased&&!channel.get("fixed").getAsBoolean()){
-                    updateMount(s.mount,position,pose.get("yaw").getAsFloat(),(pose.get("status").getAsInt()&2)!=0);
+                    Vec3 requested=position;
+                    position=updateMount(s.mount,requested,pose.get("yaw").getAsFloat(),(pose.get("status").getAsInt()&2)!=0);
+                    if(position.distanceToSqr(requested)>1e-10){
+                        Vec3 velocity=vector(pose.getAsJsonArray("velocity"));
+                        velocity=new Vec3(Math.abs(position.x-requested.x)>1e-5?0:velocity.x,
+                            Math.abs(position.y-requested.y)>1e-5?0:velocity.y,
+                            Math.abs(position.z-requested.z)>1e-5?0:velocity.z);
+                        relocate(s,position,velocity);
+                        pose.add("pos",coordinates(position.subtract(s.origin)));
+                        pose.add("velocity",coordinates(velocity));
+                    }
                 }
             }else s.releaseMount();
         }
@@ -351,12 +371,15 @@ public final class JakPlayers {
         array.add(v.x);array.add(v.y);array.add(v.z);
         return array;
     }
-    private static void updateMount(JakLeaper mount,Vec3 position,float yaw,boolean ground){
-        mount.setPos(position);
+    private static Vec3 updateMount(JakLeaper mount,Vec3 position,float yaw,boolean ground){
+        // Native spheres resolve the source motion; the host box also covers
+        // corners of the actual Minecraft mount rather than teleporting into them.
+        mount.move(net.minecraft.world.entity.MoverType.SELF,position.subtract(mount.position()));
         mount.setYRot(yaw);
         mount.setYBodyRot(yaw);
         mount.setYHeadRot(yaw);
         mount.setOnGround(ground);
+        return mount.position();
     }
     private static float waterSurface(ServerPlayer p,Vec3 origin){
         var level=p.level();
@@ -379,6 +402,19 @@ public final class JakPlayers {
     public static Vec3 vector(JsonArray a){return new Vec3(a.get(0).getAsDouble(),a.get(1).getAsDouble(),a.get(2).getAsDouble());}
     private static void applyEvent(ServerPlayer p,Vec3 origin,JsonObject e){
         String kind=e.get("kind").getAsString();
+        if(kind.equals("world_hit")){
+            Vec3 target=vector(e.getAsJsonArray("pos")).add(origin);
+            Vec3 normal=vector(e.getAsJsonArray("normal"));
+            JakWorldDamage.hit(p,net.minecraft.core.BlockPos.containing(target.subtract(normal.scale(.03))),e.get("damage").getAsFloat());
+            return;
+        }
+        if(kind.equals("explosion")){
+            float power=switch(e.get("gun").getAsString()){
+                case "Red3" -> 4;case "Dark1" -> 3;case "Dark3" -> 9;case "Yellow3" -> 1.5f;default -> 0;
+            };
+            JakWorldDamage.explosion(p.level(),p,p,vector(e.getAsJsonArray("pos")).add(origin),power);
+            return;
+        }
         if(kind.equals("ground_pound")){
             dev.jakmc.content.JakEcoVent.groundPound(p.level(),p,vector(e.getAsJsonArray("pos")).add(origin));
             return;
@@ -396,14 +432,14 @@ public final class JakPlayers {
             if(kind.equals("impact")){
                 Vec3 normal=vector(e.getAsJsonArray("normal"));
                 var at=net.minecraft.core.BlockPos.containing(target.subtract(normal.scale(.03)));
-                dev.jakmc.content.JakProps.hitProjector(p.level(),at,p);
+                JakWorldDamage.hit(p,at,e.get("damage").getAsFloat());
             }else{
                 var ray=new net.minecraft.world.level.ClipContext(p.position().add(0,1,0),target,
                     net.minecraft.world.level.ClipContext.Block.COLLIDER,
                     net.minecraft.world.level.ClipContext.Fluid.NONE,p);
                 var hit=p.level().clip(ray);
                 if(hit.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK)
-                    dev.jakmc.content.JakProps.hitProjector(p.level(),hit.getBlockPos(),p);
+                    JakWorldDamage.hit(p,hit.getBlockPos(),e.get("damage").getAsFloat());
             }
         } else if(kind.equals("fall_damage")) p.hurtServer(p.level(),p.damageSources().fall(),e.get("damage").getAsFloat()*2.5f);
         else if(kind.equals("lift")){

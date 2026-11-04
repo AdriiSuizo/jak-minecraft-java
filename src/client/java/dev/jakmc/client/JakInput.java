@@ -8,7 +8,6 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.*;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.*;
 import dev.jakmc.content.JakItems;
 import dev.jakmc.player.JakPlayers;
@@ -29,7 +28,7 @@ public final class JakInput {
     private static final float DEFAULT_ZOOM=3.84f,FIRST_PERSON_ZOOM=.384f;
     private static float cameraZoom=DEFAULT_ZOOM;
     private static boolean cameraInitialized;
-    private enum Trigger { BOARD, FIRE, USE, PLACE, MINE, RESERVED }
+    private enum Trigger { FIRE, MINE, RESERVED }
     private static long lastFrame,dropStarted;
     private static boolean droppedStack;
     private static int controllerId;
@@ -72,39 +71,12 @@ public final class JakInput {
         }else client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
     }
 
-    private static Trigger triggerFor(ItemStack item,boolean board){
-        if(board)return Trigger.BOARD;
-        if(JakItems.GUNS.contains(item.getItem()))return Trigger.FIRE;
-        if(item.getItem() instanceof BlockItem)return Trigger.PLACE;
-        if(item.getItem() instanceof BucketItem||item.getItem() instanceof ProjectileWeaponItem
-                ||item.getItem() instanceof TridentItem||item.getItem() instanceof ProjectileItem&&!(item.getItem() instanceof ArrowItem)
-                ||item.getItem() instanceof FishingRodItem||item.getItem() instanceof BoatItem
-                ||item.getItem() instanceof MinecartItem||item.getItem() instanceof SpawnEggItem
-                ||item.getItem() instanceof PotionItem)return Trigger.USE;
-        if(item.has(DataComponents.TOOL)||item.has(DataComponents.WEAPON))return Trigger.MINE;
-        return Trigger.BOARD;
+    private static Trigger triggerFor(ItemStack item){
+        // Minecraft decides the primary/secondary action of native items. Do not
+        // guess item capabilities from a whitelist or fall back to deploying a board.
+        return JakItems.GUNS.contains(item.getItem())?Trigger.FIRE:Trigger.MINE;
     }
 
-    private static boolean useWhileMounted(Minecraft c){
-        if(c.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit){
-            return !(hit.getEntity() instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()!=c.player.getId();
-        }
-        if(c.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit
-            &&hit.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK){
-            var state=c.level.getBlockState(hit.getBlockPos());
-            var block=state.getBlock();
-            return state.getMenuProvider(c.level,hit.getBlockPos())!=null
-                ||block instanceof net.minecraft.world.level.block.DoorBlock
-                ||block instanceof net.minecraft.world.level.block.TrapDoorBlock
-                ||block instanceof dev.jakmc.content.JakEcoVent
-                ||block instanceof dev.jakmc.content.JakKrimsonGate
-                ||block instanceof net.minecraft.world.level.block.FenceGateBlock
-                ||block instanceof net.minecraft.world.level.block.ButtonBlock
-                ||block instanceof net.minecraft.world.level.block.LeverBlock
-                ||block instanceof net.minecraft.world.level.block.BedBlock;
-        }
-        return false;
-    }
     private static void poll(Minecraft c){
         if(!enabled(c)){
             pad=uiPad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
@@ -154,34 +126,37 @@ public final class JakInput {
             boolean board=pose!=null&&pose.board();
             boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
             boolean powers=(held&L3)!=0||DARK.isDown()||LIGHT.isDown();
-            var itemAction=triggerFor(c.player.getMainHandItem(),board);
-            boolean busy=c.player.isInWater()||powers||mounted;
-            aiming=!board&&!busy&&!c.options.getCameraType().isMirrored()
-                &&((held&L2)!=0||AIM.isDown());
-            Trigger wanted=busy&&!board?Trigger.RESERVED:itemAction;
-            if(wanted==Trigger.BOARD&&aiming)wanted=Trigger.RESERVED;
+            boolean gun=JakItems.GUNS.contains(c.player.getMainHandItem().getItem());
+            aiming=!board&&!mounted&&!c.player.isInWater()&&!powers
+                &&!c.options.getCameraType().isMirrored()&&(AIM.isDown()||gun&&(held&L2)!=0);
+            Trigger wanted=powers?Trigger.RESERVED:board||mounted?Trigger.MINE:triggerFor(c.player.getMainHandItem());
             boolean rightDown=(held&R2)!=0;
             if(!rightDown)trigger=null;
             else if((edges&R2)!=0)trigger=wanted;
             else if(trigger!=wanted)trigger=Trigger.RESERVED;
-            boolean useTrigger=trigger==Trigger.USE||trigger==Trigger.PLACE&&aiming;
             boolean mineTrigger=trigger==Trigger.MINE;
-            boolean triangle=(held&TRIANGLE)!=0&&!vehicleUseLock&&!powers&&(!mounted||useWhileMounted(c));
-            useHeld=triangle||useTrigger;
+            // L2 goes through Minecraft's normal use path, including offhand,
+            // held/released use, doors and other mods' items and interactions.
+            useHeld=(held&L2)!=0&&!powers;
             attackHeld=mineTrigger;
-            useClicked|=triangle&&(edges&TRIANGLE)!=0||useTrigger&&(edges&R2)!=0;
+            useClicked|=useHeld&&(edges&L2)!=0;
             attackClicked|=mineTrigger&&(edges&R2)!=0;
 
-            // Only the current owner of R2 can pass that press to the game.
-            int reserved=(board?R2:R1|R2)|R3;
+            int reserved=(board?R2:R1|R2)|R3|L2;
             int mapped=held&~reserved;
             int mappedEdges=edges&~reserved;
-            if(mounted&&triangle){mapped&=~TRIANGLE;mappedEdges&=~TRIANGLE;}
-            int nativeTrigger=trigger==Trigger.FIRE?R1:trigger==Trigger.BOARD?R2:0;
-            if(rightDown)mapped|=nativeTrigger;
-            if((edges&R2)!=0)mappedEdges|=nativeTrigger;
+            if(!powers&&!mounted){
+                mapped&=~TRIANGLE;
+                mappedEdges&=~TRIANGLE;
+                boolean equipped=c.player.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD);
+                if(equipped&&!vehicleUseLock){
+                    if((held&TRIANGLE)!=0)mapped|=R2;
+                    if((edges&TRIANGLE)!=0)mappedEdges|=R2;
+                }
+            }
+            if(rightDown&&trigger==Trigger.FIRE)mapped|=R1;
+            if((edges&R2)!=0&&trigger==Trigger.FIRE)mappedEdges|=R1;
             if(aiming)mapped|=L2;
-            else if(!board)mapped&=~L2;
             pressedPad|=mappedEdges;
             pad=new dev.jakmc.client.input.SdlGamepad.State(next.id(),next.name(),mapped,next.system(),next.leftX(),next.leftY(),next.rightX(),next.rightY(),next.brake(),next.throttle());
         }

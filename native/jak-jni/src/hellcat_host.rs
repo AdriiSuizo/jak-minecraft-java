@@ -129,9 +129,9 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatStep(
             HellCatEvent::FireAlt { pos:p } => json!({"kind":"fire_alt","pos":pos(p)}),
             HellCatEvent::Crash { pos:p,speed } => json!({"kind":"crash","pos":pos(p),"speed":speed}),
             HellCatEvent::Brush { pos:p,normal } => json!({"kind":"brush","pos":pos(p),"normal":normal.to_array()}),
-            HellCatEvent::Impact(hit) => json!({"kind":"impact","actor":hit.actor,"pos":pos(hit.surface),"damage":hit.damage}),
-            HellCatEvent::Blast { center } => json!({"kind":"blast","pos":pos(center)}),
-            HellCatEvent::Explode { center } => json!({"kind":"explode","pos":pos(center)}),
+            HellCatEvent::Impact(hit) => json!({"kind":"impact","actor":hit.actor,"pos":pos(hit.surface),"damage":hit.damage,"dir":hit.dir.to_array(),"explosive":hit.damage>=128.0}),
+            HellCatEvent::Blast { center } => json!({"kind":"blast","pos":pos(center),"radius":jak_core::hellcat::BLAST_RADIUS/BLOCK}),
+            HellCatEvent::Explode { center } => json!({"kind":"explode","pos":pos(center),"radius":jak_core::hellcat::BLAST_RADIUS/BLOCK}),
         }).collect::<Vec<_>>();
         let beams = craft.beams().into_iter().map(|b| json!({
             "head":pos(b.head),"tail":pos(b.tail),"rgba":b.rgba,"width":b.width,

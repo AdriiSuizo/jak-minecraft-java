@@ -50,8 +50,8 @@ const TORPEDO_MUZZLE: Vec3 = Vec3::new(0.0, 7372.8, 18841.6);
 const GUN_SPEED: f32 = 4096000.0;
 const TORPEDO_SPEED: f32 = 819200.0;
 const TORPEDO_MAX: u8 = 8;
-const BLAST_RADIUS: f32 = 245760.0;
-const BLAST_GROWTH: f32 = 491520.0;
+pub const BLAST_RADIUS: f32 = 49152.0; // 12 source metres, 7.68 Minecraft blocks.
+const BLAST_GROWTH: f32 = 98304.0; // reaches that radius in half a second.
 const LONG_AGO: i64 = i64::MIN / 4;
 
 /// What the craft did this frame, for sounds and the host.
@@ -457,7 +457,7 @@ impl HellCat {
             self.hover(dt, world);
         }
         self.step_shots(world, crate::projectile::reborrow(&mut actors));
-        self.step_blasts(actors);
+        self.step_blasts(world,actors);
         if self.torpedoes < TORPEDO_MAX {
             if self.time - self.refill_time >= seconds(20.0) {
                 self.torpedoes += 1;
@@ -924,19 +924,22 @@ impl HellCat {
         }));
     }
 
-    /// The torpedo's blast sweeps out to 60 m in half a second, striking
+    /// The adapted torpedo blast sweeps out to 12 m in half a second, striking
     /// each creature once for 128.
-    fn step_blasts(&mut self, mut actors: Option<&mut dyn ActorWorld>) {
+    fn step_blasts(&mut self, world:&mut dyn CollideWorld, mut actors: Option<&mut dyn ActorWorld>) {
         let now = self.time;
         let mut blasts = std::mem::take(&mut self.blasts);
         blasts.retain_mut(|b| {
             let t = (now - b.start) as f32 / TICKS_PER_SECOND as f32;
             let radius = (BLAST_GROWTH * t).min(BLAST_RADIUS);
-            if radius < BLAST_RADIUS
+            if t <= BLAST_RADIUS / BLAST_GROWTH
                 && let Some(a) = crate::projectile::reborrow(&mut actors)
             {
                 for (key, c) in a.actors_near(b.center, radius) {
                     if !b.hit.contains(&key) {
+                        let motion=c-b.center;
+                        self.cache.fill_line_sphere(world,b.center,motion,0.0);
+                        if self.cache.resolve_moving_sphere(b.center,0.0,motion,-1.0,false).is_some_and(|hit|hit.u<0.999){continue;}
                         b.hit.push(key);
                         let dir = (c - b.center).normalize_or(Vec3::Y);
                         self.events.push(HellCatEvent::Impact(ProjectileHit {
@@ -1105,6 +1108,28 @@ impl HellCat {
 #[cfg(test)]
 mod gear_tests {
     use super::*;
+
+    #[test]
+    fn adapted_shockwave_has_small_range_and_is_blocked_by_walls() {
+        struct Targets;
+        impl ActorWorld for Targets {
+            fn actor_hit(&mut self,_:Vec3,_:Vec3,_:f32)->Option<(u64,f32,Vec3)>{None}
+            fn actors_near(&mut self,center:Vec3,radius:f32)->Vec<(u64,Vec3)>{
+                [(1,Vec3::X*meters(4.0)),(2,-Vec3::X*meters(4.0)),(3,Vec3::Z*meters(16.0)),(4,Vec3::Z*meters(11.9))]
+                    .into_iter().filter(|(_,p)|p.distance(center)<=radius).collect()
+            }
+        }
+        let mut craft=HellCat::new(Vec3::ZERO,0.0);
+        let mut world=crate::TriangleGrid::new(vec![
+            crate::Tri{v:[Vec3::new(meters(2.0),-meters(10.0),-meters(10.0)),Vec3::new(meters(2.0),meters(10.0),-meters(10.0)),Vec3::new(meters(2.0),meters(10.0),meters(10.0))],pat:crate::Pat::default()},
+            crate::Tri{v:[Vec3::new(meters(2.0),-meters(10.0),-meters(10.0)),Vec3::new(meters(2.0),meters(10.0),meters(10.0)),Vec3::new(meters(2.0),-meters(10.0),meters(10.0))],pat:crate::Pat::default()}
+        ],meters(4.0));
+        craft.burst(Vec3::ZERO);
+        craft.events.clear();
+        for _ in 0..90{craft.time+=FRAME_TICKS;craft.step_blasts(&mut world,Some(&mut Targets));}
+        let hits:Vec<_>=craft.events.iter().filter_map(|e|if let HellCatEvent::Impact(hit)=e{hit.actor}else{None}).collect();
+        assert_eq!(hits,vec![2,4],"exposed actors, including the edge of the wave, are hit once");
+    }
 
     /// X tapped twice, then a quiet frame.
     fn shift_up(craft: &mut HellCat) {

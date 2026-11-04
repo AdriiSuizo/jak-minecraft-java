@@ -151,13 +151,16 @@ impl Jak {
         if !swim.diving && (self.pad.pressed(button::X) || climb_out) {
             self.swim = None;
             self.swim_tilt = 0.0;
-            let height = swim_height + SWIM_JUMP_HEIGHT * self.size;
+            let height = self.float_depth() + SWIM_JUMP_HEIGHT * self.size;
             // Out of the water into his own jump (its animation, not the
             // walk the state he swam in would go on with), as high as the
             // bank needs.
             self.go(crate::State::Jump { min: height, max: height });
-            let rise = (2.0 * crate::control::STANDARD_GRAVITY * height).sqrt();
-            self.control.transv.y = self.control.transv.y.max(rise);
+            // This takeoff is already at the actual floating feet position.
+            // The normal ground jump subtracts JUMP_COLLIDE_OFFSET to account
+            // for floor separation. Applying that again here consumed nearly
+            // all of the clearance over water at the Minecraft avatar scale.
+            self.init_var_jump(height,height,true,false,0.0);
             if climb_out || self.pad.stick0_speed > 0.1 {
                 let ahead = self.control.quat * Vec3::Z;
                 self.control.transv += Vec3::new(ahead.x, 0.0, ahead.z).normalize_or_zero() * meters(3.0);
@@ -268,6 +271,26 @@ impl Jak {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn surface_jump_clears_water_at_minecraft_scale() {
+        let block=6400.0;
+        let mut jak=Jak::new(Vec3::ZERO,0.0);
+        jak.size=0.64;
+        jak.control.set_body_dimensions(0.3*block,1.8*block);
+        jak.water=Some(2.0*block);
+        jak.control.trans.y=2.0*block-jak.float_depth();
+        jak.swim=Some(Swim{diving:false,since:0,blocked:0.0});
+        let mut world=crate::collide::EmptyWorld;
+        for _ in 0..60 {jak.step(&crate::PadInput::default(),&mut world,None);}
+        let mut peak=f32::NEG_INFINITY;
+        for frame in 0..90 {
+            jak.step(&crate::PadInput{held:button::X,pressed:if frame==0{button::X}else{0},..Default::default()},&mut world,None);
+            peak=peak.max(jak.trans().y-2.0*block);
+        }
+        assert!(peak>0.35*block,"feet only rise {} blocks over the water",peak/block);
+        assert!(peak<0.65*block,"water jump must retain the authored height: {}",peak/block);
+    }
 
     /// Floating, the top of his head stays over the water however the pose
     /// holds it; a pose that holds it high keeps the game's swim height.

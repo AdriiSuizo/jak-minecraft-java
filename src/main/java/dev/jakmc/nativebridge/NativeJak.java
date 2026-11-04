@@ -7,7 +7,7 @@ import java.nio.file.Path;
 
 /** The only JNI surface. Versioned, bounded, little-endian packets. */
 public final class NativeJak {
-    public static final int ABI = 3;
+    public static final int ABI = 4;
     private static boolean loaded;
     private NativeJak() { }
 
@@ -36,6 +36,7 @@ public final class NativeJak {
     public static native void setGrindRails(long session,ByteBuffer rails);
     public static native void bindWorld(long session,Object collisionQuery);
     public static native void ventPulse(long session,boolean blue,int reaction);
+    public static native void bodyDimensions(long session,float radius,float height);
     public static native void setStats(long session,float healthFraction,float red,float yellow,float blue,float dark);
     public static native String step(long session, ByteBuffer input, ByteBuffer triangles, ByteBuffer actors, int steps);
     public static native long hoverCreate(Object world,int model,float yaw,float vx,float vy,float vz,

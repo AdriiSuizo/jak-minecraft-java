@@ -2,7 +2,7 @@
 
 Updated 2026-11-04. Continue the full Jak port from the read-only original Rust mashup. Do not repeat recon or the accepted enemy/weapon takes without a relevant change. No MW2 content or Skate 3; Jak's JET-Board remains in scope. The user wants complete mechanics, effects, sound and normal Minecraft interaction, not only models.
 
-Current actionable backlog: [FIXES-PENDIENTES.md](FIXES-PENDIENTES.md), 36 open work items, 11 targeted comparisons and 3 inherited incomplete systems. The newest user reports reopen water exit, mount/vehicle collisions, world damage and native item controls. This inventory changes no gameplay.
+The user withdrew custom lowpoly/far-terrain/far-tower work on 2026-11-05. F34–F36 are retired. Current actionable backlog: [FIXES-PENDIENTES.md](FIXES-PENDIENTES.md), 33 open work items, 11 targeted comparisons and 3 inherited incomplete systems. The newest user reports reopen water exit, mount/vehicle collisions, world damage and native item controls. This inventory changes no gameplay.
 
 ## Projects and ownership
 

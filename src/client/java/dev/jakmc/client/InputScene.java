@@ -25,6 +25,7 @@ public final class InputScene {
  public record CameraView(Vec3 position,float yaw,float pitch){}
  private static CameraView view;
  public static CameraView camera(){
+  if(IntegrationScene.camera()!=null)return IntegrationScene.camera();
   if(view!=null)return view;
   if(EconomyScene.camera()!=null)return EconomyScene.camera();
   if(ScaleScene.camera()!=null)return ScaleScene.camera();
@@ -447,7 +448,9 @@ public final class InputScene {
    c.player.setXRot(-25);
    offPress=t+4;
   }
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,mountPress>0&&t>=mountPress&&t<mountPress+4||rideAge>=21&&rideAge<23||offPress>0&&t>=offPress&&t<offPress+4);
+  boolean nativeUse=mountPress>0&&t>=mountPress&&t<mountPress+4||rideAge>=21&&rideAge<23;
+  pad.axis(4,nativeUse?1:-1);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,offPress>0&&t>=offPress&&t<offPress+4);
   if(slamImage>0&&t>=slamImage-1&&t<=slamImage&&target!=null)mountView(target.position());
   if(t==slamImage)mountCapture(c,"slam");
   if(offPress>0&&t>offPress&&!mounted&&mountSeen&&!offSeen){
@@ -809,17 +812,27 @@ public final class InputScene {
  private static void actions(Minecraft c){
   int t=++tick;
   if(t==1)firstPersonAt=0;
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,t==25);
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_BACK,t==55||t==62);
-  if(t==42)ACTIONS.addProperty("triangle_equipped_board",!c.player.getAttachedOrCreate(JakData.BOARD).isEmpty());
-  if(t==58){
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,t==8||t==60||t==125);
+  pad.axis(4,t==25?1:-1);
+  pad.axis(5,t==45||t==100?1:-1);
+  if(t==20){
+   ACTIONS.addProperty("triangle_cannot_equip_from_hand",c.player.getAttachedOrCreate(JakData.BOARD).isEmpty());
+   ACTIONS.addProperty("triangle_requires_equipped_slot",JakPoses.get(c.player.getId())!=null&&!JakPoses.get(c.player.getId()).board());
+  }
+  if(t==42)ACTIONS.addProperty("l2_equipped_board",c.player.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD));
+  if(t==52)ACTIONS.addProperty("r2_does_not_deploy_board",!JakPoses.get(c.player.getId()).board());
+  if(t==95){ACTIONS.addProperty("triangle_deployed_equipped_board",JakPoses.get(c.player.getId()).board());capture(c,"input-actions-board.png");}
+  if(t==120)ACTIONS.addProperty("r2_does_not_stow_board",JakPoses.get(c.player.getId()).board());
+  if(t==155)ACTIONS.addProperty("triangle_stowed_board",!JakPoses.get(c.player.getId()).board());
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_BACK,t==160||t==168);
+  if(t==164){
    ACTIONS.addProperty("select_native_inventory",c.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen);
    ACTIONS.addProperty("select_kept_perspective",c.options.getCameraType()==CameraType.THIRD_PERSON_BACK);
    capture(c,"input-actions-gui.png");
   }
-  if(t>=70&&firstPersonAt==0&&c.options.getCameraType().isFirstPerson())firstPersonAt=t;
+  if(t>=180&&firstPersonAt==0&&c.options.getCameraType().isFirstPerson())firstPersonAt=t;
   int age=firstPersonAt==0?-1:t-firstPersonAt;
-  boolean zoomIn=t>=70&&firstPersonAt==0;
+  boolean zoomIn=t>=180&&firstPersonAt==0;
   boolean zoomOut=age>=2&&age<24;
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK,zoomIn||zoomOut);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_UP,zoomIn);
@@ -833,7 +846,7 @@ public final class InputScene {
   }
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_START,age==30||age==36);
   if(age==33)ACTIONS.addProperty("start_native_pause",c.gui.screen() instanceof net.minecraft.client.gui.screens.PauseScreen);
-  if(age>=40||t>=180){
+  if(age>=40||t>=300){
    ACTIONS.addProperty("r3_zoom_reached_first_person",firstPersonAt>0);
    ACTIONS.addProperty("start_closed_pause",c.gui.screen()==null);
    finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"controller layout assertion failed");

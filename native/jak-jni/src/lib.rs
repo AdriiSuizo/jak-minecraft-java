@@ -24,7 +24,7 @@ mod hover_host;
 static EXTRA_ART: OnceLock<HashMap<String, art_group::ArtAnim>> = OnceLock::new();
 static ANIMS:OnceLock<Arc<jak_core::anim::Anims>>=OnceLock::new();
 
-pub const ABI_VERSION: u32 = 3;
+pub const ABI_VERSION: u32 = 4;
 /// One Minecraft block = 1.5625 original meters. Actor stands 1.8 blocks tall.
 pub const BLOCK: f32 = 6400.;
 // Match the visible upper-body aim rotation in the server-owned pose.
@@ -199,6 +199,16 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_abi(_:JNIEnv,_:JCla
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_floor(mut env:JNIEnv,_:JClass,id:JString,step:JString)->jint {
  let id:Result<String,_>=env.get_string(&id).map(Into::into);let step:Result<String,_>=env.get_string(&step).map(Into::into);
  protect(&mut env,||Ok(jak_steps::floor_of_block(&id.map_err(|e|e.to_string())?,&step.map_err(|e|e.to_string())?) as jint))
+}
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_bodyDimensions(mut env:JNIEnv,_:JClass,id:jlong,radius:f32,height:f32){
+ protect(&mut env,||{
+  if !radius.is_finite()||!height.is_finite()||radius<=0.||height<radius*2.||height>8.{return Err("Invalid Minecraft collision dimensions".into());}
+  let mut sessions=lock_sessions()?;
+  let session=sessions.live.get_mut(&(id as u64)).ok_or("Stale mount session")?;
+  session.jak.control.set_body_dimensions(radius*BLOCK,height*BLOCK);
+  Ok(())
+ });
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_create(mut env:JNIEnv,_:JClass,yaw:f32)->jlong {

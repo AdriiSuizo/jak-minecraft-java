@@ -1,14 +1,20 @@
 # Fixes y diferencias pendientes del port de Jak
 
-Inventario del 4 de noviembre de 2026: **36 trabajos abiertos**, **11 contrastes concretos** y **3 pendientes que ya existían en el origen**. Incluye los fallos actuales del usuario y las peticiones nuevas de controles/explosión.
+Inventario del 4 de noviembre de 2026: **33 trabajos abiertos**, **11 contrastes concretos** y **3 pendientes que ya existían en el origen**. Incluye los fallos actuales del usuario y las peticiones nuevas de controles/explosión.
 
-Esta revisión no cambia el juego ni marca estos fallos como arreglados. Se parte de PORTING-DELTA, del handoff y de los puntos de entrada/salida del código. Las pruebas antiguas de poses/efectos y daño a entidades no cubrían la destrucción del mundo. El arranque corregido del launcher tampoco certifica paridad jugable completa.
+El inventario inicial no cambiaba el juego. El avance siguiente registra las correcciones posteriores sin cerrar variantes todavía sin contrastar. Se parte de PORTING-DELTA, del handoff y de los puntos de entrada/salida del código. Las pruebas antiguas de poses/efectos y daño a entidades no cubrían la destrucción del mundo. El arranque corregido del launcher tampoco certifica paridad jugable completa.
 
 **Estados:** «Ausencia confirmada» = falta una ruta en código; «Reportado» = fallo observado por el usuario; «Parcial» = hay integración, falta un comportamiento concreto; «Petición» = cambio solicitado; V = comparación específica pendiente, no un fallo demostrado.
 
+## Avance del 5 de noviembre
+
+La tabla se saca/guarda con Triángulo/Y solo cuando está equipada en su ranura; L2 usa Minecraft y R2 ataca/mina o dispara Morph Gun. Se conserva el teclado B y los gatillos de conducción. La prueba SDL `input_actions-20261105-000321` comprueba esas condiciones y Select/R3.
+
+Correcciones implementadas: salto desde agua sin descontar dos veces la separación de suelo; volumen conjunto de montura y jinete y movimiento con colisiones; puente de daño acumulado a bloques para Strike/Impact/WorldHit; despacho de las cuatro explosiones originales; daño de terreno para Hellcat/Helldog y coches; onda más pequeña, con obstrucción por paredes y empuje. La toma `integration-20261105-002439` comprueba salto simple de 0,450154 bloques sobre agua, contacto frontal del Flut Flut sin penetración ni daño, disparos nativos que rompen un muro, vegetación presente antes de explotar, drops, bedrock y ausencia de daño duplicado. Las otras direcciones, orillas y variantes siguen pendientes; los estados por ID se mantienen en `pendientes.json`.
+
 ## Orden de trabajo
 
-Agua/colisiones y daño al mundo, después interacción de objetos y las restantes integraciones. Los lowpoly permanecen al final por petición del usuario. No modificar los repositorios originales, OpenGOAL ni partidas personales para validar estas correcciones.
+Agua/colisiones y daño al mundo, después interacción de objetos y las restantes integraciones. El usuario ha retirado por completo el trabajo de lowpoly/lejanos de esta versión Java. No modificar los repositorios originales, OpenGOAL ni partidas personales para validar estas correcciones.
 
 ## Agua y colisiones
 
@@ -354,37 +360,9 @@ El recorrido aceptado de siete biomas no acredita 150 FPS sostenidos. Sus percen
 
 **Cierre:** Optimizar sin recortar detalle/población/distancia ni ritmos de simulación; publicar p95/p99/picos y trayectos prolongados.
 
-## Lejanos — al final de la cola
+## Trabajo retirado por el usuario
 
-### F34. Terreno lejano: continuidad de material y color
-
-**Estado:** Port pendiente.
-
-El LOD del anfitrión Rust y su corrección roca/tierra no tienen una integración equivalente en Java.
-
-**Código/oráculo:** origen crates/minecraft_terrain/src/far_terrain.rs; docs/PORTING-DELTA.md.
-
-**Cierre:** Transición cercana/lejana con mismo material, altura y tono; sin cambio brusco de roca a tierra.
-
-### F35. Torre visible como modelo lejano
-
-**Estado:** Port pendiente.
-
-La torre física de la ciudad no incluye por sí misma la representación lejana solicitada.
-
-**Código/oráculo:** origen crates/minecraft_terrain/src/far_tower.rs; docs/PORTING-DELTA.md.
-
-**Cierre:** Silueta, cabeza y cuernos reconocibles a distancia; sustitución y oclusión correctas al acercarse.
-
-### F36. Mejora de calidad de los lowpoly
-
-**Estado:** Petición previa abierta.
-
-Conservar el orden del usuario: después del resto, mejorar los lejanos, no restaurar solo una versión mínima.
-
-**Código/oráculo:** docs/PORTING-DELTA.md; origen far_terrain.rs y far_tower.rs.
-
-**Cierre:** Más coherencia de silueta, colores y materiales con presupuesto de geometría/streaming medido.
+F34–F36 (terreno lowpoly, torre lejana y mejora de modelos lejanos) se retiran por petición del 4 de noviembre de 2026. No se portarán a Minecraft Java. Los IDs históricos se conservan en `pendientes.json`, en `removed`, para no confundirlos con trabajo completado.
 
 ## Contrastes todavía abiertos, sin borrar correcciones anteriores
 

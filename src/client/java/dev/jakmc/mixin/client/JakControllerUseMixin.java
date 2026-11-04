@@ -4,7 +4,7 @@ import net.minecraft.client.*;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-/** Controller Triangle uses Minecraft's own item/block/entity interaction path. */
+/** Controller triggers use Minecraft's own item/block/entity interaction paths. */
 @Mixin(KeyMapping.class)
 abstract class JakControllerUseMixin {
  @Inject(method="isDown",at=@At("HEAD"),cancellable=true)

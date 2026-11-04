@@ -20,3 +20,5 @@ All Jak work is in scope. The order below is an implementation dependency order,
 The user subsequently authorized the private repository and bilingual Windows installer. The private development release registers 26.3.jakmod and generates assets locally from owned OpenGOAL installations; game assets are not committed or distributed. Public publication has not been requested. Build, unit checks and visible real-game behavior have separate acceptance entries; none substitutes for the other.
 
 Current actionable backlog: [FIXES-PENDIENTES.md](FIXES-PENDIENTES.md), with separate confirmed omissions, user reports and verification cases. Current implementation and remaining integration: [CURRENT-PORT-HANDOFF.md](CURRENT-PORT-HANDOFF.md). The original source references above remain oracles, not acceptance of completed Java features.
+
+The user withdrew all custom lowpoly/far-terrain/far-tower work on 2026-11-05; those original-host features are out of scope for this Java version. F34–F36 are retired, not completed.

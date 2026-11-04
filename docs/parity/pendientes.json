@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-04",
+  "date": "2026-11-05",
   "java_commit": "d2761d8d90a7ce7545dd141a6ca0e16195a3d41a",
   "reference": "../2010-rust-rewrite-mashup-trabajo",
   "items": [
@@ -7,37 +7,41 @@
       "id": "F01",
       "group": "Agua y colisiones",
       "title": "Salida del agua al saltar",
-      "state": "Reportado",
+      "state": "Corregido; contraste de salida a orillas pendiente",
       "evidence": "El salto desde natación apenas permite salir del agua. swim.rs coincide con el mashup; revisar el puente de altura de agua, escala y transición a salto.",
       "references": "native/jak-core/src/swim.rs; native/jak-jni/src/lib.rs; src/main/java/dev/jakmc/player/JakPlayers.java",
-      "acceptance": "Salir del agua y alcanzar una orilla normal con el impulso/animación de Jak, sin reentrada prematura en natación ni teletransporte."
+      "acceptance": "Salir del agua y alcanzar una orilla normal con el impulso/animación de Jak, sin reentrada prematura en natación ni teletransporte.",
+      "latest_evidence": "integration-20261105-002439: salto simple, pies 0.450154 bloques sobre agua; regresión nativa antes 0.001476, después aprobada."
     },
     {
       "id": "F02",
       "group": "Agua y colisiones",
       "title": "Flut Flut: penetración de paredes",
-      "state": "Reportado + puente parcial",
+      "state": "Corregido para contacto frontal; ampliar direcciones",
       "evidence": "La entidad tiene volumen Minecraft, pero montada recibe setPos desde la simulación de Jak. El volumen del pájaro y el del jinete deben concordar con el barrido nativo.",
       "references": "src/main/java/dev/jakmc/entity/JakFlutFlut.java; src/main/java/dev/jakmc/entity/JakLeaper.java; src/main/java/dev/jakmc/player/JakPlayers.java:updateMount",
-      "acceptance": "Paredes, esquinas, techos y pasos estrechos detienen el conjunto por su volumen real."
+      "acceptance": "Paredes, esquinas, techos y pasos estrechos detienen el conjunto por su volumen real.",
+      "latest_evidence": "Volumen de montura/rider en JNI + move SELF del bloque anfitrión, integration-20261105-002439 sin penetración frontal."
     },
     {
       "id": "F03",
       "group": "Agua y colisiones",
       "title": "Flut Flut: daño al rozar una pared",
-      "state": "Reportado",
+      "state": "Corregido en contacto frontal comprobado",
       "evidence": "La penetración causa daño y puede realimentar la reacción de montura. Se corrige el contacto; no se sustituye por invulnerabilidad.",
       "references": "src/main/java/dev/jakmc/entity/JakLeaper.java:hurtServer; native/jak-core/src/flut.rs",
-      "acceptance": "Acercarse o caminar junto a una pared no resta vida ni activa una reacción de golpe falsa."
+      "acceptance": "Acercarse o caminar junto a una pared no resta vida ni activa una reacción de golpe falsa.",
+      "latest_evidence": "integration-20261105-002439: salud del Flut Flut intacta al empujar contra pared."
     },
     {
       "id": "F04",
       "group": "Agua y colisiones",
       "title": "Leaper: mismo puente de colisión de montura",
-      "state": "Parcial",
+      "state": "Puente corregido; contraste específico pendiente",
       "evidence": "Comparte la actualización de posición de la montura con Flut Flut; la corrección debe cubrir también al lagarto.",
       "references": "src/main/java/dev/jakmc/player/JakPlayers.java:updateMount; src/main/java/dev/jakmc/entity/JakLeaper.java",
-      "acceptance": "Colisión conjunta correcta del lagarto y jinete al montar, conducir, saltar y bajar."
+      "acceptance": "Colisión conjunta correcta del lagarto y jinete al montar, conducir, saltar y bajar.",
+      "latest_evidence": "Mismo cambio de dimensiones y movimiento con colisiones; falta el recorrido del lagarto con este cambio."
     },
     {
       "id": "F05",
@@ -70,55 +74,61 @@
       "id": "F08",
       "group": "Daño al mundo y explosiones",
       "title": "Golpes cuerpo a cuerpo contra bloques",
-      "state": "Ausencia confirmada",
+      "state": "Integrado; comprobación melee pendiente",
       "evidence": "Los eventos strike sin actor solo consultan hitProjector; no hay una ruta general de daño al mundo.",
       "references": "src/main/java/dev/jakmc/player/JakPlayers.java:applyEvent",
-      "acceptance": "Puñetazo, giro y ataques aplicables afectan al bloque alcanzado con dureza, permisos, efectos y drops coherentes."
+      "acceptance": "Puñetazo, giro y ataques aplicables afectan al bloque alcanzado con dureza, permisos, efectos y drops coherentes.",
+      "latest_evidence": "Strike y WorldHit alimentan daño acumulado con dureza, grietas y rotura por gameMode del servidor."
     },
     {
       "id": "F09",
       "group": "Daño al mundo y explosiones",
       "title": "Impactos de armas contra bloques",
-      "state": "Ausencia confirmada",
+      "state": "Integrado; Blaster comprobado",
       "evidence": "Los impactos sin actor solo tratan la propaganda. Completar también las rutas de armamento de vehículos que correspondan.",
       "references": "src/main/java/dev/jakmc/player/JakPlayers.java:applyEvent; src/main/java/dev/jakmc/entity/JakHellcat.java:applyEvent; src/main/java/dev/jakmc/entity/WheeledWeapons.java",
-      "acceptance": "Impactos reales sobre hierba, decoración y bloques; comportamiento según arma y material, con autoría del servidor y sin roturas duplicadas."
+      "acceptance": "Impactos reales sobre hierba, decoración y bloques; comportamiento según arma y material, con autoría del servidor y sin roturas duplicadas.",
+      "latest_evidence": "integration-20261105-002439: disparos nativos destruyen muro; WorldHit ya no se ignora. Faltan restantes familias."
     },
     {
       "id": "F10",
       "group": "Daño al mundo y explosiones",
       "title": "Explosiones del Morph Gun que ya rompían terreno",
-      "state": "Regresión de port confirmada",
+      "state": "Integrado; cuatro variantes por contrastar",
       "evidence": "JNI sí emite explosion; Java no lo despacha. El host original aplica poderes TNT Red3=4, Dark1=3, Dark3=9 y Yellow3=1.5.",
       "references": "native/jak-jni/src/lib.rs:event; src/main/java/dev/jakmc/player/JakPlayers.java:applyEvent; origen crates/render_anim/src/jak.rs:3519",
-      "acceptance": "Recuperar destrucción y cráter de Super Nova y las otras tres variantes, usando resistencia/drops del anfitrión y sin sumar dos veces el daño a entidades."
+      "acceptance": "Recuperar destrucción y cráter de Super Nova y las otras tres variantes, usando resistencia/drops del anfitrión y sin sumar dos veces el daño a entidades.",
+      "latest_evidence": "Explosion despachado con poderes originales 4/3/9/1.5; adaptador de resistencia/drops comprobado sin duplicar daño a actores."
     },
     {
       "id": "F11",
       "group": "Daño al mundo y explosiones",
       "title": "Hellcat/Helldog: romper vegetación y terreno",
-      "state": "Ausencia confirmada + petición actual",
+      "state": "Integrado; escenario de torpedo pendiente",
       "evidence": "blast y explode terminan en sonido en el adaptador Java; los impactos a actores siguen otra ruta.",
       "references": "src/main/java/dev/jakmc/entity/JakHellcat.java:applyEvent",
-      "acceptance": "La explosión afecta al mundo, incluida hierba, con resistencia y drops Minecraft; el daño a criaturas se conserva una sola vez."
+      "acceptance": "La explosión afecta al mundo, incluida hierba, con resistencia y drops Minecraft; el daño a criaturas se conserva una sola vez.",
+      "latest_evidence": "Blast/explode llaman al mismo adaptador de terreno, cuya vegetación, drops y resistencia pasan en integration-20261105-002439."
     },
     {
       "id": "F12",
       "group": "Daño al mundo y explosiones",
       "title": "Hellcat/Helldog: onda expansiva",
-      "state": "Petición actual",
+      "state": "Integrado; presentación real pendiente",
       "evidence": "Completar la onda y su respuesta física/visual coordinadas; un sonido o daño directo a un actor no completan esta mecánica.",
       "references": "native/jak-core/src/hellcat.rs; native/jak-jni/src/hellcat_host.rs; src/main/java/dev/jakmc/entity/JakHellcat.java; src/client/java/dev/jakmc/client/VehicleEffects.java",
-      "acceptance": "Onda visible y empuje con obstrucción por el entorno, sin daño a través de paredes ni doble impulso."
+      "acceptance": "Onda visible y empuje con obstrucción por el entorno, sin daño a través de paredes ni doble impulso.",
+      "latest_evidence": "Anillos originales y empuje por impacto; comprobación nativa de alcance, pared y un solo impacto aprobada."
     },
     {
       "id": "F13",
       "group": "Daño al mundo y explosiones",
       "title": "Hellcat/Helldog: reducir radio",
-      "state": "Petición actual",
+      "state": "Radio reducido; comprobación visual pendiente",
       "evidence": "Reducir de forma coherente el alcance de daño, empuje y presentación de la explosión.",
       "references": "native/jak-core/src/hellcat.rs; native/jak-jni/src/hellcat_host.rs; src/client/java/dev/jakmc/client/VehicleEffects.java",
-      "acceptance": "Radio más pequeño que el actual, común a ambos modelos y consistente con lo que se ve; no cambiar solo el tamaño de un sprite."
+      "acceptance": "Radio más pequeño que el actual, común a ambos modelos y consistente con lo que se ve; no cambiar solo el tamaño de un sprite.",
+      "latest_evidence": "Radio 12 metros fuente / 7.68 bloques, quinta parte del previo; onda, selección de daño y terreno coordinados."
     },
     {
       "id": "F14",
@@ -133,28 +143,31 @@
       "id": "F15",
       "group": "Objetos y mando",
       "title": "L2: interacción y uso Minecraft",
-      "state": "Cambio solicitado; asignación actual distinta",
+      "state": "Integrado; ampliar objetos contrastados",
       "evidence": "L2 está usado como apuntado general; la interacción nativa usa Triangle y parte de R2.",
       "references": "src/client/java/dev/jakmc/client/JakInput.java:poll; src/client/java/dev/jakmc/client/input/JakMenuControls.java",
-      "acceptance": "L2 abre/usa bloques y entidades y la función secundaria del objeto; conserva el apuntado del Morph Gun cuando no corresponde una interacción."
+      "acceptance": "L2 abre/usa bloques y entidades y la función secundaria del objeto; conserva el apuntado del Morph Gun cuando no corresponde una interacción.",
+      "latest_evidence": "L2 pasa al uso nativo sin lista de tipos. input_actions-20261105-000321 comprueba equipar tabla por L2."
     },
     {
       "id": "F16",
       "group": "Objetos y mando",
       "title": "R2: golpear, romper y acción primaria",
-      "state": "Cambio solicitado; puente parcial",
+      "state": "Integrado; minado/objetos por contrastar",
       "evidence": "La clasificación actual deja R2 sin ataque para varias categorías y lo dirige a BOARD por defecto. La colocación depende de apuntar.",
       "references": "src/client/java/dev/jakmc/client/JakInput.java:triggerFor y poll",
-      "acceptance": "Mano vacía, bloques, herramientas y armas responden a R2 con la acción apropiada; minado mantenido, golpes y uso no se pierden."
+      "acceptance": "Mano vacía, bloques, herramientas y armas responden a R2 con la acción apropiada; minado mantenido, golpes y uso no se pierden.",
+      "latest_evidence": "R2 ataque/minado nativo o disparo Morph Gun; nunca despliega tabla. Prueba SDL de tabla aprobada."
     },
     {
       "id": "F17",
       "group": "Objetos y mando",
       "title": "Prioridades entre objeto, tabla, montura, poderes y conducción",
-      "state": "Parcial",
+      "state": "Parcial corregido",
       "evidence": "Evitar que una acción reserve el gatillo y anule las demás. El bloqueo busy actual incluye agua/montura.",
       "references": "src/client/java/dev/jakmc/client/JakInput.java",
-      "acceptance": "Usar puertas/objetos donde corresponde sin desmontar o desplegar la tabla por error. En conducción se conservan R2 acelerador y L2 freno; L3/poderes y zoom R3 mantienen su función."
+      "acceptance": "Usar puertas/objetos donde corresponde sin desmontar o desplegar la tabla por error. En conducción se conservan R2 acelerador y L2 freno; L3/poderes y zoom R3 mantienen su función.",
+      "latest_evidence": "Triángulo despliega/guarda solo tabla equipada, servidor valida el slot. Prueba SDL conserva Select/R3; ampliar contextos."
     },
     {
       "id": "F18",
@@ -299,33 +312,6 @@
       "evidence": "El recorrido aceptado de siete biomas no acredita 150 FPS sostenidos. Sus percentiles y pausas están conservados en el handoff.",
       "references": "docs/CURRENT-PORT-HANDOFF.md: hellcat_crossing-20261104-170512",
       "acceptance": "Optimizar sin recortar detalle/población/distancia ni ritmos de simulación; publicar p95/p99/picos y trayectos prolongados."
-    },
-    {
-      "id": "F34",
-      "group": "Lejanos — al final de la cola",
-      "title": "Terreno lejano: continuidad de material y color",
-      "state": "Port pendiente",
-      "evidence": "El LOD del anfitrión Rust y su corrección roca/tierra no tienen una integración equivalente en Java.",
-      "references": "origen crates/minecraft_terrain/src/far_terrain.rs; docs/PORTING-DELTA.md",
-      "acceptance": "Transición cercana/lejana con mismo material, altura y tono; sin cambio brusco de roca a tierra."
-    },
-    {
-      "id": "F35",
-      "group": "Lejanos — al final de la cola",
-      "title": "Torre visible como modelo lejano",
-      "state": "Port pendiente",
-      "evidence": "La torre física de la ciudad no incluye por sí misma la representación lejana solicitada.",
-      "references": "origen crates/minecraft_terrain/src/far_tower.rs; docs/PORTING-DELTA.md",
-      "acceptance": "Silueta, cabeza y cuernos reconocibles a distancia; sustitución y oclusión correctas al acercarse."
-    },
-    {
-      "id": "F36",
-      "group": "Lejanos — al final de la cola",
-      "title": "Mejora de calidad de los lowpoly",
-      "state": "Petición previa abierta",
-      "evidence": "Conservar el orden del usuario: después del resto, mejorar los lejanos, no restaurar solo una versión mínima.",
-      "references": "docs/PORTING-DELTA.md; origen far_terrain.rs y far_tower.rs",
-      "acceptance": "Más coherencia de silueta, colores y materiales con presupuesto de geometría/streaming medido."
     }
   ],
   "checks": [
@@ -400,6 +386,35 @@
       "id": "H03",
       "title": "Atracción/recogida original completa de gemas",
       "evidence": "El origen ya documentaba límites de atracción; la física adaptada y la recogida existentes no cierran todos los comportamientos del juego original."
+    }
+  ],
+  "removed": [
+    {
+      "id": "F34",
+      "group": "Lejanos — al final de la cola",
+      "title": "Terreno lejano: continuidad de material y color",
+      "state": "Retirado por el usuario el 2026-11-05: no se implementará lowpoly en Minecraft Java.",
+      "evidence": "El LOD del anfitrión Rust y su corrección roca/tierra no tienen una integración equivalente en Java.",
+      "references": "origen crates/minecraft_terrain/src/far_terrain.rs; docs/PORTING-DELTA.md",
+      "acceptance": "Transición cercana/lejana con mismo material, altura y tono; sin cambio brusco de roca a tierra."
+    },
+    {
+      "id": "F35",
+      "group": "Lejanos — al final de la cola",
+      "title": "Torre visible como modelo lejano",
+      "state": "Retirado por el usuario el 2026-11-05: no se implementará lowpoly en Minecraft Java.",
+      "evidence": "La torre física de la ciudad no incluye por sí misma la representación lejana solicitada.",
+      "references": "origen crates/minecraft_terrain/src/far_tower.rs; docs/PORTING-DELTA.md",
+      "acceptance": "Silueta, cabeza y cuernos reconocibles a distancia; sustitución y oclusión correctas al acercarse."
+    },
+    {
+      "id": "F36",
+      "group": "Lejanos — al final de la cola",
+      "title": "Mejora de calidad de los lowpoly",
+      "state": "Retirado por el usuario el 2026-11-05: no se implementará lowpoly en Minecraft Java.",
+      "evidence": "Conservar el orden del usuario: después del resto, mejorar los lejanos, no restaurar solo una versión mínima.",
+      "references": "docs/PORTING-DELTA.md; origen far_terrain.rs y far_tower.rs",
+      "acceptance": "Más coherencia de silueta, colores y materiales con presupuesto de geometría/streaming medido."
     }
   ]
 }

@@ -66,6 +66,7 @@ final class WheeledWeapons {
             effects.add(event("beam",muzzle,hit.at()));
             if(hit.blocked())effects.add(event("group-gun-scorp-shot-hit",hit.at(),null));
             if(hit.target()!=null)damage(level,pilot,hit.target(),4,false);
+            else if(hit.blocked())dev.jakmc.player.JakWorldDamage.hit(pilot,BlockPos.containing(hit.at().add(direction.scale(.03))),4);
             cue(level,"snake-gun-fire",muzzle);
         }
     }
@@ -100,6 +101,7 @@ final class WheeledWeapons {
         cue(level,"toad-shot-hit",point);
         Vec3 from=point.subtract(velocity.normalize().scale(.02));
         double radius=25*SCALE;
+        dev.jakmc.player.JakWorldDamage.explosion(level,car,pilot,from,3);
         for(var target:level.getEntitiesOfClass(LivingEntity.class,new AABB(from,from).inflate(radius),e->eligible(e,pilot))){
             var center=target.getBoundingBox().getCenter();
             double distance=center.distanceTo(from);

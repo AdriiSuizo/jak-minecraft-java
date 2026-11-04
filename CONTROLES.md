@@ -10,12 +10,12 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Puñetazo | Cuadrado | X |
 | Ataque giratorio | Círculo | B |
 | Agacharse / rodada al avanzar | L1 | LB |
-| Apuntar / cámara al hombro en tercera persona | L2 | LT |
+| Apuntar Morph Gun / cámara al hombro | L2 con Morph Gun | LT con Morph Gun |
 | Disparar Morph Gun / cargar y soltar Wave Concussor | R2 | RT |
-| Colocar bloque seleccionado al apuntar | L2 + R2 | LT + RT |
+| Colocar bloques / usar el objeto o la mano secundaria | L2 | LT |
 | Picar o atacar con herramienta o arma de Minecraft | R2 | RT |
-| Usar objeto, puerta o entidad de Minecraft | Triángulo | Y |
-| Sacar / guardar turbotabla equipada cuando el gatillo está libre | R2 | RT |
+| Interactuar con puertas, bloques y entidades | L2 | LT |
+| Sacar / guardar turbotabla equipada en su ranura | Triángulo | Y |
 | Activar o desactivar Jak oscuro | Pulsar y soltar L3 | Pulsar y soltar stick izquierdo |
 | Jak luminoso con alas | L3 + X | Stick izquierdo + A |
 | Escudo de Jak luminoso | L3 + Círculo | Stick izquierdo + B |
@@ -29,7 +29,7 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Pausa / cerrar pantalla | Options | Start / Menu |
 | Cerrar una pantalla | Círculo o Share | B o Back |
 
-Para equipar la turbotabla, selecciónala en la mano y pulsa Triángulo/Y una vez. Se guarda en su propio equipamiento persistente; después R2/RT la saca o guarda. No ocupa el escudo. Selecciona el Morph Gun en la mano antes de disparar. Con un arco, un cubo u otro objeto de uso asignado al gatillo, R2 ejecuta su acción de Minecraft. Mantén L3 antes de pulsar el botón del poder luminoso. Con las alas desplegadas, salta y vuelve a pulsar X en el aire para aletear. El escudo, la curación y la ralentización consumen eco luminoso.
+Para equipar la turbotabla, usa su casilla propia del inventario o selecciónala en la mano y pulsa L2/LT. Triángulo/Y únicamente saca o guarda la tabla que esté equipada en esa casilla; llevarla en la mano o en otra casilla no basta. R2/RT ejecuta el ataque/minado de Minecraft o dispara el Morph Gun seleccionado. L2/LT conserva la ruta nativa de uso, incluyendo colocar bloques, comer, beber, cargar arcos, usar cubos, puertas, entidades y mano secundaria. Con el Morph Gun también apunta. Al conducir se conservan R2 acelerador y L2 freno. Mantén L3 antes de pulsar el botón del poder luminoso. Con las alas desplegadas, salta y vuelve a pulsar X en el aire para aletear. El escudo, la curación y la ralentización consumen eco luminoso.
 
 Se conservan teclado y ratón: B tabla, G puñetazo, V giro, R disparo, C apuntado, Z oscuro, X alas y Espacio salto; se pueden cambiar en las opciones de Minecraft. Las interacciones normales también mantienen clic derecho.
 
@@ -38,23 +38,23 @@ La entrada del mando respeta las zonas muertas originales: el núcleo aplica la 
 En inventario, creativo, yunque y comercio, mueve el cursor con un stick o recorre las casillas con la cruceta. X/A recoge, coloca o arrastra. Cuadrado/X divide la pila. Triángulo/Y hace la transferencia rápida de Minecraft. L1/R1 desplazan la lista y Círculo/B cierra. En creativo, usa el buscador de Minecraft con el teclado, en el idioma del juego.
 
 
-Los aldeanos de Minecraft muestran tres apariencias de ciudadanos de Villa Refugio. En la pestaña de criaturas de Jak hay tres huevos para elegirlas; al usar un huevo sobre un adulto se crea una cría de esa apariencia. Para comerciar, usa Triángulo/Y o clic derecho.
+Los aldeanos de Minecraft muestran tres apariencias de ciudadanos de Villa Refugio. En la pestaña de criaturas de Jak hay tres huevos para elegirlas; al usar un huevo sobre un adulto se crea una cría de esa apariencia. Para comerciar, usa L2/LT o clic derecho.
 
 ## Lagarto saltador de Spargus
 
-Aparece en el desierto y también está disponible en la pestaña de criaturas del creativo. Mira a un lagarto libre y pulsa Triángulo/Y o clic derecho para montar. Usa el stick izquierdo para conducir, X/A para saltar y vuelve a pulsarlo en el aire para el doble salto. Cuadrado/X hace el ataque terrestre o el picado según la altura. Triángulo/Y interactúa con puertas, vallas y otros objetivos de Minecraft al apuntarlos. Con la vista despejada, desmonta. Con teclado, F desmonta y G ejecuta el ataque.
+Aparece en el desierto y también está disponible en la pestaña de criaturas del creativo. Mira a un lagarto libre y pulsa L2/LT o clic derecho para montar. Usa el stick izquierdo para conducir, X/A para saltar y vuelve a pulsarlo en el aire para el doble salto. Cuadrado/X hace el ataque terrestre o el picado según la altura. L2/LT interactúa con puertas, vallas y otros objetivos de Minecraft. Triángulo/Y desmonta. Con teclado, F desmonta y G ejecuta el ataque.
 
 
 ## Flut Flut y lagarto
 
 El lagarto aparece en desiertos. El Flut Flut aparece en pantanos y manglares. Ambos tienen su huevo generador en la pestaña de criaturas de Jak.
 
-Alimenta al Flut Flut con semillas, inténtalo domar con Triángulo o clic derecho con la mano vacía y colócale una montura. Los huevos que ponen los adultos se pueden recoger y colocar para incubarlos. Al montar, X salta y vuelve a saltar en el aire, Cuadrado ejecuta el golpe de la montura en el aire y Triángulo permite usar una puerta o desmontar. Con teclado, usa Espacio para saltar, G para el golpe y F para interactuar o desmontar.
+Alimenta al Flut Flut con semillas, inténtalo domar con L2 o clic derecho con la mano vacía y colócale una montura. Los huevos que ponen los adultos se pueden recoger y colocar para incubarlos. Al montar, X salta y vuelve a saltar en el aire, Cuadrado ejecuta el golpe de la montura en el aire y L2 usa puertas y objetos; Triángulo desmonta. Con teclado, usa Espacio para saltar, G para el golpe y F para interactuar o desmontar.
 
 
 ## HellCat
 
-Coloca el HellCat desde la pestaña de equipamiento de Jak y acércate al casco. Triángulo o clic derecho inicia la animación de subida. Ya sentado, R2 acelera y L2 frena y da marcha atrás. El stick izquierdo orienta el morro. Círculo y Cuadrado controlan el giro de la nave en sentidos opuestos. X activa el turbo mientras aceleras. R1 dispara el cañón y L1 el torpedo. Triángulo desmonta y deja la nave flotando con el motor encendido. Un golpe apaga el motor y las luces. Con teclado, W/S controlan aceleración y freno, y F desmonta.
+Coloca el HellCat desde la pestaña de equipamiento de Jak y acércate al casco. L2 o clic derecho inicia la animación de subida. Ya sentado, R2 acelera y L2 frena y da marcha atrás. El stick izquierdo orienta el morro. Círculo y Cuadrado controlan el giro de la nave en sentidos opuestos. X activa el turbo mientras aceleras. R1 dispara el cañón y L1 el torpedo. Triángulo desmonta y deja la nave flotando con el motor encendido. Un golpe apaga el motor y las luces. Con teclado, W/S controlan aceleración y freno, y F desmonta.
 
 
 La turbotabla tiene casilla propia en los inventarios nativos de supervivencia y creativo. Puedes equiparla o retirarla con los mismos clics y transferencias rápidas que el resto del equipo, conservando durabilidad y encantamientos. La casilla no sustituye a la mano secundaria. Al morir respeta keepInventory y la maldición de desaparición.

@@ -253,17 +253,31 @@ public final class JakHellcat extends Entity {
         Vec3 at=JakPlayers.vector(event.getAsJsonArray("pos")).add(origin);
         switch(kind){
             case "impact" -> {
-                if(event.get("actor").isJsonNull())return;
+                if(event.get("actor").isJsonNull()){
+                    if(pilot!=null&&event.get("damage").getAsFloat()<128){
+                        Vec3 direction=JakPlayers.vector(event.getAsJsonArray("dir"));
+                        dev.jakmc.player.JakWorldDamage.hit(pilot,net.minecraft.core.BlockPos.containing(at.add(direction.scale(.03))),event.get("damage").getAsFloat());
+                    }
+                    return;
+                }
                 var target=level.getEntity(event.get("actor").getAsInt());
                 if(target!=null&&target!=pilot&&target!=this){
                     var damage=pilot!=null?dev.jakmc.player.JakDamage.shot(pilot,false):damageSources().magic();
                     target.hurtServer(level,damage,event.get("damage").getAsFloat()*2.5f);
+                    if(event.get("explosive").getAsBoolean()){
+                        Vec3 impulse=JakPlayers.vector(event.getAsJsonArray("dir")).scale(1.2);
+                        target.push(impulse.x,Math.max(.2,impulse.y),impulse.z);
+
+                    }
                 }
             }
             case "fire" -> sound("hellcat-fire",at);
             case "fire_alt" -> sound("hellcat-firealt",at);
             case "crash" -> sound("fac-impact-hard",at);
-            case "blast","explode" -> sound("hellcat-explode",at);
+            case "blast","explode" -> {
+                sound("hellcat-explode",at);
+                dev.jakmc.player.JakWorldDamage.explosion(level,this,pilot,at,event.get("radius").getAsFloat()/2);
+            }
         }
     }
     private void sound(String name,Vec3 at){
