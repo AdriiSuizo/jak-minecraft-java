@@ -69,6 +69,10 @@ public final class JakPlayers {
         public void close(){releaseMount();releaseCraft();NativeJak.destroy(nativeId);}
     }
     public static boolean active(Entity player){return player.getAttachedOrCreate(JakData.ENABLED)&&!player.isPassenger()&&player.isAlive();}
+    public static void chooseMode(ServerPlayer player,boolean enabled){
+        player.setAttached(JakData.ENABLED,enabled);
+        player.setAttached(JakData.MODE_SELECTED,true);
+    }
     public static void hostTeleport(ServerPlayer player){
         Session session=LIVE.get(player.getUUID());
         if(session!=null&&player.position().distanceToSqr(session.last)>1e-10)session.hostMoved=true;
@@ -138,6 +142,9 @@ public final class JakPlayers {
         ServerTickEvents.END_SERVER_TICK.register(server->{
             var present=new HashSet<UUID>();
             for(ServerPlayer p:server.getPlayerList().getPlayers()){
+                // Old development saves were manually enabled; new launcher
+                // worlds were not. Migrate once, then respect explicit /jak off.
+                if(!p.getAttachedOrCreate(JakData.MODE_SELECTED))chooseMode(p,true);
                 JakResources.migrate(p);
                 if(!active(p)||p.isSleeping()){JakResources.synchronize(p,JakResources.totals(p));continue;}
                 present.add(p.getUUID());

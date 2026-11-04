@@ -47,13 +47,14 @@ public final class DevBridge {
             if(!request.has("session")||!SESSION.equals(request.get("session").getAsString()))throw new IllegalArgumentException("Stale request belongs to a different game process");
             String id=request.get("id").getAsString();if(!id.matches("[a-zA-Z0-9_-]+"))throw new IllegalArgumentException("Invalid request id");
             String op=request.get("op").getAsString();JsonObject out=new JsonObject();
-            if(productionProbe&&!Set.of("observe","package_status","package_capture","quit").contains(op))throw new IllegalArgumentException("Operation unavailable in packaged-artifact check");
+            if(productionProbe&&!Set.of("observe","package_status","package_camera","package_capture","quit").contains(op))throw new IllegalArgumentException("Operation unavailable in packaged-artifact check");
             switch(op){
                 case "observe" -> observe(client,out);
                 case "scale_scene" -> {ScaleScene.start(client);out.addProperty("scheduled",true);}
                 case "package_status" -> {
                     if(!productionProbe)throw new IllegalArgumentException("Packaged-artifact check only");
-                    client.options.setCameraType(CameraType.THIRD_PERSON_FRONT);
+                    out.addProperty("camera_before_probe",client.options.getCameraType().name());
+                    out.addProperty("enabled",client.player!=null&&client.player.getAttachedOrCreate(dev.jakmc.JakData.ENABLED));
                     var renderer=dev.jakmc.client.model.JakRenderer.class;
                     out.addProperty("actor_drawn",client.player!=null&&dev.jakmc.client.model.JakRenderer.lastEntityId==client.player.getId());
                     out.addProperty("cinematic_draws",dev.jakmc.client.model.JakRenderer.cinematicRenderSerial);
@@ -62,6 +63,10 @@ public final class DevBridge {
                     for(String resource:List.of("/assets/jakmc/sounds.json","/assets/jakmc/flut/eye_open.png","/assets/jakmc/hellcat/deck.json","/data/jakmc/catalog/haven.jbp","/data/jakmc/catalog/spargus.jbp")){
                         try(var in=renderer.getResourceAsStream(resource)){out.addProperty(resource,in!=null&&in.read()!=-1);}
                     }
+                }
+                case "package_camera" -> {
+                    if(!productionProbe)throw new IllegalArgumentException("Packaged-artifact check only");
+                    client.options.setCameraType(CameraType.THIRD_PERSON_FRONT);
                 }
                 case "package_capture" -> {
                     if(!productionProbe)throw new IllegalArgumentException("Packaged-artifact check only");

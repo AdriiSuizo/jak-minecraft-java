@@ -34,6 +34,7 @@ def call(instance,op,**data):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--minecraft',type=Path,required=True)
+    parser.add_argument('--world-template',type=Path,default=ROOT/'run/saves/New World (1)')
     args=parser.parse_args();mc=args.minecraft.resolve()
     if not mc.is_relative_to(ROOT/'.local'):raise SystemExit('Only a private .local lab installation is supported')
     personal=Path.home()/'AppData/Roaming/.minecraft';instance=mc/'instances/jakmod'
@@ -55,7 +56,7 @@ def main():
     classpath.append(str(mc/'versions/26.3/26.3.jar'))
     name='Installer-check-'+uuid.uuid4().hex[:8]
     world=instance/'saves'/name
-    shutil.copytree(ROOT/'run/saves/New World (1)',world,ignore=shutil.ignore_patterns('session.lock'))
+    shutil.copytree(args.world_template,world,ignore=shutil.ignore_patterns('session.lock'))
     # Profile belongs to the lab; prevent alt-tab pauses from blocking a scene.
     (instance/'options.txt').write_text('lang:es_es\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:8\nsimulationDistance:5\n')
     java=Path(os.environ['JAVA_HOME'])/'bin/java.exe'
@@ -87,7 +88,7 @@ def main():
                                  creationflags=subprocess.CREATE_NO_WINDOW)
         try:
             deadline=time.monotonic()+100;warmup=None
-            row=None
+            row=None;entry_camera=None
             while time.monotonic()<deadline:
                 if process.poll() is not None:raise RuntimeError('Production game exited: '+str(process.returncode))
                 if ready.exists() and ready.read_bytes()!=previous:
@@ -96,18 +97,26 @@ def main():
                         row=call(instance,'package_status')
                         if warmup is None:warmup=time.monotonic()
                         assets=all(value for key,value in row.items() if key.startswith('/'))
-                        if assets and row.get('actor_drawn') and row.get('source_pose') and row.get('cinematic_draws',0)>0 and time.monotonic()-warmup>2:
+                        if assets and row.get('enabled') and row.get('actor_drawn') and row.get('source_pose') and row.get('cinematic_draws',0)>0 and time.monotonic()-warmup>2:
+                            entry_camera=row.get('camera_before_probe')
+                            if entry_camera!='THIRD_PERSON_BACK':raise RuntimeError('Jak did not enter its default third-person camera: '+str(row))
+                            call(instance,'package_camera');time.sleep(.6)
                             call(instance,'package_capture')
                             end=time.monotonic()+8;image=instance/'screenshots/installed-jak.png'
-                            while (not image.exists() or image.stat().st_mtime_ns<capture_after) and time.monotonic()<end:time.sleep(.1)
-                            if not image.exists():raise RuntimeError('Screenshot was not saved')
+                            def complete_image():
+                                return image.exists() and image.stat().st_mtime_ns>=capture_after and image.read_bytes().endswith(b'\x00\x00\x00\x00IEND\xaeB\x60\x82')
+                            while not complete_image() and time.monotonic()<end:time.sleep(.1)
+                            if not complete_image():raise RuntimeError('Screenshot was not completely saved')
                             shutil.copyfile(image,evidence/image.name)
+                            row['camera_on_entry']=entry_camera
                             (evidence/'package-result.json').write_text(json.dumps(row,indent=2))
                             break
                 time.sleep(.5)
             else:raise TimeoutError('Production check')
             for image in (instance/'screenshots').glob('scale-*.png'):
                 if image.stat().st_mtime_ns>=capture_after:shutil.copyfile(image,evidence/image.name)
+            image=instance/'screenshots/installed-jak.png'
+            if image.exists() and image.stat().st_mtime_ns>=capture_after:shutil.copyfile(image,evidence/image.name)
             print(json.dumps(row,indent=2))
         finally:
             if process.poll() is None:

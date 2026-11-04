@@ -121,5 +121,7 @@
   "entity.jakmc.yakow": "Yakow",
   "item.jakmc.yakow_spawn_egg": "Huevo generador de yakow",
   "tooltip.jakmc.fuel_remaining": "Carga restante: %s",
-  "tooltip.jakmc.fuel_partial": "Parcialmente usado; fabricar y comerciar requieren una unidad completa."
+  "tooltip.jakmc.fuel_partial": "Parcialmente usado; fabricar y comerciar requieren una unidad completa.",
+  "message.jakmc.mode_on": "Jak está activo. F5 cambia la cámara; /jak off lo desactiva.",
+  "message.jakmc.mode_off": "Jak está desactivado. Usa /jak on para volver a activarlo."
 }

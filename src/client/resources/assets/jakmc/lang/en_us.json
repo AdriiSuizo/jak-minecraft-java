@@ -121,5 +121,7 @@
   "entity.jakmc.yakow": "Yakow",
   "item.jakmc.yakow_spawn_egg": "Yakow Spawn Egg",
   "tooltip.jakmc.fuel_remaining": "Charge remaining: %s",
-  "tooltip.jakmc.fuel_partial": "Partly used; crafting and trades need a full unit."
+  "tooltip.jakmc.fuel_partial": "Partly used; crafting and trades need a full unit.",
+  "message.jakmc.mode_on": "Jak is active. F5 changes perspective; /jak off disables it.",
+  "message.jakmc.mode_off": "Jak is disabled. Use /jak on to enable it again."
 }

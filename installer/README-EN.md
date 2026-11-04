@@ -34,7 +34,10 @@ changes. For a custom Minecraft folder, substitute its path for
 continues reading its models and animations. Reinstall with the new path if
 you move it. Extraction requires additional free disk space.
 
-In game, `/jak on` enables Jak. `/jak equipment` provides equipment in creative
+Jak and his original movement activate automatically when joining, including
+worlds created with the earlier installer. The initial view is third person;
+F5 and controller zoom still work. `/jak off` disables Jak and remembers your
+choice. `/jak equipment` provides equipment in creative
 mode. F5 changes perspective. Full controls are in `CONTROLES.md`; controller
 bindings are available in game. This port is still in development; installation
 does not certify complete parity or a particular frame rate.

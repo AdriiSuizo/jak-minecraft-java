@@ -35,7 +35,10 @@ No muevas ni borres tu instalación de OpenGOAL después de instalar: el mod
 sigue leyendo sus modelos y animaciones. Reinstala indicando la nueva ruta
 si la cambias. La extracción necesita espacio libre adicional.
 
-En el juego, usa `/jak on` para activar Jak. En creativo, `/jak equipment`
+Jak y su movimiento se activan automáticamente al entrar, también al actualizar
+partidas creadas con el instalador anterior. Empiezas en tercera persona; F5 y
+el zoom del mando siguen funcionando. `/jak off` permite desactivarlo y se
+recuerda tu elección. En creativo, `/jak equipment`
 proporciona equipo. F5 cambia la cámara. Los controles completos están en
 `CONTROLES.md`; el mando se configura en el juego. El port sigue en desarrollo;
 el instalador no certifica paridad completa ni un rendimiento concreto.

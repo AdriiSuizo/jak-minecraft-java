@@ -7,7 +7,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 public final class JakData {
-    public static final AttachmentType<Boolean> ENABLED=AttachmentRegistry.create(id("enabled"), b->b.initializer(()->false).persistent(Codec.BOOL).copyOnDeath().syncWith(ByteBufCodecs.BOOL,AttachmentSyncPredicate.all()));
+    public static final AttachmentType<Boolean> ENABLED=AttachmentRegistry.create(id("enabled"), b->b.initializer(()->true).persistent(Codec.BOOL).copyOnDeath().syncWith(ByteBufCodecs.BOOL,AttachmentSyncPredicate.all()));
+    public static final AttachmentType<Boolean> MODE_SELECTED=AttachmentRegistry.create(id("mode_selected"),b->b.initializer(()->false).persistent(Codec.BOOL).copyOnDeath());
     public static final AttachmentType<ItemStack> BOARD=AttachmentRegistry.create(id("jet_board"), b->b.initializer(()->ItemStack.EMPTY).persistent(ItemStack.OPTIONAL_CODEC).copyOnDeath().syncWith(ItemStack.OPTIONAL_STREAM_CODEC,AttachmentSyncPredicate.all()));
     public static final AttachmentType<Float> DARK_ECO=eco("dark_eco");
     public static final AttachmentType<Float> LIGHT_ECO=eco("light_eco");

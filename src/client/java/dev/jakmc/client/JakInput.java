@@ -28,6 +28,7 @@ public final class JakInput {
     private static final int TRIANGLE=8,L2=32,R1=64,R2=128,L3=256,R3=512;
     private static final float DEFAULT_ZOOM=3.84f,FIRST_PERSON_ZOOM=.384f;
     private static float cameraZoom=DEFAULT_ZOOM;
+    private static boolean cameraInitialized;
     private enum Trigger { BOARD, FIRE, USE, PLACE, MINE, RESERVED }
     private static long lastFrame,dropStarted;
     private static boolean droppedStack;
@@ -219,8 +220,15 @@ public final class JakInput {
     }
 
     public static void initialize(){
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register((handler,sender,client)->{
+            cameraInitialized=false;cameraZoom=DEFAULT_ZOOM;
+        });
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STOPPING.register(c->GAMEPAD.close());
         ClientTickEvents.END_CLIENT_TICK.register(client->{
+            if(!cameraInitialized&&enabled(client)&&JakPoses.get(client.player.getId())!=null){
+                cameraInitialized=true;
+                if(client.options.getCameraType().isFirstPerson())client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+            }
             poll(client);
             JakMenuControls.frame(client,uiPad,0,MenuScene.backgroundPad(controllerId)||InputScene.backgroundPad(controllerId));
             ui(client);
