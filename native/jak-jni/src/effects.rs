@@ -10,10 +10,11 @@ const BARREL_FIRE:&str="group-ctysluma-barrel-fire";
 const PROPAGANDA:&str="group-ctywide-baron-propoganda-holo";
 const DISMANTLE:&str="group-vehicle-explosion";
 #[derive(Clone,Copy,PartialEq)]
-enum Decor { Barrel, Projector, Dismantle, Vent(u8), Sandstorm }
+enum Decor { Barrel, Projector, Dismantle, DroidExplosion, Vent(u8), Sandstorm }
 impl Decor {
- fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::Vent(index)=>VENT_GROUPS[index as usize],Self::Sandstorm=>unreachable!()}}
- fn scale(self)->f32{match self{Self::Barrel=>0.20,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::Vent(0..=3)|Self::Sandstorm=>1.,Self::Vent(_)=>0.62}}
+ fn one_shot(self)->bool{matches!(self,Self::Dismantle|Self::DroidExplosion)}
+ fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::DroidExplosion=>"group-kg-small-explosion",Self::Vent(index)=>VENT_GROUPS[index as usize],Self::Sandstorm=>unreachable!()}}
+ fn scale(self)->f32{match self{Self::Barrel=>0.20,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion=>1.94/(2.5138981*1.4)*BLOCK/jak_core::METER,Self::Vent(0..=3)|Self::Sandstorm=>1.,Self::Vent(_)=>0.62}}
 }
 
 const VENT_GROUPS:[&str;8]=[
@@ -114,7 +115,7 @@ fn create(library:&OnceLock<Arc<Library>>,decor:Option<Decor>)->Result<jlong,Str
  e.next+=1;
  let id=e.next;
  let mut particles=Particles::new(library);
- if decor==Some(Decor::Dismantle){particles.spawn(DISMANTLE,Vec3::ZERO,Mat3::IDENTITY);}
+ if let Some(effect)=decor.filter(|d|d.one_shot()){particles.spawn(effect.group(),Vec3::ZERO,Mat3::IDENTITY);}
  e.live.insert(id,Fx{particles,weapons:Default::default(),queue:VecDeque::new(),carry:0.,decor,yaw:0.,sandstorm:Sandstorm{rng:id,..Default::default()}});
  Ok(id as jlong)
 }
@@ -127,7 +128,7 @@ fn create(library:&OnceLock<Arc<Library>>,decor:Option<Decor>)->Result<jlong,Str
    0=>(&HAVEN,Decor::Barrel),1=>(&HAVEN,Decor::Projector),2=>(&HAVEN,Decor::Dismantle),
    10..=13=>(&JAK1_VENTS,Decor::Vent((kind-10)as u8)),
    14..=17=>(&LIBRARY,Decor::Vent((kind-10)as u8)),
-   18=>(&LIBRARY,Decor::Sandstorm),
+   18=>(&LIBRARY,Decor::Sandstorm),19=>(&LIBRARY,Decor::DroidExplosion),
    _=>return Err("Unknown world effect".into())
   };
   if library.get().is_none(){return Ok(0);}
@@ -221,7 +222,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
   for _ in 0..steps {
    match f.decor {
     Some(Decor::Sandstorm)=>f.sandstorm.launch(&mut f.particles,eye),
-    Some(decor) if decor!=Decor::Dismantle=>f.particles.keep(0,decor.group(),Vec3::ZERO,Mat3::IDENTITY),
+    Some(decor) if !decor.one_shot()=>f.particles.keep(0,decor.group(),Vec3::ZERO,Mat3::IDENTITY),
     _=>{}
    }
    let mut stepped=false;

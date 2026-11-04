@@ -90,6 +90,7 @@ public final class DevBridge {
                 case "effects_scene" -> {PortScene.start(client);out.addProperty("scheduled",true);}
                 case "enemies_scene" -> {EnemyScene.start(client);out.addProperty("scheduled",true);}
                 case "systems_scene" -> {EnemyScene.startSystems(client);out.addProperty("scheduled",true);}
+                case "spydroid_scene" -> {SpydroidScene.start(client);out.addProperty("scheduled",true);}
                 case "combat_scene" -> {EnemyScene.startCombat(client);out.addProperty("scheduled",true);}
                 case "quit" -> {out.addProperty("stopping",true);client.stop();}
                 default -> throw new IllegalArgumentException("Unknown development operation: "+op);

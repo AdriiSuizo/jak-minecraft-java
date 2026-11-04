@@ -26,7 +26,7 @@ public final class JakEffects {
  private record Decoration(BlockPos pos,int kind){}
  private static final Map<Decoration,Owner> DECORATIONS=new HashMap<>();
  private static final List<Owner> BURSTS=new ArrayList<>();
- private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18;
+ private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18,SPYDROID=19;
  private static Owner sandstorm;
  private static net.minecraft.client.multiplayer.ClientLevel weatherWorld;
  private static long lastDust;
@@ -34,7 +34,7 @@ public final class JakEffects {
  private static final Set<Integer> MISSING=new HashSet<>();
  private static String[] names;
  private static final ByteBuffer VIEW=NativeJak.buffer(44),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
- public static long gemCollectBursts;
+ public static long gemCollectBursts,spydroidBursts;
  public static int drawnVertices,drawnLightningVertices,drawnDarkVertices,drawnBarrelVertices,drawnProjectorVertices,drawnBurstVertices,drawnVentVertices,drawnSandVertices;
  private static final class Owner implements AutoCloseable {
   final long handle;final Vec3 origin;long received=System.nanoTime(),lastDraw;
@@ -58,6 +58,13 @@ public final class JakEffects {
     if(owner!=null)owner.close();
     long handle=NativeJak.fxCreateDecor(DISMANTLE);
     if(handle!=0)BURSTS.add(new Owner(Vec3.atBottomCenterOf(packet.position()).add(0,.6,0),handle));
+   });
+  net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+   dev.jakmc.network.JakPackets.CreatureBurst.TYPE,(packet,context)->{
+    var level=context.client().level;
+    if(level==null||!level.dimension().identifier().equals(packet.dimension()))return;
+    long handle=NativeJak.fxCreateDecor(SPYDROID);
+    if(handle!=0){BURSTS.add(new Owner(packet.at(),handle));spydroidBursts++;}
    });
   ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->clear());
  }

@@ -42,6 +42,14 @@ public final class JakPackets {
         @Override public Type<PropBreak> type(){return TYPE;}
     }
 
+    public record CreatureBurst(net.minecraft.resources.Identifier dimension,net.minecraft.world.phys.Vec3 at) implements CustomPacketPayload {
+        public static final Type<CreatureBurst> TYPE=new Type<>(JakData.id("spydroid_explosion_v1"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,CreatureBurst> CODEC=StreamCodec.of((b,p)->{
+            b.writeIdentifier(p.dimension);b.writeDouble(p.at.x);b.writeDouble(p.at.y);b.writeDouble(p.at.z);
+        },b->new CreatureBurst(b.readIdentifier(),new net.minecraft.world.phys.Vec3(b.readDouble(),b.readDouble(),b.readDouble())));
+        @Override public Type<CreatureBurst> type(){return TYPE;}
+    }
+
     private static byte[] compress(String json){
         byte[] data=json.getBytes(StandardCharsets.UTF_8);if(data.length>2_000_000)throw new IllegalArgumentException("Jak pose exceeds bounded packet size");
         var deflater=new Deflater(Deflater.BEST_SPEED);
@@ -55,6 +63,7 @@ public final class JakPackets {
         PayloadTypeRegistry.clientboundPlay().register(Pose.TYPE,Pose.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(EntityTime.TYPE,EntityTime.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(PropBreak.TYPE,PropBreak.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(CreatureBurst.TYPE,CreatureBurst.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Input.TYPE,(packet,context)->{if(packet.valid())JakPlayers.input(context.player(),packet);});
     }
 }

@@ -33,7 +33,8 @@ public final class JakEnemy extends Monster {
  private boolean requestLeap,leaping;
  private boolean nativeHeavy;
  private int leapWindup;
- private Vec3 leapMotion=Vec3.ZERO;
+ private Vec3 leapMotion=Vec3.ZERO,lunge=Vec3.ZERO;
+ private final boolean spydroid;
  private Vec3 home,roam;
  private String sounding="";
  private float soundTime=-.001f;
@@ -41,6 +42,7 @@ public final class JakEnemy extends Monster {
  public JakEnemy(EntityType<? extends Monster> type,Level level){
   super(type,level);kind=Objects.requireNonNull(JakEntities.KINDS.get(type),"Unregistered Jak enemy");
   guard=kind.guard()?new KrimsonGuard(this):null;
+  spydroid=kind.model.equals("spydroid");
   setPathfindingMalus(net.minecraft.world.level.pathfinder.PathType.WATER,0);
   getNavigation().setCanFloat(true);
   jumpControl=new net.minecraft.world.entity.ai.control.JumpControl(this){@Override public void jump(){if(isInWater()||isInLava())super.jump();else if(guard!=null)super.jump();else if(onGround()&&!leaping&&leapWindup==0&&landTicks==0)requestLeap=true;}};
@@ -62,7 +64,7 @@ public final class JakEnemy extends Monster {
   entityData.set(LOOP,loop);entityData.set(PLAY_RATE,rate);
  }
  void set(State next){
-  state=next;stateTicks=0;struck=false;windup=0;landTicks=0;requestLeap=false;leapWindup=0;leaping=false;
+  state=next;stateTicks=0;struck=false;lunge=Vec3.ZERO;windup=0;landTicks=0;requestLeap=false;leapWindup=0;leaping=false;
   entityData.set(PHASE,next.ordinal());entityData.set(CLIP_START,dev.jakmc.player.JakEntityClock.time(level()));
   if(next!=State.CHASE&&next!=State.WALK){getNavigation().stop();getMoveControl().setWantedPosition(getX(),getY(),getZ(),0);}
  }
@@ -109,7 +111,8 @@ public final class JakEnemy extends Monster {
     if(inReach(target)&&visible){set(State.ATTACK);}
     else navigate(target.position(),true);
    }
-   if(state==State.ATTACK){
+   if(state==State.ATTACK&&spydroid)spydroidAttack(level,target);
+   else if(state==State.ATTACK){
     float length=attackLength(),at=kind.model.equals("lurkercrab")?kind.duration("lurkercrab-peek")*.5f+kind.duration("lurkercrab-snip")*.4f:length*.4f;
     face(target.position());
     if(!struck&&stateTicks>=at*20){struck=true;if(inReach(target)&&visible)doHurtTarget(level,target);}
@@ -124,6 +127,30 @@ public final class JakEnemy extends Monster {
   }
   if(state==State.CELEBRATE&&stateTicks>=20*Math.max(.7f,kind.duration(kind.clips[4])))set(State.IDLE);
   updateAnimation();sounds();
+ }
+ private void spydroidAttack(ServerLevel level,LivingEntity target){
+  float jump=kind.duration("spydroid-attack-jump");
+  float land=kind.duration("spydroid-attack-land");
+  float elapsed=stateTicks/20f;
+  if(stateTicks==0){
+   face(target.position());
+   lunge=target.position().subtract(position()).multiply(1,0,1).normalize()
+    .scale(12*JakEnemyKind.SCALE/20);
+  }
+  if(elapsed<jump){
+   var before=getBoundingBox();
+   var origin=position();
+   setDeltaMovement(getDeltaMovement().multiply(0,1,0));
+   move(MoverType.SELF,lunge);
+   var swept=before.expandTowards(position().subtract(origin)).inflate(.04);
+   if(!struck&&swept.intersects(target.getBoundingBox())&&getSensing().hasLineOfSight(target)){
+    struck=true;
+    if(doHurtTarget(level,target)){
+     var away=lunge.normalize();
+     target.push(away.x*3.5*JakEnemyKind.SCALE/20,2*JakEnemyKind.SCALE/20,away.z*3.5*JakEnemyKind.SCALE/20);
+    }
+   }
+  }else if(elapsed>=jump+land)set(target.isAlive()?State.CHASE:State.CELEBRATE);
  }
  private float attackLength(){return kind.model.equals("lurkercrab")?kind.duration("lurkercrab-peek")*1.5f+kind.duration("lurkercrab-snip")+kind.duration("lurkercrab-peek-to-walk"):Math.max(.35f,kind.duration(kind.clips[3]));}
  boolean inReach(LivingEntity target){
@@ -157,6 +184,8 @@ public final class JakEnemy extends Monster {
   String c=switch(state){case IDLE->kind.clips[0];case NOTICE->kind.clips[1];case CHASE->kind.clips[2];case ATTACK->kind.clips[3];case CELEBRATE->kind.clips[4];case WALK->kind.clips[5];case GIVE_UP->kind.first(kind.model+"-give-up",kind.model+"-give-up-hop");default->kind.clips[0];};
   boolean loops=state==State.IDLE||state==State.CHASE||state==State.WALK;
   if(kind.model.equals("hopper")&&state==State.IDLE){float idle=2,burp=kind.duration("hopper-burp");if((stateTicks/20f)%(idle*3+burp)>=idle*3){c="hopper-burp";loops=false;}}
+  if(spydroid&&state==State.ATTACK)c=stateTicks/20f<kind.duration("spydroid-attack-jump")?
+   "spydroid-attack-jump":"spydroid-attack-land";
   if(kind.model.equals("lurkercrab")&&state==State.ATTACK){float t=stateTicks/20f,p=kind.duration("lurkercrab-peek"),s=kind.duration("lurkercrab-snip");c=t<p*.5f?"lurkercrab-peek":t<p*.5f+s?"lurkercrab-snip":t<p*1.5f+s?"lurkercrab-peek":"lurkercrab-peek-to-walk";}
   if(state==State.CHASE||state==State.WALK){
    if(!onGround()&&!isInWater()&&!kind.jump[1].isEmpty())c=kind.jump[1];
@@ -196,6 +225,14 @@ public final class JakEnemy extends Monster {
  @Override public void die(DamageSource source){
   super.die(source);if(level().isClientSide()||kind==null)return;
   guardShot("");set(State.DEAD);animate(kind.clips[7],false,1);sounds();
+  if(spydroid&&level() instanceof ServerLevel server){
+   var at=position().add(0,.5*JakEnemyKind.SCALE,0);
+   SettlementShots.cue(server,"jak3","droid-explode",at);
+   var packet=new dev.jakmc.network.JakPackets.CreatureBurst(server.dimension().identifier(),at);
+   for(var watcher:net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(this))
+    if(net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(watcher,packet.type()))
+     net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(watcher,packet);
+  }
   if(kind.jak1()){Vec3 away=source.getEntity()==null?Vec3.ZERO:position().subtract(source.getEntity().position()).multiply(1,0,1).normalize();setDeltaMovement(away.scale(5*JakEnemyKind.SCALE/20).add(0,16*JakEnemyKind.SCALE/20,0));needsSync=true;}
  }
  @Override protected void tickDeath(){
@@ -213,7 +250,7 @@ public final class JakEnemy extends Monster {
  @Override protected SoundEvent getDeathSound(){return null;} // Authored art-group event, not a second arbitrary death cue.
  @Override protected SoundEvent getSwimSplashSound(){var s=kind==null?null:JakEnemySounds.find(kind,"splash");return s==null?super.getSwimSplashSound():s;}
  @Override protected SoundEvent getSwimSound(){var s=kind==null?null:JakEnemySounds.first(kind,"walk-dwater1","splash-out");return s==null?super.getSwimSound():s;}
- @Override protected double getDefaultGravity(){return kind!=null&&!isInWater()?super.getDefaultGravity()*((kind.model.equals("hopper")?100:60)*JakEnemyKind.SCALE/400)/.08:super.getDefaultGravity();}
+ @Override protected double getDefaultGravity(){return kind!=null&&!isInWater()?super.getDefaultGravity()*((kind.model.equals("hopper")||spydroid?100:60)*JakEnemyKind.SCALE/400)/.08:super.getDefaultGravity();}
  @Override protected void addAdditionalSaveData(ValueOutput out){super.addAdditionalSaveData(out);if(guard!=null)guard.save(out);if(home!=null){out.putDouble("JakHomeX",home.x);out.putDouble("JakHomeY",home.y);out.putDouble("JakHomeZ",home.z);}}
  @Override protected void readAdditionalSaveData(ValueInput in){super.readAdditionalSaveData(in);if(guard!=null)guard.load(in);home=new Vec3(in.getDoubleOr("JakHomeX",getX()),in.getDoubleOr("JakHomeY",getY()),in.getDoubleOr("JakHomeZ",getZ()));set(isDeadOrDying()?State.DEAD:State.IDLE);}
 }
