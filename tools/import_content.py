@@ -6,6 +6,7 @@ import gzip,hashlib,json,math,shutil,struct
 ROOT=Path(__file__).resolve().parents[1]
 SOURCE=ROOT/'.local/content'
 DEST=ROOT/'src/generated/resources'
+SITES=('swamp_hut','snow_fort','sandover','crater_cave')
 
 def packed_blueprint(data):
     out=bytearray(b'JAKB\x00\x01')
@@ -43,6 +44,7 @@ FITTED_ARCHITECTURE={
     'haven_canes','krimson_blindaje','krimson_franja','krimson_dintel',
     'krimson_insignia','krimson_puesto','barrio_cartel','barrio_cartel_b',
     'haven_estandarte','barrio_codo','barrio_desague','haven_chimenea_remate',
+    'haven_cupula_madera','haven_poste_fachada','haven_tejadillo','haven_toldo_tela',
     'sparg_costilla','sparg_columna',
 }
 
@@ -299,7 +301,7 @@ def main():
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)
     material_resources(definitions+decorations(catalog))
     seal_track_meshes(catalog)
-    import_blueprints(('haven','spargus','palace','swamp_hut','snow_fort'))
+    import_blueprints(('haven','spargus','palace')+SITES)
     receipts=[]
     for path in sorted(DEST.rglob('*')):
         if path.is_file():receipts.append(dict(path=str(path.relative_to(DEST)).replace('\\','/'),sha256=hashlib.sha256(path.read_bytes()).hexdigest(),size=path.stat().st_size))
@@ -309,6 +311,6 @@ def main():
 if __name__=='__main__':
     import sys
     if sys.argv[1:]==['--sites-only']:
-        import_blueprints(('swamp_hut','snow_fort'))
+        import_blueprints(SITES)
     else:
         main()

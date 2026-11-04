@@ -44,7 +44,8 @@ import net.minecraft.world.phys.Vec3;
 public final class JakCityStructure extends Structure {
     private enum Site {
         HAVEN("haven","haven",0), SPARGUS("spargus","spargus",0),
-        SWAMP_HUT("swamp_hut","jak1",4), SNOW_FORT("snow_fort","jak1",8);
+        SWAMP_HUT("swamp_hut","jak1",4), SNOW_FORT("snow_fort","jak1",8),
+        SANDOVER("sandover","jak1",26), CRATER_CAVE("crater_cave","crater_cave",10);
         final String id;
         final ResourceKey<LootTable> loot;
         final int reach;
@@ -83,8 +84,12 @@ public final class JakCityStructure extends Structure {
         int y=height(context,x,z);
         int sea=context.chunkGenerator().getSeaLevel();
         if(!valid(context,x,y,z))return Optional.empty();
+        int turns=context.random().nextInt(4);
         int base;
-        if(site.reach>0){
+        if(site==Site.CRATER_CAVE){
+            base=craterBase(context,x,z,y,turns);
+            if(base==Integer.MIN_VALUE)return Optional.empty();
+        }else if(site.reach>0){
             base=compactBase(context,x,z,y);
             if(base==Integer.MIN_VALUE)return Optional.empty();
         }else{
@@ -107,10 +112,24 @@ public final class JakCityStructure extends Structure {
             }
         }
         var plan=site.plan();
-        if(base+plan.maxY>=context.heightAccessor().getMaxY()-4)return Optional.empty();
+        if(base+plan.maxY>=context.heightAccessor().getMaxY()-4
+            ||base+plan.minY<=context.heightAccessor().getMinY()+4)return Optional.empty();
         var origin=new BlockPos(x,base,z);
-        int turns=context.random().nextInt(4);
         return Optional.of(new GenerationStub(origin,builder->builder.addPiece(new CityPiece(site,origin,turns))));
+    }
+
+    private int craterBase(GenerationContext context,int x,int z,int ground,int turns){
+        int lo=ground,hi=ground;
+        var generator=context.chunkGenerator();
+        for(var local:new BlockPos[]{BlockPos.ZERO,new BlockPos(10,0,0),new BlockPos(-10,0,0),
+            new BlockPos(0,0,10),new BlockPos(0,0,-10),new BlockPos(40,0,0)}){
+            var at=CityBlueprint.rotate(local,turns).offset(x,0,z);
+            int surface=generator.getBaseHeight(at.getX(),at.getZ(),Heightmap.Types.WORLD_SURFACE_WG,
+                context.heightAccessor(),context.randomState());
+            if(surface<=generator.getSeaLevel()||surface!=height(context,at.getX(),at.getZ()))return Integer.MIN_VALUE;
+            lo=Math.min(lo,surface);hi=Math.max(hi,surface);
+        }
+        return hi-lo<=8?ground:Integer.MIN_VALUE;
     }
 
     private int compactBase(GenerationContext context,int x,int z,int ground){
@@ -119,12 +138,14 @@ public final class JakCityStructure extends Structure {
             int surface=context.chunkGenerator().getBaseHeight(x+dx,z+dz,Heightmap.Types.WORLD_SURFACE_WG,
                 context.heightAccessor(),context.randomState());
             if(!valid(context,x+dx,surface,z+dz))return Integer.MIN_VALUE;
+            if(site==Site.SANDOVER&&(surface<=context.chunkGenerator().getSeaLevel()
+                ||surface!=height(context,x+dx,z+dz)))return Integer.MIN_VALUE;
             lo=Math.min(lo,surface);hi=Math.max(hi,surface);
         }
         boolean swamp=site==Site.SWAMP_HUT;
-        if(hi-lo>(swamp?3:5))return Integer.MIN_VALUE;
+        if(hi-lo>(swamp?3:site==Site.SANDOVER?7:5))return Integer.MIN_VALUE;
         if(swamp)return hi;
-        return ground>context.chunkGenerator().getSeaLevel()&&hi-ground<=5?ground:Integer.MIN_VALUE;
+        return ground>context.chunkGenerator().getSeaLevel()&&hi-ground<=(site==Site.SANDOVER?7:5)?ground:Integer.MIN_VALUE;
     }
 
     private static boolean valid(GenerationContext context,int x,int y,int z){
@@ -181,7 +202,7 @@ public final class JakCityStructure extends Structure {
                 case SNOW_FORT -> dev.jakmc.content.JakBlocks.BLOCKS.get("snow_rock").defaultBlockState();
                 default -> Blocks.STONE.defaultBlockState();
             };
-            for(int i=0;i<cells.size();i++){
+            for(int i=0;site!=Site.CRATER_CAVE&&i<cells.size();i++){
                 var local=cells.pos(i);
                 if(cells.states()[i].isAir()||local.getY()>(site==Site.SWAMP_HUT?0:3))continue;
                 var pos=CityBlueprint.rotate(local,turns).offset(origin);
@@ -223,6 +244,14 @@ public final class JakCityStructure extends Structure {
                     level.setBlock(at,fill,Block.UPDATE_KNOWN_SHAPE);
                 }
             }
+            if(site==Site.CRATER_CAVE){
+                spawnCraterBand(level,chunkBounds);
+                return;
+            }
+            if(site==Site.SANDOVER){
+                spawnResident(level,chunk,random,cells);
+                return;
+            }
             if(site.reach>0)return;
             spawnResident(level,chunk,random,cells);
             if(site==Site.HAVEN){
@@ -255,6 +284,27 @@ public final class JakCityStructure extends Structure {
         private static long lootCoordinate(long seed,int coordinate){
             long value=(seed^Integer.toUnsignedLong(coordinate))*0xff51afd7ed558ccdL;
             return value^(value>>>33);
+        }
+
+        private void spawnCraterBand(WorldGenLevel level,BoundingBox chunk){
+            if(level.getLevel().getDifficulty()==net.minecraft.world.Difficulty.PEACEFUL)return;
+            var center=CityBlueprint.rotate(new BlockPos(40,-25,0),turns).offset(origin);
+            var roster=switch((int)Math.floorMod(lootSeed(level.getSeed(),center),3)){
+                case 0 -> new String[]{"baby-spider","baby-spider","babak"};
+                case 1 -> new String[]{"grunt","gekko","gekko"};
+                default -> new String[]{"kg-grunt","spydroid","spydroid"};
+            };
+            var spots=new BlockPos[]{new BlockPos(40,-25,0),new BlockPos(43,-25,2),new BlockPos(37,-25,2)};
+            for(int i=0;i<spots.length;i++){
+                var point=CityBlueprint.rotate(spots[i],turns).offset(origin);
+                if(!chunk.isInside(point)||!level.isEmptyBlock(point)||!level.isEmptyBlock(point.above()))continue;
+                var enemy=JakEntities.TYPES.get(roster[i]).create(level.getLevel(),EntitySpawnReason.STRUCTURE);
+                if(enemy==null)continue;
+                var feet=Vec3.atBottomCenterOf(point);
+                enemy.snapTo(feet.x,feet.y,feet.z,0,0);
+                enemy.setPersistenceRequired();
+                level.addFreshEntity(enemy);
+            }
         }
 
         private void spawnLeaper(WorldGenLevel level,BoundingBox chunk,BlockPos start,BlockPos end){
@@ -309,7 +359,7 @@ public final class JakCityStructure extends Structure {
                         ||!level.getBlockState(point.below()).isSolidRender())continue;
                     var resident=EntityTypes.VILLAGER.create(level.getLevel(),EntitySpawnReason.STRUCTURE);
                     if(resident==null)return;
-                    int variant=site==Site.HAVEN?random.nextInt(CitizenKind.HAVEN_VARIANTS)
+                    int variant=site==Site.HAVEN||site==Site.SANDOVER?random.nextInt(CitizenKind.HAVEN_VARIANTS)
                         :random.nextFloat()<.65f?CitizenKind.SPARGUS_MALE:CitizenKind.SPARGUS_FEMALE;
                     ((CitizenState)resident).citizenVariant(variant);
                     var at=Vec3.atBottomCenterOf(point);

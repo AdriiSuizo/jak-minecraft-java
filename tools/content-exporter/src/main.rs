@@ -59,12 +59,23 @@ fn save_track(root:&Path){
 }
 fn save_sites(root:&Path){
  use minecraft_terrain::jak_kit::{SWAMP_HUTS,SNOW_FORTS,View};
+ use minecraft_terrain::jak_structures::{cave_spot,crater_cave,village,village_spot};
  let height=|_,_|64;
  let inside=|_,_|true;
  let view=View{ground:&height,surface:&height,inside:&inside};
  for (name,site) in [("swamp_hut",&SWAMP_HUTS),("snow_fort",&SNOW_FORTS)]{
   let blocks=(site.build)(8048,(0,0),(0,0),&view).expect("original climate site plan");
   save(root,name,blocks,Vec::new());
+ }
+ for (name,spot,build) in [
+  ("sandover",village_spot as fn(i64,(i32,i32))->Option<(i32,i32)>,village as fn(i64,(i32,i32),&dyn Land)->Option<Vec<Placed>>),
+  ("crater_cave",cave_spot,crater_cave),
+ ]{
+  let seed=8048;
+  let (cell,(cx,cz))=(0..64).find_map(|i|spot(seed,(i,0)).map(|pos|((i,0),pos))).expect("original site");
+  let blocks=build(seed,cell,&Flat).expect("original site plan");
+  let relative=blocks.into_iter().map(|((x,y,z),s)|((x-cx,y,z-cz),s)).collect();
+  save(root,name,relative,Vec::new());
  }
 }
 fn main(){let args:Vec<_>=std::env::args().collect();let root=Path::new(&args[1]);std::fs::create_dir_all(root).unwrap();

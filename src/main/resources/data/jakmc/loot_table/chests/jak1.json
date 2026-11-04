@@ -12,16 +12,14 @@
           "type": "minecraft:item",
           "name": "jakmc:green_eco",
           "weight": 40,
-          "functions": [
-            {
-              "function": "minecraft:set_count",
-              "count": {
-                "type": "minecraft:uniform",
-                "min": 4,
-                "max": 16
-              }
+          "modifier": {
+            "type": "minecraft:set_count",
+            "count": {
+              "type": "minecraft:uniform",
+              "min": 4,
+              "max": 16
             }
-          ]
+          }
         },
         {
           "type": "minecraft:item",

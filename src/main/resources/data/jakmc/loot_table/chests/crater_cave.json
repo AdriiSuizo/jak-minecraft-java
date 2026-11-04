@@ -1,0 +1,134 @@
+{
+  "type": "minecraft:chest",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:dark_eco",
+          "modifier": {
+            "type": "minecraft:set_count",
+            "count": 8
+          }
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:dark_ammo",
+          "modifier": {
+            "type": "minecraft:set_count",
+            "count": 3
+          }
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:yellow_ammo",
+          "modifier": {
+            "type": "minecraft:set_count",
+            "count": 30
+          }
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:red_ammo",
+          "modifier": {
+            "type": "minecraft:set_count",
+            "count": 15
+          }
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:blue_ammo",
+          "modifier": {
+            "type": "minecraft:set_count",
+            "count": 30
+          }
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:green_eco",
+          "modifier": {
+            "type": "minecraft:set_count",
+            "count": 12
+          }
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:beam_reflexor"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:arc_wielder"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:plasmite_rpg"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:gyro_burster"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:needle_lazer"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:mass_inverter"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_red"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_yellow"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_blue"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_green"
+        }
+      ]
+    }
+  ],
+  "random_sequence": "jakmc:chests/crater_cave"
+}

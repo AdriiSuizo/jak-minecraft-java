@@ -1,0 +1,8 @@
+{
+  "type": "jakmc:city",
+  "city": "crater_cave",
+  "biomes": "#jakmc:has_crater_cave",
+  "step": "underground_structures",
+  "spawn_overrides": {},
+  "terrain_adaptation": "none"
+}

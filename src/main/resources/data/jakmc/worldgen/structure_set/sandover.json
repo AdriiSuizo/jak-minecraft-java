@@ -1,0 +1,18 @@
+{
+  "structures": [
+    {
+      "structure": "jakmc:sandover",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "type": "minecraft:random_spread",
+    "spacing": 20,
+    "separation": 8,
+    "salt": 504,
+    "exclusion_zone": {
+      "other_set": "jakmc:jak_cities",
+      "chunk_count": 8
+    }
+  }
+}
