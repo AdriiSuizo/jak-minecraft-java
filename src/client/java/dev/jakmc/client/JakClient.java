@@ -13,6 +13,7 @@ public final class JakClient implements ClientModInitializer {
   net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(JakPoses::prune);
   JakSounds.initialize();
   JakAtmosphere.initialize();
+  JakMinimap.initialize();
   WeatherScene.initialize();
   JakEffects.initialize();
   JakCreatureWater.initialize();

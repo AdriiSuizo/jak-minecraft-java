@@ -20,7 +20,8 @@
     "JakAtmosphericFogMixin",
     "JakAtmosphericSkyMixin",
     "JakContainerBounds",
-    "JakMouseCapture"
+    "JakMouseCapture",
+    "JakMinimapMixin"
   ],
   "injectors": {
     "defaultRequire": 1

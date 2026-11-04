@@ -693,7 +693,12 @@ public final class InputScene {
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,t==200);
   pad.axis(5,t==225||t==280?1:-1);
   if(t==75&&(walk<.1||Math.abs(yawAfter-yawStart)<.1)){finish(c,"Controller input not active; focused="+c.isWindowActive()+", device="+JakInput.controller().name());return;}
-  if(t==45)walk=c.player.position().subtract(start).horizontalDistance();if(t==68)yawAfter=c.player.getYRot();
+  if(t==45)walk=c.player.position().subtract(start).horizontalDistance();
+  if(t==68){
+   yawAfter=c.player.getYRot();
+   ACTIONS.addProperty("minimap_reads_displayed_camera",JakMinimap.ready()
+    &&Math.abs(net.minecraft.util.Mth.wrapDegrees(JakMinimap.presentedYaw()-c.gameRenderer.mainCamera().yRot()))<.01);
+  }
   if(t==35||t==86||t==146||t==248)capture(c,"input-move-"+t+".png");
   if(t==315){ecoCenter=c.player.position().add(0,.25,2);var uuid=c.player.getUUID();var center=ecoCenter;c.getSingleplayerServer().execute(()->{
    var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p==null)return;
@@ -707,13 +712,13 @@ public final class InputScene {
   if(t>=415&&t<475){look(c.player.position().add(2,2.2,-2.8),c.player.position().add(0,1.1,0));if(t==435||t==465)capture(c,"input-eco-hand-"+t+".png");}
   if(t==480){view=null;c.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(c.player));}
   if(t==495)capture(c,"input-eco-gui.png");
-  if(t>=505)finish(c,"complete");
+  if(t>=505)finish(c,ACTIONS.has("minimap_reads_displayed_camera")&&ACTIONS.get("minimap_reads_displayed_camera").getAsBoolean()?"complete":"Minimap yaw differs from camera");
  }
  private static void look(Vec3 at,Vec3 target){Vec3 d=target.subtract(at);view=new CameraView(at,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),(float)Math.toDegrees(Math.atan2(-d.y,d.horizontalDistance())));}
  private static void capture(Minecraft c,String file){Screenshot.grab(c.gameDirectory,file,c.gameRenderer.mainRenderTarget(),1,m->{});}
  private static void finish(Minecraft c,String reason){
   if(powers||leaper||hellcat)c.options.pauseOnLostFocus=pauseOnLostFocus;
-  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper||hellcat){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason",reason.equals("complete")?"interaction assertion failed":reason);}
+  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(ACTIONS.has("minimap_reads_displayed_camera"))result.addProperty("minimap_reads_displayed_camera",ACTIONS.get("minimap_reads_displayed_camera").getAsBoolean());if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper||hellcat){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason",reason.equals("complete")?"interaction assertion failed":reason);}
   result.addProperty("jak_actions_reached",STATES.containsAll(Set.of("double-jump","roll","attack","board-stance")));
   try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
   if(c.getSingleplayerServer()!=null){var server=c.getSingleplayerServer();server.execute(()->{for(UUID id:ITEMS){var item=server.overworld().getEntity(id);if(item!=null)item.discard();}});}c.stop();
