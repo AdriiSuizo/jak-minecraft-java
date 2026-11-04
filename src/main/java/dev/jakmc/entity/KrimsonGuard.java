@@ -34,11 +34,7 @@ public final class KrimsonGuard {
     private Vec3 lastFoePosition,foeVelocity=Vec3.ZERO;
 
     KrimsonGuard(JakEnemy body){this.body=body;shots=new SettlementShots(body,2,"jak2","guard-shot-fire");}
-    static double navigationSpeed(double guestMetresPerSecond){
-        // Mob writes its speed into forward input as well as travel acceleration.
-        // Solve the resulting squared input with Minecraft's standard ground drag.
-        return Math.sqrt(guestMetresPerSecond*SCALE/20*(1-.6*.91)/.98);
-    }
+
     void patrol(BlockPos a,BlockPos b){start=a;end=b;toEnd=true;}
     private void state(JakEnemy.State state){body.set(state);ticks=0;}
     private void clip(String name,boolean loop){body.animate(PREFIX+name,loop,1);}
@@ -126,7 +122,7 @@ public final class KrimsonGuard {
         }
         // Retain one street destination across navigation retries and temporary obstacles.
         if(body.getNavigation().isDone()&&pathRetry==0){
-            if(body.getNavigation().moveTo(goal.getX()+.5,goal.getY(),goal.getZ()+.5,0,navigationSpeed(body.kind.walk)/navigationSpeed(body.kind.run)))
+            if(body.getNavigation().moveTo(goal.getX()+.5,goal.getY(),goal.getZ()+.5,0,JakEntities.navigationSpeed(body.kind.walk)/JakEntities.navigationSpeed(body.kind.run)))
                 state(JakEnemy.State.WALK);
             pathRetry=20;
         }

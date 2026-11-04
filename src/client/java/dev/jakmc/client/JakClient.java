@@ -34,6 +34,7 @@ public final class JakClient implements ClientModInitializer {
   TrackScene.initialize();
   LadderScene.initialize();
   SurfaceScene.initialize();
+  YakowScene.initialize();
   CarScene.initialize();
   CityScene.initialize();
   SitesScene.initialize();
@@ -48,6 +49,8 @@ public final class JakClient implements ClientModInitializer {
   dev.jakmc.client.model.EcoItemRenderer.initialize();
   dev.jakmc.client.model.JakShotRenderer.initialize();
   dev.jakmc.client.model.JakEnemyRenderer.initialize();
+  net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(
+      dev.jakmc.entity.JakYakow.TYPE,dev.jakmc.client.model.YakowRenderer::new);
   dev.jakmc.client.model.JakLeaperRenderer.initialize();
   dev.jakmc.client.model.HellcatRenderer.initialize();
   dev.jakmc.client.model.JakVehicleRenderer.initialize();

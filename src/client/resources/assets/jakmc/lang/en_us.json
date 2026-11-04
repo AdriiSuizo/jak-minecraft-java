@@ -117,5 +117,7 @@
   "block.jakmc.vent_blue": "Blue Eco Vent",
   "block.jakmc.vent_green": "Green Eco Vent",
   "block.jakmc.vent_dark": "Dark Eco Vent",
-  "block.jakmc.vent_light": "Light Eco Vent"
+  "block.jakmc.vent_light": "Light Eco Vent",
+  "entity.jakmc.yakow": "Yakow",
+  "item.jakmc.yakow_spawn_egg": "Yakow Spawn Egg"
 }

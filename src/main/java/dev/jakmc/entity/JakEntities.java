@@ -20,15 +20,19 @@ public final class JakEntities {
  public static final Map<EntityType<?>,JakEnemyKind> KINDS=new IdentityHashMap<>();
  public static final Map<String,EntityType<JakEnemy>> TYPES=new LinkedHashMap<>();
  public static final List<Item> EGGS=new ArrayList<>();
+ static double navigationSpeed(double guestMetresPerSecond){
+  // Vanilla applies Mob speed to both input and acceleration on normal ground.
+  return Math.sqrt(guestMetresPerSecond*JakEnemyKind.SCALE/20*(1-.6*.91)/.98);
+ }
  public static void initialize(){
-  JakEnemyKind.initialize();JakEnemySounds.initialize();
+  JakEnemyKind.initialize();JakEnemySounds.initialize();JakYakow.initialize();
   for(var k:JakEnemyKind.ALL.values()){
    var key=ResourceKey.create(Registries.ENTITY_TYPE,JakData.id(k.model.replace('-','_')));
    var type=EntityType.Builder.<JakEnemy>of(JakEnemy::new,k.guard()?MobCategory.CREATURE:MobCategory.MONSTER).sized(k.half*2*JakEnemyKind.SCALE,k.height*JakEnemyKind.SCALE).eyeHeight(k.height*JakEnemyKind.SCALE*.85f).clientTrackingRange(8).updateInterval(1).build(key);
    Registry.register(BuiltInRegistries.ENTITY_TYPE,key,type);KINDS.put(type,k);TYPES.put(k.model,type);
    // One original Jak damage point is the same 2.5 Minecraft health used by
    // the Morph Gun/melee bridge; no former clone health multiplication.
-   FabricDefaultAttributeRegistry.register(type,Monster.createMonsterAttributes().add(Attributes.MAX_HEALTH,k.hp*2.5).add(Attributes.ATTACK_DAMAGE,k.damage).add(Attributes.MOVEMENT_SPEED,k.guard()?KrimsonGuard.navigationSpeed(k.run):k.run*JakEnemyKind.SCALE/20).add(Attributes.FOLLOW_RANGE,k.stop*JakEnemyKind.SCALE).add(Attributes.STEP_HEIGHT,.6));
+   FabricDefaultAttributeRegistry.register(type,Monster.createMonsterAttributes().add(Attributes.MAX_HEALTH,k.hp*2.5).add(Attributes.ATTACK_DAMAGE,k.damage).add(Attributes.MOVEMENT_SPEED,k.guard()?navigationSpeed(k.run):k.run*JakEnemyKind.SCALE/20).add(Attributes.FOLLOW_RANGE,k.stop*JakEnemyKind.SCALE).add(Attributes.STEP_HEIGHT,.6));
    if(!k.guard()){
    SpawnPlacements.register(type,SpawnPlacementTypes.ON_GROUND,Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,Monster::checkMonsterSpawnRules);
    BiomeModifications.addSpawn(context->habitat(k.model,context.getBiomeKey().identifier().getPath()),MobCategory.MONSTER,type,6,k.model.equals("predator")?1:2,3);
@@ -36,7 +40,7 @@ public final class JakEntities {
    var eggKey=ResourceKey.create(Registries.ITEM,JakData.id(k.model.replace('-','_')+"_spawn_egg"));
    EGGS.add(Registry.register(BuiltInRegistries.ITEM,eggKey,new SpawnEggItem(new Item.Properties().setId(eggKey).spawnEgg(type))));
   }
-  Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,JakData.id("creatures"),FabricCreativeModeTab.builder().title(Component.translatable("tab.jakmc.creatures")).icon(()->new ItemStack(EGGS.get(0))).displayItems((context,out)->{EGGS.forEach(out::accept);JakCitizens.EGGS.forEach(out::accept);out.accept(JakLeaper.EGG);out.accept(JakFlutFlut.EGG);out.accept(JakFlutEgg.ITEM);}).build());
+  Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,JakData.id("creatures"),FabricCreativeModeTab.builder().title(Component.translatable("tab.jakmc.creatures")).icon(()->new ItemStack(EGGS.get(0))).displayItems((context,out)->{EGGS.forEach(out::accept);JakCitizens.EGGS.forEach(out::accept);out.accept(JakYakow.EGG);out.accept(JakLeaper.EGG);out.accept(JakFlutFlut.EGG);out.accept(JakFlutEgg.ITEM);}).build());
  }
  private static boolean habitat(String model,String biome){
   boolean ocean=biome.contains("ocean")||biome.contains("river"),snow=biome.contains("snow")||biome.contains("frozen")||biome.equals("grove")||biome.equals("jagged_peaks"),beach=biome.endsWith("beach")||biome.equals("stony_shore"),swamp=biome.contains("swamp"),jungle=biome.contains("jungle"),badlands=biome.contains("badlands"),cave=biome.endsWith("caves")||biome.equals("deep_dark"),nether=Set.of("nether_wastes","basalt_deltas","soul_sand_valley","crimson_forest","warped_forest").contains(biome);

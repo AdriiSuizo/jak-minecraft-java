@@ -117,5 +117,7 @@
   "block.jakmc.vent_blue": "Fuente de eco azul",
   "block.jakmc.vent_green": "Fuente de eco verde",
   "block.jakmc.vent_dark": "Fuente de eco oscuro",
-  "block.jakmc.vent_light": "Fuente de eco luminoso"
+  "block.jakmc.vent_light": "Fuente de eco luminoso",
+  "entity.jakmc.yakow": "Yakow",
+  "item.jakmc.yakow_spawn_egg": "Huevo generador de yakow"
 }

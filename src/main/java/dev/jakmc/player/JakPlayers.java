@@ -34,7 +34,7 @@ public final class JakPlayers {
         Vec3 last;
         JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0,0,0);
         int pressed;
-        boolean shield,shieldHit,altarMount,usingBoard,grinding;
+        boolean shield,shieldHit,altarMount,usingBoard,grinding,hostMoved;
         List<List<Vec3>> rails=List.of();
         long lastInput;
         float entityRate=1;
@@ -57,6 +57,10 @@ public final class JakPlayers {
         public void close(){releaseMount();releaseCraft();NativeJak.destroy(nativeId);}
     }
     public static boolean active(Entity player){return player.getAttachedOrCreate(JakData.ENABLED)&&!player.isPassenger()&&player.isAlive();}
+    public static void hostTeleport(ServerPlayer player){
+        Session session=LIVE.get(player.getUUID());
+        if(session!=null&&player.position().distanceToSqr(session.last)>1e-10)session.hostMoved=true;
+    }
     public static void input(ServerPlayer player,JakPackets.Input input){
         if(CONTROLLED.contains(player.getUUID()))return;
         if(player.getVehicle() instanceof dev.jakmc.entity.JakVehicle car){car.input(player,input);return;}
@@ -126,7 +130,7 @@ public final class JakPlayers {
                 present.add(p.getUUID());
                 Session s=LIVE.get(p.getUUID());
                 String dimension=p.level().dimension().identifier().toString();
-                if(s!=null&&(!s.dimension.equals(dimension)||p.position().distanceToSqr(s.last)>16||s.mount!=null&&(s.mount.isRemoved()||s.mount.isDeadOrDying()||s.mount.level()!=p.level()))) {s.close();LIVE.remove(p.getUUID());s=null;}
+                if(s!=null&&(s.hostMoved||!s.dimension.equals(dimension)||p.position().distanceToSqr(s.last)>16||s.mount!=null&&(s.mount.isRemoved()||s.mount.isDeadOrDying()||s.mount.level()!=p.level()))) {s.close();LIVE.remove(p.getUUID());s=null;}
                 if(s==null){s=new Session(p);LIVE.put(p.getUUID(),s);}
                 try{step(p,s);}catch(RuntimeException failure){s.close();LIVE.remove(p.getUUID());p.setDeltaMovement(Vec3.ZERO);JakMod.LOG.error("Jak session stopped at last safe Minecraft pose for {}",p.getScoreboardName(),failure);}
             }
@@ -279,7 +283,10 @@ public final class JakPlayers {
         setEco(p,JakData.DARK_ECO,pose.get("darkEco").getAsFloat());setEco(p,JakData.LIGHT_ECO,pose.get("lightEco").getAsFloat());
         for(int i=0;i<4;i++)setEco(p,JakData.AMMO.get(i),pose.getAsJsonArray("ammo").get(i).getAsFloat());
         if(pose.get("heal").getAsFloat()>0)p.heal(pose.get("heal").getAsFloat()*p.getMaxHealth());
-        for(JsonElement e:pose.getAsJsonArray("events"))applyEvent(p,s.origin,e.getAsJsonObject());
+        for(JsonElement e:pose.getAsJsonArray("events")){
+            applyEvent(p,s.origin,e.getAsJsonObject());
+            if(s.hostMoved)return;
+        }
         var packet=new JakPackets.Pose(p.getId(),input.sequence(),s.origin.x,s.origin.y,s.origin.z,pose.toString());
         ServerPlayNetworking.send(p,packet);
         for(ServerPlayer watcher:PlayerLookup.tracking(p))if(watcher!=p)ServerPlayNetworking.send(watcher,packet);
