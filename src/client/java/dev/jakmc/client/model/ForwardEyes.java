@@ -25,6 +25,13 @@ final class ForwardEyes {
         boolean daxter=name.startsWith("daxter");
         String irisPath=daxter?"common/autoeye-iris.png":"arenacst-pris/jakb-eye.png";
         String lidPath=daxter?"arenacst-pris/daxter-eyelid.png":"arenacst-pris/jakb-eyelid.png";
+        String darkIris="mhctycst-pris/jakchires-eye-dark.png";
+        String darkLid="mhctycst-pris/jakchires-eyelid-dark.png";
+        if(name.equals("jak_dark_cinematic")&&java.nio.file.Files.isRegularFile(textures.resolve(darkIris))
+            &&java.nio.file.Files.isRegularFile(textures.resolve(darkLid))){
+            irisPath=darkIris;
+            lidPath=darkLid;
+        }
         try(var iris=read(textures.resolve(irisPath));
             var pupil=read(textures.resolve("common/autoeye-pupil.png"));
             var lid=read(textures.resolve(lidPath))){

@@ -65,6 +65,9 @@ public final class GltfModel {
         this.compensateScale=compensateScale;
         cinematic=key.endsWith("_cinematic");
         boolean jakTextures=key.equals("jak")||key.equals("jak_cinematic")||key.equals("jak_dark_cinematic");
+        boolean forwardEyes=jakTextures||key.equals("daxter")||key.equals("daxter_cinematic");
+        Path artTextures=forwardEyes?file.getParent().getParent().getParent().resolve("textures"):null;
+        Path darkPalette=jakTextures?artTextures.resolve(key.equals("jak_dark_cinematic")?"mhctycst-pris":"level-default-pris"):null;
         inheritScale=file.getFileName().toString().startsWith("board-")||file.getFileName().toString().equals("gun-lod0.glb");
         byte[] bytes=Files.readAllBytes(file);ByteBuffer data=ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         if(data.getInt()!=0x46546c67||data.getInt()!=2||data.getInt()!=bytes.length)throw new IOException("Invalid GLB "+file);
@@ -121,7 +124,7 @@ public final class GltfModel {
                 if(jakTextures){
                     jakBody=true;
                     String name=material.has("name")?material.get("name").getAsString().replaceFirst("-envmap$",""):"";
-                    var dark=file.getParent().getParent().getParent().resolve("textures/level-default-pris/"+name+"-dark.png");
+                    var dark=darkPalette.resolve(name+"-dark.png");
                     if(Files.isRegularFile(dark)){
                         var variant=JakData.id(id.getPath()+"/dark");
                         pendingTextures.put(variant,Files.readAllBytes(dark));
@@ -144,9 +147,8 @@ public final class GltfModel {
             if(compactBones!=null)for(int vertex=0;vertex<used.length;vertex++)for(int k=0;k<4;k++)if(weight[used[vertex]*4+k]>0&&(compactBones[vertex*4+k]<0||compactBones[vertex*4+k]>=joints.length))throw new IOException("Indexed vertex uses missing skin joint in "+file);
             surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("name")?material.get("name").getAsString():"",material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals));
         }
-        if(jakTextures||key.equals("daxter")||key.equals("daxter_cinematic")){
-            Path eyeTextures=file.getParent().getParent().getParent().resolve("textures");
-            eyes=ForwardEyes.build(eyeTextures,key,surfaces.stream().map(
+        if(forwardEyes){
+            eyes=ForwardEyes.build(artTextures,key,surfaces.stream().map(
                 surface->new ForwardEyes.Mesh(surface.positions,surface.uv,surface.indices,surface.material)).toList());
         }else eyes=null;
         readAnimations(this,null);
