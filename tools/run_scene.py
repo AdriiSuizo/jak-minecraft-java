@@ -121,7 +121,7 @@ def run():
             shutil.copyfile(ROOT/'run/screenshots/port-wave.png',evidence/'wave.png')
         if scene in ('enemies','systems','combat'):
             for capture in (ROOT/'run/screenshots').glob('enemy-*.png'):
-                shutil.copyfile(capture,evidence/capture.name)
+                if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         if scene=='citizens':
             for capture in (ROOT/'run/screenshots').glob('citizens-*.png'):shutil.copyfile(capture,evidence/capture.name)
         outcome=json.loads(result.read_text(encoding='utf-8'))
@@ -166,7 +166,8 @@ def run():
         if sent and scene=='citizens':
             for capture in (ROOT/'run/screenshots').glob('citizens-*.png'):shutil.copyfile(capture,evidence/capture.name)
         if sent and scene in ('enemies','systems','combat'):
-            for capture in (ROOT/'run/screenshots').glob('enemy-*.png'):shutil.copyfile(capture,evidence/capture.name)
+            for capture in (ROOT/'run/screenshots').glob('enemy-*.png'):
+                if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         if sent and scene in ('gems','gems_visual'):
             for capture in (ROOT/'run/screenshots').glob('gems-*.png'):shutil.copyfile(capture,evidence/capture.name)
         if sent and scene in ('input','input_actions'):

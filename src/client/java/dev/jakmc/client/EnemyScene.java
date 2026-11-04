@@ -26,6 +26,10 @@ public final class EnemyScene {
  private static final Map<String,JsonObject> RESULTS=new ConcurrentHashMap<>();
  private static final Set<UUID> SPAWNED=ConcurrentHashMap.newKeySet();
  public static boolean active(){return running;}
+ static InputScene.CameraView camera(Minecraft client){
+  if(!running||index>=kinds.size()||client.player==null)return null;
+  return new InputScene.CameraView(client.player.position().add(0,2.5,-4.7),-7,10);
+ }
  public static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(EnemyScene::tick);}
  public static void start(Minecraft c){
   if(c.player==null||c.getSingleplayerServer()==null)throw new IllegalStateException("Open the isolated development world");
@@ -37,11 +41,18 @@ public final class EnemyScene {
   var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{
    var server=c.getSingleplayerServer();var p=server.getPlayerList().getPlayer(uuid);if(p==null)return;
    server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"time set noon");server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"weather clear");
-   var at=p.blockPosition();for(int x=-5;x<=5;x++)for(int z=-6;z<=11;z++){
+   var at=p.blockPosition();
+   int roof=at.getY();
+   for(int x=-5;x<=5;x++)for(int z=-6;z<=11;z++){
+    roof=Math.max(roof,p.level().getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING,
+     at.getX()+x,at.getZ()+z));
+   }
+   at=at.atY(roof+1);
+   for(int x=-5;x<=5;x++)for(int z=-6;z<=11;z++){
     p.level().setBlock(at.offset(x,-1,z),net.minecraft.world.level.block.Blocks.SMOOTH_STONE.defaultBlockState(),3);
     for(int y=0;y<=7;y++)p.level().setBlock(at.offset(x,y,z),net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
    }
-   p.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);p.setYRot(0);p.setXRot(0);p.setGameMode(net.minecraft.world.level.GameType.CREATIVE);p.setAttached(JakData.ENABLED,true);p.setAttached(JakData.BOARD,net.minecraft.world.item.ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,net.minecraft.world.item.ItemStack.EMPTY);JakPlayers.controlForProbe(p,true);
+   p.connection.teleport(at.getX()+.5,at.getY(),at.getZ()+.5,0,0);p.setGameMode(net.minecraft.world.level.GameType.CREATIVE);p.setAttached(JakData.ENABLED,true);p.setAttached(JakData.BOARD,net.minecraft.world.item.ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,net.minecraft.world.item.ItemStack.EMPTY);JakPlayers.controlForProbe(p,true);
   });
  }
  public static void startSystems(Minecraft c){start(c);kinds=List.of();output=c.gameDirectory.toPath().resolve("jakmc/evidence/systems");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}}
@@ -51,8 +62,54 @@ public final class EnemyScene {
   if(++deadline>1800){finish(c,"Deadline exceeded");return;}
   if(index>=kinds.size()){extras(c);return;}
   String kind=kinds.get(index);var uuid=c.player.getUUID();
-  if(phase>=2){if(!JakEnemyRenderer.seenClips.containsKey(entityId)||lastDraw==JakEnemyRenderer.rendered)return;lastDraw=JakEnemyRenderer.rendered;}
+  boolean hopper=kind.equals("hopper");
+  if(phase>=2&&!hopper){if(!JakEnemyRenderer.seenClips.containsKey(entityId)||lastDraw==JakEnemyRenderer.rendered)return;lastDraw=JakEnemyRenderer.rendered;}
   int t=++phase;
+  if(hopper&&t>=9&&t<=199){
+   int hopTick=t;
+   c.getSingleplayerServer().execute(()->{
+    var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);
+    if(p==null||!(p.level().getEntity(entityId) instanceof JakEnemy enemy))return;
+    var row=RESULTS.get(kind);
+    if(hopTick==9){
+     enemy.setNoAi(false);
+     for(String jump:List.of("short","long"))
+      for(String suffix:List.of("","-land"))row.addProperty("hopper-jump-"+jump+suffix,false);
+    }
+    String clip=enemy.animation();
+    if(row.has(clip))row.addProperty(clip,true);
+    if(hopTick==105){
+     p.setGameMode(net.minecraft.world.level.GameType.SURVIVAL);
+     enemy.setPos(p.getX()+1,p.getY(),p.getZ()+5);
+     enemy.setDeltaMovement(Vec3.ZERO);
+     enemy.setTarget(p);
+    }
+    if(hopTick==199)p.setGameMode(net.minecraft.world.level.GameType.CREATIVE);
+   });
+   return;
+  }
+  if(hopper&&t>=200)t-=191;
+  String recovery=switch(kind){
+   case "flitter"->"flitter-knocked-land0";
+   case "gekko"->"gekko-knocked-red0-land";
+   case "kg-grunt"->"kg-grunt-knocked-land0";
+   case "spydroid"->"spydroid-knocked0-land";
+   case "predator"->"predator-knocked-land";
+   default->"";
+  };
+  if(!recovery.isEmpty()&&t>=18){
+   if(t<50){
+    var row=RESULTS.get(kind);
+    var rendered=JakEnemyRenderer.seenClips.get(entityId);
+    if(!row.has("authored_recovery")&&rendered!=null&&rendered.contains(recovery)){
+     row.addProperty("authored_recovery",true);capture(c,kind+"-recover.png");
+    }
+    return;
+   }
+   RESULTS.get(kind).addProperty("authored_recovery",RESULTS.get(kind).has("authored_recovery")
+    &&RESULTS.get(kind).get("authored_recovery").getAsBoolean());
+   t-=32;
+  }
   if(t==0){entityId=-1;c.getSingleplayerServer().execute(()->{
    var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p==null)return;
    var enemy=JakEntities.TYPES.get(kind).create(p.level(),EntitySpawnReason.COMMAND);if(enemy==null)throw new IllegalStateException("Cannot create "+kind);

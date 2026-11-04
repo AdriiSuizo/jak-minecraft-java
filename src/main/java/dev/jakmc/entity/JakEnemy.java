@@ -24,17 +24,25 @@ public final class JakEnemy extends Monster {
  private static final EntityDataAccessor<Long> CLIP_START=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.LONG);
  private static final EntityDataAccessor<Boolean> LOOP=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.BOOLEAN);
  private static final EntityDataAccessor<Float> PLAY_RATE=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.FLOAT);
+ private static final EntityDataAccessor<Float> CLIP_OFFSET=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.FLOAT);
  private static final EntityDataAccessor<Integer> PHASE=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.INT);
  private static final EntityDataAccessor<String> SHOT=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.STRING);
  private final KrimsonGuard guard;
  private State state=State.IDLE;
  private int stateTicks,pathWait,landTicks,windup;
+ private int reactionEnds,crabPhase=-1;
+ private boolean reactionAirborne;
  private boolean struck,wasGround=true;
  private boolean requestLeap,leaping;
  private boolean nativeHeavy;
  private int leapWindup;
  private Vec3 leapMotion=Vec3.ZERO,lunge=Vec3.ZERO;
  private final boolean spydroid;
+ private final boolean crab;
+ private final boolean hopper;
+ private final String recovery;
+ private String hopperClip="";
+ private float hopperStart,hopperFlight;
  private Vec3 home,roam;
  private String sounding="";
  private float soundTime=-.001f;
@@ -43,34 +51,47 @@ public final class JakEnemy extends Monster {
   super(type,level);kind=Objects.requireNonNull(JakEntities.KINDS.get(type),"Unregistered Jak enemy");
   guard=kind.guard()?new KrimsonGuard(this):null;
   spydroid=kind.model.equals("spydroid");
+  crab=kind.model.equals("lurkercrab");
+  hopper=kind.model.equals("hopper");
+  String knocked=kind.clips[6];
+  recovery=knocked.isEmpty()?"":kind.first(knocked+"-land",
+   knocked.replace("knocked0","knocked-land0"),knocked.replace("knocked","knocked-land"),knocked);
   setPathfindingMalus(net.minecraft.world.level.pathfinder.PathType.WATER,0);
   getNavigation().setCanFloat(true);
   jumpControl=new net.minecraft.world.entity.ai.control.JumpControl(this){@Override public void jump(){if(isInWater()||isInLava())super.jump();else if(guard!=null)super.jump();else if(onGround()&&!leaping&&leapWindup==0&&landTicks==0)requestLeap=true;}};
  }
  @Override protected void registerGoals(){goalSelector.addGoal(0,new FloatGoal(this));}
- @Override protected void defineSynchedData(SynchedEntityData.Builder b){super.defineSynchedData(b);b.define(CLIP,"");b.define(CLIP_START,0L);b.define(LOOP,true);b.define(PLAY_RATE,1f);b.define(PHASE,0);b.define(SHOT,"");}
+ @Override protected void defineSynchedData(SynchedEntityData.Builder b){super.defineSynchedData(b);b.define(CLIP,"");b.define(CLIP_START,0L);b.define(LOOP,true);b.define(PLAY_RATE,1f);b.define(CLIP_OFFSET,0f);b.define(PHASE,0);b.define(SHOT,"");}
  public String animation(){String c=entityData.get(CLIP);return c.isEmpty()?kind.clips[0]:c;}
  public boolean animationLoops(){return entityData.get(LOOP);}
  public float animationRate(){return entityData.get(PLAY_RATE);}
- public float animationSeconds(float partial){return Math.max(0,(dev.jakmc.player.JakEntityClock.time(level())-entityData.get(CLIP_START)+partial)/20f)*animationRate();}
+ public float animationSeconds(float partial){
+  float elapsed=Math.max(0,(dev.jakmc.player.JakEntityClock.time(level())-entityData.get(CLIP_START)+partial)/20f);
+  if(state()==State.HURT&&kind.clips[6].isEmpty()&&animation().equals(kind.clips[7])){
+   // One-hit enemies borrow the first frames of their death without ever playing its fall.
+   return (float)Math.sin(Math.PI*Math.clamp(elapsed/.45f,0,1))*Math.min(kind.duration(animation())*.15f,.10f);
+  }
+  return entityData.get(CLIP_OFFSET)+elapsed*animationRate();
+ }
  public State state(){return State.values()[Math.clamp(entityData.get(PHASE),0,State.values().length-1)];}
  KrimsonGuard guardController(){return guard;}
- void restartAnimation(){entityData.set(CLIP_START,dev.jakmc.player.JakEntityClock.time(level()));sounding="";}
+ void restartAnimation(){entityData.set(CLIP_START,dev.jakmc.player.JakEntityClock.time(level()));entityData.set(CLIP_OFFSET,0f);sounding="";}
  public String guardShot(){return entityData.get(SHOT);}
  void guardShot(String value){entityData.set(SHOT,value);}
  public void patrol(BlockPos start,BlockPos end){if(guard!=null)guard.patrol(start,end);}
  void animate(String clip,boolean loop,float rate){
-  if(!clip.equals(entityData.get(CLIP))){entityData.set(CLIP,clip);entityData.set(CLIP_START,dev.jakmc.player.JakEntityClock.time(level()));}
+  if(!clip.equals(entityData.get(CLIP))){entityData.set(CLIP,clip);restartAnimation();}
   entityData.set(LOOP,loop);entityData.set(PLAY_RATE,rate);
  }
  void set(State next){
   state=next;stateTicks=0;struck=false;lunge=Vec3.ZERO;windup=0;landTicks=0;requestLeap=false;leapWindup=0;leaping=false;
-  entityData.set(PHASE,next.ordinal());entityData.set(CLIP_START,dev.jakmc.player.JakEntityClock.time(level()));
+  reactionAirborne=false;reactionEnds=0;crabPhase=-1;
+  entityData.set(PHASE,next.ordinal());restartAnimation();
   if(next!=State.CHASE&&next!=State.WALK){getNavigation().stop();getMoveControl().setWantedPosition(getX(),getY(),getZ(),0);}
  }
  @Override protected void customServerAiStep(ServerLevel level){
   super.customServerAiStep(level);if(guard!=null){guard.tick(level);sounds();return;}if(home==null)home=position();stateTicks++;if(pathWait>0)pathWait--;if(landTicks>0)landTicks--;
-  if(onGround()&&!wasGround&&isAlive())landTicks=Math.max(1,(int)(20*kind.duration(kind.jump[2])));wasGround=onGround();
+  if(!hopper&&onGround()&&!wasGround&&isAlive())landTicks=Math.max(1,(int)(20*kind.duration(kind.jump[2])));wasGround=onGround();
   LivingEntity target=getTarget();
   if(target!=null&&(!target.isAlive()||target.isSpectator()||target instanceof Player p&&p.isCreative())){setTarget(null);target=null;}
   if(state!=State.HURT&&tickCount%10==0&&target==null){
@@ -80,14 +101,24 @@ public final class JakEnemy extends Monster {
    setTarget(target);
   }
   if(state==State.HURT){
-   String reaction=kind.first(kind.clips[6],kind.model+"-stun",kind.model+"-take-hit",kind.model+"-both-take-hit",kind.model+"-kickback",kind.clips[7]);
-   animate(reaction,false,kind.clips[6].isEmpty()?.25f:1);
-   float duration=kind.clips[6].isEmpty()?.45f:Math.max(.7f,kind.duration(reaction));
-   if(stateTicks>=duration*20&&(onGround()||isInWater()))set(target!=null?State.CHASE:State.IDLE);
+   if(reactionAirborne&&(onGround()||isInWater())){
+    reactionAirborne=false;
+    if(!isInWater()&&!recovery.equals(animation())){
+     animate(recovery,false,1);
+     reactionEnds=stateTicks+Math.max(1,(int)Math.ceil(20*kind.duration(recovery)));
+    }
+   }
+   if(stateTicks>=reactionEnds&&(onGround()||isInWater())){
+    set(target!=null?State.CHASE:State.IDLE);updateAnimation();
+   }
    sounds();return;
   }
   if(isPassenger()){animate(kind.clips[0],true,1);sounds();return;}
-  if(requestLeap&&onGround()&&kind.leaps&&(state==State.CHASE||state==State.WALK)&&!kind.model.equals("hopper")){
+  if(hopper&&(windup>0||leaping||landTicks>0)){
+   advanceHopper();
+   sounds();return;
+  }
+  if(requestLeap&&onGround()&&kind.leaps&&(state==State.CHASE||state==State.WALK)&&!hopper){
    requestLeap=false;beginLeap(new Vec3(getMoveControl().getWantedX(),getMoveControl().getWantedY(),getMoveControl().getWantedZ()));
   }
   if(leapWindup>0){
@@ -152,7 +183,26 @@ public final class JakEnemy extends Monster {
    }
   }else if(elapsed>=jump+land)set(target.isAlive()?State.CHASE:State.CELEBRATE);
  }
- private float attackLength(){return kind.model.equals("lurkercrab")?kind.duration("lurkercrab-peek")*1.5f+kind.duration("lurkercrab-snip")+kind.duration("lurkercrab-peek-to-walk"):Math.max(.35f,kind.duration(kind.clips[3]));}
+ private float crabOpenSeconds(){return kind.duration("lurkercrab-peek")*1.5f+kind.duration("lurkercrab-snip");}
+ private float attackLength(){return crab?crabOpenSeconds()+kind.duration("lurkercrab-peek-to-walk"):Math.max(.35f,kind.duration(kind.clips[3]));}
+ private void animateCrabAttack(){
+  float halfPeek=kind.duration("lurkercrab-peek")*.5f,snip=kind.duration("lurkercrab-snip");
+  float elapsed=stateTicks/20f;
+  int phase=elapsed<halfPeek?0:elapsed<halfPeek+snip?1:elapsed<crabOpenSeconds()-halfPeek?2:elapsed<crabOpenSeconds()?3:4;
+  if(phase==crabPhase)return;
+  crabPhase=phase;
+  String clip=switch(phase){case 1->"lurkercrab-snip";case 4->"lurkercrab-peek-to-walk";default->"lurkercrab-peek";};
+  animate(clip,false,1);
+  restartAnimation();
+  float offset=switch(phase){
+   case 0->elapsed;
+   case 1->elapsed-halfPeek;
+   case 2->elapsed-snip;
+   case 3->elapsed-snip-halfPeek;
+   default->elapsed-crabOpenSeconds();
+  };
+  entityData.set(CLIP_OFFSET,Math.max(0,offset));
+ }
  boolean inReach(LivingEntity target){
   // The guest reach tests a body, not an infinitesimal feet point. Keep the
   // authored radius; use Minecraft's actual hitbox (including modded sizes).
@@ -171,52 +221,94 @@ public final class JakEnemy extends Monster {
  }
  private void navigate(Vec3 at,boolean chasing){
   if(landTicks>0&&!isInWater()){getNavigation().stop();return;}
-  if(kind.model.equals("hopper")&&!isInWater()){
+  if(hopper&&!isInWater()){
    getNavigation().stop();if(!onGround())return;
-   if(windup++<1){animate(chasing?"hopper-jump-long":"hopper-jump-short",false,1);return;}
-   windup=0;Vec3 d=at.subtract(position()).multiply(1,0,1);float across=Math.min((float)d.length()/JakEnemyKind.SCALE,chasing?8:4),h=Math.max(3,across*.5f),v=(float)Math.sqrt(2*100*h),duration=2*v/100;
-   Vec3 dir=d.normalize();setDeltaMovement(dir.scale(across/duration*JakEnemyKind.SCALE/20).add(0,v*JakEnemyKind.SCALE/20,0));needsSync=true;face(at);return;
+   Vec3 d=at.subtract(position()).multiply(1,0,1);
+   float across=Math.min((float)d.length()/JakEnemyKind.SCALE,chasing?8:4);
+   float height=Math.max(3,across*.5f),vertical=(float)Math.sqrt(2*100*height);
+   hopperFlight=2*vertical/100;
+   leapMotion=d.normalize().scale(across/hopperFlight*JakEnemyKind.SCALE/20).add(0,vertical*JakEnemyKind.SCALE/20,0);
+   hopperClip=chasing?"hopper-jump-long":"hopper-jump-short";
+   var clip=kind.animations.get(hopperClip);
+   hopperStart=3/Math.max(1,60*clip.speed()*clip.artistStep());
+   windup=Math.max(1,(int)Math.ceil(20*hopperStart));
+   animate(hopperClip,false,hopperStart*20/windup);
+   face(at);return;
   }
   if(pathWait==0){getNavigation().moveTo(at.x,at.y,at.z,0,chasing?1:kind.walk/kind.run);pathWait=10;}
   if(horizontalCollision&&onGround()&&kind.leaps&&!isInWater())getJumpControl().jump();
  }
+ private void advanceHopper(){
+  if(windup>0){
+   if(--windup!=0)return;
+   setDeltaMovement(leapMotion);setOnGround(false);needsSync=true;leaping=true;
+   animate(hopperClip,false,(kind.duration(hopperClip)-hopperStart)/hopperFlight);
+   restartAnimation();entityData.set(CLIP_OFFSET,hopperStart);
+   return;
+  }
+  if(leaping){
+   if(!onGround()&&!isInWater())return;
+   leaping=false;requestLeap=false;
+   if(isInWater())return;
+   String landing=hopperClip+"-land";
+   landTicks=10+(int)Math.ceil(kind.duration(landing)*20);
+   animate(landing,false,1);return;
+  }
+  if(landTicks<=10)animate(kind.clips[0],true,1);
+ }
  private void updateAnimation(){
   String c=switch(state){case IDLE->kind.clips[0];case NOTICE->kind.clips[1];case CHASE->kind.clips[2];case ATTACK->kind.clips[3];case CELEBRATE->kind.clips[4];case WALK->kind.clips[5];case GIVE_UP->kind.first(kind.model+"-give-up",kind.model+"-give-up-hop");default->kind.clips[0];};
   boolean loops=state==State.IDLE||state==State.CHASE||state==State.WALK;
-  if(kind.model.equals("hopper")&&state==State.IDLE){float idle=2,burp=kind.duration("hopper-burp");if((stateTicks/20f)%(idle*3+burp)>=idle*3){c="hopper-burp";loops=false;}}
+  if(hopper&&state==State.IDLE){float idle=2,burp=kind.duration("hopper-burp");if((stateTicks/20f)%(idle*3+burp)>=idle*3){c="hopper-burp";loops=false;}}
   if(spydroid&&state==State.ATTACK)c=stateTicks/20f<kind.duration("spydroid-attack-jump")?
    "spydroid-attack-jump":"spydroid-attack-land";
-  if(kind.model.equals("lurkercrab")&&state==State.ATTACK){float t=stateTicks/20f,p=kind.duration("lurkercrab-peek"),s=kind.duration("lurkercrab-snip");c=t<p*.5f?"lurkercrab-peek":t<p*.5f+s?"lurkercrab-snip":t<p*1.5f+s?"lurkercrab-peek":"lurkercrab-peek-to-walk";}
+  if(crab&&state==State.ATTACK){animateCrabAttack();return;}
+  if(hopper&&windup>0)return;
   if(state==State.CHASE||state==State.WALK){
    if(!onGround()&&!isInWater()&&!kind.jump[1].isEmpty())c=kind.jump[1];
    else if(landTicks>0&&!kind.jump[2].isEmpty()){c=kind.jump[2];loops=false;}
    else if(isInWater())c=kind.first(kind.model+"-swim",kind.jump[1],c);
-   else if(getDeltaMovement().horizontalDistanceSqr()<.0001&&!kind.model.equals("hopper"))c=kind.clips[0];
+   else if(getDeltaMovement().horizontalDistanceSqr()<.0001)c=kind.clips[0];
   }
   animate(c,loops,1);
  }
  private void sounds(){
   String clip=animation();var art=kind.animations.get(clip);if(art==null)return;
   float seconds=animationSeconds(0),duration=art.duration();if(animationLoops()&&duration>0)seconds%=duration;
-  float frame=art.artist(seconds),previous=clip.equals(sounding)?soundTime:art.artistBase()-.001f;
-  for(var cue:art.cues())if(frame<previous?cue.frame()>previous||cue.frame()<=frame:cue.frame()>previous&&cue.frame()<=frame){var sound=JakEnemySounds.find(kind,cue.name());if(sound!=null){playSound(sound,cue.volume(),(float)Math.pow(2,cue.pitch()));JakEnemySounds.cuesPlayed++;}}
+  float frame=art.artist(seconds),previous=clip.equals(sounding)?soundTime:art.artist(entityData.get(CLIP_OFFSET))-.001f;
+  for(var cue:art.cues())if(frame<previous?animationLoops()&&(cue.frame()>previous||cue.frame()<=frame):cue.frame()>previous&&cue.frame()<=frame){var sound=JakEnemySounds.find(kind,cue.name());if(sound!=null){playSound(sound,cue.volume(),(float)Math.pow(2,cue.pitch()));JakEnemySounds.cuesPlayed++;}}
   sounding=clip;soundTime=frame;
  }
  @Override public boolean hurtServer(ServerLevel level,DamageSource source,float amount){
   if(kind==null)return super.hurtServer(level,source,amount);
   // Closed crab shell deflects ordinary blows; explosions and smash attacks bypass it.
   boolean heavy=nativeHeavy||source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION)||source.is(net.minecraft.tags.DamageTypeTags.BYPASSES_ARMOR);
-  boolean exposed=state==State.CELEBRATE||state==State.ATTACK&&stateTicks/20f<kind.duration("lurkercrab-peek")*1.5f+kind.duration("lurkercrab-snip");
-  if(kind.model.equals("lurkercrab")&&!heavy&&!exposed&&source.getEntity()!=null){Vec3 away=position().subtract(source.getEntity().position()).multiply(1,0,1).normalize();setDeltaMovement(away.scale(14*JakEnemyKind.SCALE/20));needsSync=true;set(State.HURT);return false;}
-  boolean hit=super.hurtServer(level,source,amount);
+  boolean exposed=crab&&(state==State.CELEBRATE||state==State.ATTACK&&stateTicks/20f<crabOpenSeconds());
+  if(crab&&!heavy&&!exposed&&source.getEntity()!=null&&isAlive()){
+   Vec3 away=position().subtract(source.getEntity().position()).multiply(1,0,1).normalize();
+   setDeltaMovement(away.scale(14*JakEnemyKind.SCALE/20));needsSync=true;
+   beginReaction("lurkercrab-kickback",.75f,.65f);return false;
+  }
+  boolean hit=super.hurtServer(level,source,crab?(exposed?2:heavy?4:1)*amount:amount);
   if(hit&&guard!=null){guard.hit(level,source);return true;}
   if(hit&&isAlive()){
-   set(State.HURT);if(source.getEntity() instanceof LivingEntity attacker){setTarget(attacker);
+   String clip=kind.first(kind.clips[6],kind.model+"-stun",kind.model+"-take-hit",kind.model+"-both-take-hit",kind.model+"-kickback",kind.clips[7]);
+   beginReaction(clip,crab?.75f:1,kind.clips[6].isEmpty()?.45f:Math.max(.7f,kind.duration(clip)));
+   if(source.getEntity() instanceof LivingEntity attacker){setTarget(attacker);
     boolean thrown=!kind.clips[6].isEmpty()&&!kind.clips[6].contains("stun")&&!kind.clips[6].contains("take-hit")&&!kind.clips[6].contains("kickback");
-    if(thrown&&!isInWater()){Vec3 away=position().subtract(attacker.position()).multiply(1,0,1).normalize();setDeltaMovement(away.scale(6*JakEnemyKind.SCALE/20).add(0,5*JakEnemyKind.SCALE/20,0));needsSync=true;}
+    if(thrown&&!isInWater()){
+     Vec3 away=position().subtract(attacker.position()).multiply(1,0,1).normalize();
+     setDeltaMovement(away.scale(6*JakEnemyKind.SCALE/20).add(0,5*JakEnemyKind.SCALE/20,0));
+     setOnGround(false);needsSync=true;reactionAirborne=true;
+    }
    }
   }
   return hit;
+ }
+ private void beginReaction(String clip,float rate,float seconds){
+  set(State.HURT);
+  animate(clip,false,rate);
+  reactionEnds=Math.max(1,(int)Math.ceil(seconds*20));
  }
  public boolean hurtFromJak(ServerLevel level,DamageSource source,float damage,boolean heavy){nativeHeavy=heavy;try{return hurtServer(level,source,damage);}finally{nativeHeavy=false;}}
  public com.google.gson.JsonObject diagnostics(){

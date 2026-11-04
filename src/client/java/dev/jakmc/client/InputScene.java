@@ -28,6 +28,8 @@ public final class InputScene {
   if(SpydroidScene.camera()!=null)return SpydroidScene.camera();
   if(VentScene.camera()!=null)return VentScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
+  var enemy=EnemyScene.camera(Minecraft.getInstance());
+  if(enemy!=null)return enemy;
   var yakow=YakowScene.camera();
   if(yakow!=null)return yakow;
   var surface=SurfaceScene.camera();
