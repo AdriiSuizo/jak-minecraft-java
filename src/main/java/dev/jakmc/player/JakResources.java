@@ -74,11 +74,16 @@ public final class JakResources {
             count(stack,values,0);
             if(!stack.isEmpty()&&!container(stack)){
                 var storage=ContainerItemContext.ofPlayerSlot(player,slots.getSlot(i)).find(ItemStorage.ITEM);
-                if(storage!=null&&storage.supportsExtraction())for(var view:storage.nonEmptyViews()){
-                    var contents=view.getResource().toStack();int kind=kind(contents);
-                    if(kind>=0)try(var transaction=Transaction.openOuter()){
-                        long accessible=storage.extract(view.getResource(),view.getAmount(),transaction);
-                        values[kind]+=charge(contents,kind)*(double)accessible/PRECISION;
+                if(storage!=null&&storage.supportsExtraction())try(var transaction=Transaction.openOuter()){
+                    // One speculative extraction across the whole storage. Independent
+                    // rollbacks per view can count the same accessible slot repeatedly
+                    // when another matching pocket is protected against extraction.
+                    for(var view:storage.nonEmptyViews()){
+                        var contents=view.getResource().toStack();int kind=kind(contents);
+                        if(kind>=0){
+                            long accessible=storage.extract(view.getResource(),view.getAmount(),transaction);
+                            values[kind]+=charge(contents,kind)*(double)accessible/PRECISION;
+                        }
                     }
                 }
             }

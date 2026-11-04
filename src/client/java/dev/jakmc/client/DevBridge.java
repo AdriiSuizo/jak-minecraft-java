@@ -68,6 +68,7 @@ public final class DevBridge {
                 case "menus_scene" -> {MenuScene.start(client);out.addProperty("scheduled",true);}
                 case "input_actions_scene" -> {InputScene.startInteractions(client);out.addProperty("scheduled",true);}
                 case "flut_scene" -> {InputScene.startFlut(client);out.addProperty("scheduled",true);}
+                case "equipment_scene" -> {EquipmentScene.start(client);out.addProperty("scheduled",true);}
                 case "economy_scene" -> {EconomyScene.start(client);out.addProperty("scheduled",true);}
                 case "natural_cities_scene" -> {SitesScene.startCities(client);out.addProperty("scheduled",true);}
                 case "sites_scene" -> {SitesScene.start(client);out.addProperty("scheduled",true);}

@@ -14,7 +14,10 @@
     "JakShieldMixin",
     "JakWorldClockMixin",
     "JakFreezeTickMixin",
-    "CitizenTradesMixin"
+    "CitizenTradesMixin",
+    "BoardInventoryMixin",
+    "BoardDeathMixin",
+    "BoardCreativeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

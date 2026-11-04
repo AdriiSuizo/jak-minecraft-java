@@ -6,6 +6,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 @Mixin(AbstractContainerScreen.class)
 public interface JakContainerBounds {
+    @Accessor("hoveredSlot") net.minecraft.world.inventory.Slot jakmc$hoveredSlot();
     @Accessor("leftPos") int jakmc$left();
     @Accessor("topPos") int jakmc$top();
 }

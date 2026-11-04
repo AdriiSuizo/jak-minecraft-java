@@ -87,6 +87,13 @@ public final class JakPoses {
     }
     public static Pose rendered(int id){return presentedPose!=null&&Minecraft.getInstance().player!=null&&id==Minecraft.getInstance().player.getId()?presentedPose:get(id);}
     public static float elapsed(Pose pose){return pose==presentedPose?presentedElapsed:Math.clamp((System.nanoTime()-pose.received())/1e9f-.05f,-.05f,.05f);}
+    /** Same render timestamp used for local body, held items and camera. */
+    public static double renderedTick(int entity){
+        var client=Minecraft.getInstance();var pose=get(entity);
+        if(pose==null)return Double.NaN;
+        if(client.player!=null&&entity==client.player.getId()&&motionFrame!=null)return MOTION.tick();
+        return pose.raw().get("serverTick").getAsLong()+elapsed(pose)*20;
+    }
     public static Vec3 presented(){return presented;}
     public static Quaternionf flightRotation(){return motionFrame==null||motionFrame.rotation()==null?null:new Quaternionf(motionFrame.rotation());}
     public static Vec3 flightOffset(){return motionFrame==null?Vec3.ZERO:motionFrame.offset();}

@@ -21,7 +21,12 @@
     "JakAtmosphericSkyMixin",
     "JakContainerBounds",
     "JakMouseCapture",
-    "JakMinimapMixin"
+    "JakMinimapMixin",
+    "CreativeBoardSlotMixin",
+    "CreativeBoardSlotAccess",
+    "BoardSlotScreenMixin",
+    "CreativeInventoryActions",
+    "JakGuiEntityMixin"
   ],
   "injectors": {
     "defaultRequire": 1

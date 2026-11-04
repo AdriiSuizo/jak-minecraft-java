@@ -42,6 +42,7 @@ final class JakCloth {
     private long clock,session;
     private double time;
     private float scarfReach;
+    private int resets;
 
     static void load() {
         if(definitions!=null)return;
@@ -155,6 +156,21 @@ final class JakCloth {
         return value;
     }
 
+    /** Kinematic portrait: source cloth geometry/pins, no world-space inertia. */
+    int submitPreview(GltfModel model,GltfModel.Posed pose,PoseStack stack,SubmitNodeCollector collector,int light){
+        if(definitions.isEmpty())return 0;
+        if(pieces.isEmpty())for(var definition:definitions)pieces.add(new Piece(definition));
+        var root=new Matrix4f(stack.last().pose());var at=root.getTranslation(new Vector3f());root.setTranslation(0,0,0);
+        var translation=new PoseStack();translation.translate(at.x,at.y,at.z);
+        var joints=new HashMap<String,Matrix4f>();
+        for(var piece:pieces){
+            piece.initialized=false;piece.update(model,pose,root,joints,Vec3.ZERO,1,0,0,0);
+            for(int i=0;i<piece.def.pins.length;i++)piece.pos[piece.def.pins[i].point].set(piece.pins[i]);
+            piece.draw(translation,collector,light,1);
+        }
+        return pieces.size();
+    }
+
     int submit(GltfModel model,GltfModel.Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,
                Vec3 camera,float scale,long key) {
         if(definitions.isEmpty())return 0;
@@ -166,6 +182,7 @@ final class JakCloth {
         double elapsed=(now-clock)*1e-9;
         if(origin==null||session!=key||elapsed>.15||nextOrigin.distanceToSqr(origin)>9*scale*scale){
             pieces.clear();
+            resets++;
             time=0;
             origin=nextOrigin;
             for(var definition:definitions)pieces.add(new Piece(definition));
@@ -191,6 +208,7 @@ final class JakCloth {
     }
 
     float scarfReach(){return scarfReach;}
+    int resets(){return resets;}
 
     private static final class Piece {
         final Definition def;

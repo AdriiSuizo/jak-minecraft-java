@@ -50,7 +50,7 @@ final class EconomyScene {
                     for(int y=0;y<7;y++)p.level().setBlock(base.offset(x,y,z),net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
                 }
                 client.getSingleplayerServer().getCommands().performPrefixedCommand(client.getSingleplayerServer().createCommandSourceStack(),"time set noon");
-                nested(p);recipes(p);trades(p);board(p);
+                nested(p);opaqueBackpack(p);recipes(p);trades(p);board(p);
                 p.getInventory().clearContent();
                 p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(3)));
                 JakResources.grant(p,0,60);JakResources.grant(p,1,36);
@@ -70,6 +70,28 @@ final class EconomyScene {
     }
     private static void check(String name,boolean value){result.addProperty(name,value);if(!value)throw new IllegalStateException(name);}
     private static boolean near(float a,float b){return Math.abs(a-b)<.001f;}
+    private static void opaqueBackpack(ServerPlayer p){
+        class Pocket extends net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantStorage<net.fabricmc.fabric.api.transfer.v1.item.ItemVariant> {
+            final boolean locked;
+            Pocket(boolean locked){this.locked=locked;variant=net.fabricmc.fabric.api.transfer.v1.item.ItemVariant.of(JakItems.LIGHT_ECO);amount=6;}
+            protected net.fabricmc.fabric.api.transfer.v1.item.ItemVariant getBlankVariant(){return net.fabricmc.fabric.api.transfer.v1.item.ItemVariant.blank();}
+            protected long getCapacity(net.fabricmc.fabric.api.transfer.v1.item.ItemVariant variant){return 64;}
+            protected boolean canExtract(net.fabricmc.fabric.api.transfer.v1.item.ItemVariant variant){return !locked;}
+        }
+        var locked=new Pocket(true);var open=new Pocket(false);
+        var bag=new net.fabricmc.fabric.api.transfer.v1.storage.base.CombinedStorage<net.fabricmc.fabric.api.transfer.v1.item.ItemVariant,Pocket>(List.of(locked,open));
+        // Developer-only provider, scoped to the probe's process and a vanilla
+        // debug item: mimics an opaque backpack with one protected pocket.
+        net.fabricmc.fabric.api.transfer.v1.item.ItemStorage.ITEM.registerForItems((stack,context)->bag,Items.DEBUG_STICK);
+        p.getInventory().clearContent();p.getInventory().setItem(0,new ItemStack(Items.DEBUG_STICK));
+        float total=JakResources.totals(p)[1];
+        dev.jakmc.JakMod.LOG.info("Backpack resource audit: accessible={}, locked={}, open={}",total,locked.amount,open.amount);
+        check("backpack_counts_only_extractable_eco_once",near(total,12));
+        check("backpack_count_rolls_back_simulation",locked.amount==6&&open.amount==6);
+        JakResources.consume(p,1,5);
+        check("backpack_consumes_actual_fuel_and_preserves_locked_pocket",locked.amount==6&&open.amount==3&&near(JakResources.totals(p)[1],7));
+        p.getInventory().clearContent();
+    }
     private static void nested(ServerPlayer p){
         var bundle=new ItemStack(Items.BUNDLE);bundle.set(DataComponents.BUNDLE_CONTENTS,BundleContents.EMPTY.copyWithContents(java.util.stream.Stream.of(new ItemStack(JakItems.LIGHT_ECO,64))));
         var shulker=new ItemStack(Items.SHULKER_BOX);shulker.set(DataComponents.CONTAINER,ItemContainerContents.fromItems(List.of(new ItemStack(JakItems.DARK_ECO,3),bundle)));

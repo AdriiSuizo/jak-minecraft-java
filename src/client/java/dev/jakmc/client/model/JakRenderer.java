@@ -26,6 +26,10 @@ public final class JakRenderer {
     private static GltfModel cinematicBody,cinematicDaxter,cinematicDark;
     private static final Map<Entity,JakChannels.Transition> transitions=new WeakHashMap<>();
     private static final Map<Entity,JakCloth> clothes=new WeakHashMap<>();
+    private static final Map<Entity,JakCloth> portraitClothes=new WeakHashMap<>();
+    public static long previewRenderSerial;
+    public static float previewBodyYaw;
+    public static int worldClothResets(Entity actor){var cloth=clothes.get(actor);return cloth==null?0:cloth.resets();}
     private static float bodyScale;
     private static float floorOffset;
     private static boolean ridingLoaded,pilotLoaded,iceLoaded;
@@ -123,21 +127,24 @@ public final class JakRenderer {
         if(pose==null)return false;
         load();
         renderSerial++;lastEntityId=state.id;
+        boolean portrait=JakGuiContext.active();
+        if(portrait)previewRenderSerial++;
         var flight=pose.raw().get("hellcat") instanceof com.google.gson.JsonObject craft?craft:null;
         var ride=pose.raw().get("ride");
         boolean mounted=ride!=null&&ride.isJsonObject();
         stack.pushPose();
         float elapsed=JakPoses.elapsed(pose);
         var boardFrame=pose.boardAt(elapsed);
-        float shownYaw=flight!=null?pose.yaw():pose.yawAt(elapsed);
+        float shownYaw=portrait?state.bodyRot:flight!=null?pose.yaw():pose.yawAt(elapsed);
+        if(portrait)previewBodyYaw=shownYaw;
         if(boardFrame==null)stack.rotateDegrees(Axis.YP,-shownYaw);
         else {
-            stack.mulPose(new Matrix4f().rotation(boardFrame.rotation()));
+            stack.mulPose(portrait?new Matrix4f().rotationY((float)Math.toRadians(-shownYaw)):new Matrix4f().rotation(boardFrame.rotation()));
             stack.translate(0,boardFrame.lift(),0);
         }
         if(flight!=null){
             var hull=Minecraft.getInstance().level.getEntity(flight.get("entity").getAsInt());
-            if(hull instanceof dev.jakmc.entity.JakHellcat cat&&flight.get("boarding").getAsFloat()<0){
+            if(!portrait&&hull instanceof dev.jakmc.entity.JakHellcat cat&&flight.get("boarding").getAsFloat()<0){
                 var attitude=JakPoses.flightRotation();
                 var bank=new org.joml.Quaternionf().rotateY((float)Math.toRadians(pose.yaw())).mul(
                     attitude==null?cat.attitude():attitude);
@@ -228,7 +235,7 @@ public final class JakRenderer {
         boolean aiming=pose.raw().has("aim")&&pose.raw().get("aim").getAsBoolean();
         float lookYaw=pose.raw().has("lookYaw")?pose.raw().get("lookYaw").getAsFloat():pose.yaw();
         if(actor==client.player)lookYaw=actor.getYRot();
-        float twist=aiming&&!climbing?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(shownYaw-lookYaw)),-1.6f,1.6f):0;
+        float twist=!portrait&&aiming&&!climbing?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(shownYaw-lookYaw)),-1.6f,1.6f):0;
         skeleton=body.jakForm(skeleton,pose.dark(),twist);
         boolean luminous=pose.raw().has("lightInterp")&&pose.raw().get("lightInterp").getAsFloat()>0;
         var visibleBody=bodyMesh(actor,state,pose.dark());
@@ -271,7 +278,7 @@ public final class JakRenderer {
             stack.pushPose();
             stack.mulPose(boardJoint!=null?boardJoint:rigid(body.joint(skeleton,"board")));
             Vector3f socket=stack.last().pose().getTranslation(new Vector3f());
-            JakEffects.boardSocket(state.id,camera.pos.add(socket.x,socket.y,socket.z));
+            if(!portrait)JakEffects.boardSocket(state.id,camera.pos.add(socket.x,socket.y,socket.z));
             board.submit(board.poseAtTime(clip,age),stack,collector,state.lightCoords);
             stack.popPose();
         }
@@ -285,6 +292,10 @@ public final class JakRenderer {
                                     SubmitNodeCollector collector,net.minecraft.world.phys.Vec3 camera,long key){
         if(state.isInvisible){
             clothes.remove(actor);
+            return;
+        }
+        if(JakGuiContext.active()){
+            portraitClothes.computeIfAbsent(actor,_ ->new JakCloth()).submitPreview(body,skeleton,stack,collector,state.lightCoords);
             return;
         }
         var cloth=clothes.computeIfAbsent(actor,_ ->new JakCloth());
@@ -343,7 +354,7 @@ public final class JakRenderer {
         float age=frame.get("boarding").getAsFloat();
         var skeleton=body.jakForm(carPilotPose(body,"jakb",controls,age<0?0:(partial-1)/20,car.model),false,0);
         var passenger=carPilotPose(daxter,"daxter",controls,age<0?0:(partial-1)/20,car.model);
-        var attitude=JakVehicleRenderer.rotation(before).slerp(JakVehicleRenderer.rotation(frame),partial);
+        var attitude=JakGuiContext.active()?new org.joml.Quaternionf().rotationY((float)Math.toRadians(-state.bodyRot)):JakVehicleRenderer.rotation(before).slerp(JakVehicleRenderer.rotation(frame),partial);
         stack.pushPose();
         stack.mulPose(new Matrix4f().rotation(attitude));
         stack.scale(bodyScale,bodyScale,bodyScale);
@@ -501,7 +512,7 @@ public final class JakRenderer {
                 if(fire>=0&&fire<.45f){clip=FIRE_GUN[kind];age=fire;}else age=(g.get("time").getAsFloat()+elapsed)%Math.max(.001f,gun.duration(clip));}
             var gunPose=gun.poseAtTime(clip,age);
             gun.submit(gunPose,stack,collector,state.lightCoords);
-            if(right&&gun.hasJoint("muzzle")){
+            if(right&&!JakGuiContext.active()&&gun.hasJoint("muzzle")){
                 var muzzle=gun.joint(gunPose,"muzzle").getTranslation(new Vector3f());
                 var laser=gun.hasJoint("laser")?gun.joint(gunPose,"laser").getTranslation(new Vector3f()):new Vector3f(muzzle);
                 stack.last().pose().transformPosition(muzzle);stack.last().pose().transformPosition(laser);
