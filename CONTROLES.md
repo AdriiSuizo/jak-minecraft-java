@@ -34,7 +34,7 @@ Se conservan teclado y ratón: B tabla, G puñetazo, V giro, R disparo, C apunta
 
 La entrada del mando respeta las zonas muertas originales: el núcleo aplica la del movimiento; la cámara usa zona radial 0,18 y el giro original de 180 grados por segundo a máxima inclinación. Los gatillos se leen analógicamente; los botones digitales originales usan presión 0,75 y liberación 0,65. El mando se detecta al conectarlo, libera sus botones al desenchufarlo y suspende movimiento/ataques en menús o al perder foco.
 
-Abrir/cerrar inventario, cambiar casillas e interactuar ya está integrado. Mover el cursor y elegir todas las casillas de los menús con el mando todavía no está implementado. Los controles de coches/zoomers R2 acelerar, L2 frenar/marcha atrás, X altura y Cuadrado freno de mano corresponden a la siguiente integración de vehículos; no son las acciones de Jak a pie de esta tabla.
+En inventario, creativo, yunque y comercio, mueve el cursor con un stick o recorre las casillas con la cruceta. X/A recoge, coloca o arrastra. Cuadrado/X divide la pila. Triángulo/Y hace la transferencia rápida de Minecraft. L1/R1 desplazan la lista y Círculo/B cierra. En creativo, usa el buscador de Minecraft con el teclado, en el idioma del juego.
 
 
 Los aldeanos de Minecraft muestran tres apariencias de ciudadanos de Villa Refugio. En la pestaña de criaturas de Jak hay tres huevos para elegirlas; al usar un huevo sobre un adulto se crea una cría de esa apariencia. Para comerciar, usa Triángulo/Y o clic derecho.

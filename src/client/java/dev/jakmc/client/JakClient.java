@@ -22,6 +22,7 @@ public final class JakClient implements ClientModInitializer {
   EnemyScene.initialize();
   WeaponScene.initialize();
   InputScene.initialize();
+  MenuScene.initialize();
   GemScene.initialize();
   CollisionPerfScene.initialize();
   CitizenScene.initialize();

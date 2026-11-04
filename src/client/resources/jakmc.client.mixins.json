@@ -18,7 +18,9 @@
     "GemCollectMixin",
     "CitizenRenderStateMixin",
     "JakAtmosphericFogMixin",
-    "JakAtmosphericSkyMixin"
+    "JakAtmosphericSkyMixin",
+    "JakContainerBounds",
+    "JakMouseCapture"
   ],
   "injectors": {
     "defaultRequire": 1

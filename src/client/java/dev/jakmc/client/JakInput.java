@@ -2,6 +2,7 @@ package dev.jakmc.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.jakmc.JakData;
+import dev.jakmc.client.input.JakMenuControls;
 import dev.jakmc.network.JakPackets;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -31,7 +32,7 @@ public final class JakInput {
     private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower,vehicleUseLock;
     private static Trigger trigger;
     private static final dev.jakmc.client.input.SdlGamepad GAMEPAD=new dev.jakmc.client.input.SdlGamepad();
-    private static dev.jakmc.client.input.SdlGamepad.State pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
+    private static dev.jakmc.client.input.SdlGamepad.State pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY,uiPad=pad;
     public static dev.jakmc.client.input.SdlGamepad.State controller(){return pad;}
     private static boolean inCar(Minecraft c){return c.player!=null&&c.player.getVehicle() instanceof dev.jakmc.entity.JakVehicle;}
     private static boolean enabled(Minecraft c){return c.player!=null&&(JakPlayers.active(c.player)||inCar(c)&&c.player.getAttachedOrCreate(dev.jakmc.JakData.ENABLED))&&!c.player.isSleeping();}
@@ -44,6 +45,7 @@ public final class JakInput {
         float dt=lastFrame==0?0:Math.clamp((now-lastFrame)/1e9f,0,.1f);
         lastFrame=now;
         poll(c);
+        JakMenuControls.frame(c,uiPad,dt,MenuScene.backgroundPad(controllerId));
         if(!blocked(c)){
             var look=dev.jakmc.client.input.ControllerMath.look(pad.rightX(),pad.rightY());
             c.player.turn(look[0]*180*dt/.15,-look[1]*180*dt/.15);
@@ -85,13 +87,14 @@ public final class JakInput {
     }
     private static void poll(Minecraft c){
         if(!enabled(c)){
-            pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
+            pad=uiPad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
             physicalHeld=physicalSystem=pressedPad=systemEdges=previous=suppressed=0;
             aiming=useHeld=attackHeld=useClicked=attackClicked=false;
             trigger=null;
             return;
         }
         var next=GAMEPAD.poll();
+        uiPad=next;
         if(next.id()!=controllerId){
             cancelPower|=controllerId!=0;
             controllerId=next.id();
@@ -172,7 +175,7 @@ public final class JakInput {
     public static boolean consumeUse(){boolean value=useClicked;useClicked=false;return value;}
     public static boolean consumeAttack(){boolean value=attackClicked;attackClicked=false;return value;}
     private static void ui(Minecraft c){
-        int edges=systemEdges;systemEdges=0;if(!enabled(c)||!c.isWindowActive())return;
+        int edges=systemEdges;systemEdges=0;if(!enabled(c)||!c.isWindowActive()&&!MenuScene.backgroundPad(controllerId))return;
         if(c.gui.screen()!=null){if((edges&(dev.jakmc.client.input.SdlGamepad.START|dev.jakmc.client.input.SdlGamepad.BACK|64))!=0)c.gui.screen().onClose();return;}
         if((edges&dev.jakmc.client.input.SdlGamepad.START)!=0){c.pauseGame(false);return;}
         if((edges&dev.jakmc.client.input.SdlGamepad.BACK)!=0)c.options.setCameraType(c.options.getCameraType().cycle());
@@ -187,7 +190,9 @@ public final class JakInput {
     public static void initialize(){
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STOPPING.register(c->GAMEPAD.close());
         ClientTickEvents.END_CLIENT_TICK.register(client->{
-            poll(client);ui(client);
+            poll(client);
+            JakMenuControls.frame(client,uiPad,0,MenuScene.backgroundPad(controllerId));
+            ui(client);
             if(!enabled(client)){previous=0;return;}
             boolean blocked=blocked(client);int held=blocked?0:held(client)|pad.held(),pressed=(held&~previous)|pressedPad;previous=held;pressedPad=0;
             float strafe=blocked?0:(client.options.keyRight.isDown()?1:0)-(client.options.keyLeft.isDown()?1:0);
