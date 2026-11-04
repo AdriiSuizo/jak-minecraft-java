@@ -318,10 +318,17 @@ public final class JakPlayers {
     }
     private static void setEco(ServerPlayer p,net.fabricmc.fabric.api.attachment.v1.AttachmentType<Float> type,float value){if(p.getAttachedOrCreate(type)!=value)p.setAttached(type,value);}
     private static float waterSurface(ServerPlayer p,Vec3 origin){
-        var pos=p.blockPosition();
-        if(!p.level().getFluidState(pos).is(net.minecraft.tags.FluidTags.WATER))return Float.NaN;
-        for(int y=0;y<16;y++){var q=pos.above(y);var fluid=p.level().getFluidState(q);if(!fluid.is(net.minecraft.tags.FluidTags.WATER))return (float)(q.getY()-origin.y);}
-        return (float)(pos.getY()+16-origin.y);
+        var level=p.level();
+        var surface=p.blockPosition().mutable();
+        var fluid=level.getFluidState(surface);
+        if(!fluid.is(net.minecraft.tags.FluidTags.WATER))return Float.NaN;
+        while(surface.getY()<level.getMaxY()){
+            var above=level.getFluidState(surface.above());
+            if(!above.is(net.minecraft.tags.FluidTags.WATER))break;
+            surface.move(net.minecraft.core.Direction.UP);
+            fluid=above;
+        }
+        return (float)(surface.getY()-origin.y+fluid.getHeight(level,surface));
     }
     private static int floor(ServerPlayer p){
         if(p.isInWater())return p.isUnderWater()?22:21;

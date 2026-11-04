@@ -22,9 +22,80 @@ import java.util.*;
 /** Bounded native entity/merchant/bed acceptance, in the isolated dev save only. */
 public final class CitizenScene {
  private static boolean running;private static int tick;private static UUID player;private static BlockPos base;private static Vec3 center;private static Path output;private static InputScene.CameraView view;
+ private static Runnable sleepCleanup;
+ private static long priorSleepFrames;
+ private static boolean playerSleep;
  private static final List<UUID> IDS=new ArrayList<>();private static final List<ItemStack> INVENTORY=new ArrayList<>();private static final JsonObject RESULT=new JsonObject();private static final Set<Integer> PHASES=new TreeSet<>();
  public static InputScene.CameraView camera(){return view;}
  public static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(CitizenScene::tick);}
+ public static void startPlayerSleep(Minecraft client){
+  if(running||client.player==null||client.getSingleplayerServer()==null)throw new IllegalStateException("Open isolated dev world");
+  var server=client.getSingleplayerServer();
+  UUID id=client.player.getUUID();
+  var camera=client.options.getCameraType();
+  client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+  priorSleepFrames=dev.jakmc.client.model.JakRenderer.sleepRenderSerial;
+  server.execute(()->{
+   var p=server.getPlayerList().getPlayer(id);
+   var level=p.level();
+   Vec3 old=p.position();
+   boolean enabled=p.getAttachedOrCreate(dev.jakmc.JakData.ENABLED);
+   var head=p.blockPosition().offset(3,0,0);
+   int height=level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING,head.getX(),head.getZ());
+   head=head.atY(Math.max(head.getY(),height)+1);
+   var foot=head.west();
+   var before=new LinkedHashMap<BlockPos,net.minecraft.world.level.block.state.BlockState>();
+   for(var at:List.of(head,foot)){
+    before.put(at.below(),level.getBlockState(at.below()));
+    before.put(at,level.getBlockState(at));
+    before.put(at.above(),level.getBlockState(at.above()));
+    level.setBlockAndUpdate(at.below(),Blocks.SMOOTH_STONE.defaultBlockState());
+    level.setBlockAndUpdate(at.above(),Blocks.AIR.defaultBlockState());
+   }
+   var bed=Blocks.BED.pick(DyeColor.RED).defaultBlockState().setValue(BedBlock.FACING,Direction.EAST);
+   level.setBlockAndUpdate(foot,bed.setValue(BedBlock.PART,BedPart.FOOT));
+   level.setBlockAndUpdate(head,bed.setValue(BedBlock.PART,BedPart.HEAD));
+   server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"time set midnight");
+   p.setAttached(dev.jakmc.JakData.ENABLED,true);
+   boolean occupied=p.startSleeping(head)&&level.getBlockState(head).getValue(BedBlock.OCCUPIED);
+   Vec3 target=Vec3.atBottomCenterOf(head).add(-.5,.65,0);
+   client.execute(()->{
+    RESULT.entrySet().clear();
+    RESULT.addProperty("native_occupied",occupied);
+    look(target.add(1.4,2.4,-2.7),target);
+    tick=0;
+    running=playerSleep=true;
+    sleepCleanup=()->{
+     client.options.setCameraType(camera);
+     server.execute(()->{
+      if(p.isSleeping())p.stopSleepInBed(true,true);
+      before.forEach(level::setBlockAndUpdate);
+      p.setAttached(dev.jakmc.JakData.ENABLED,enabled);
+      p.teleportTo(old.x,old.y,old.z);
+     });
+    };
+   });
+  });
+ }
+
+ private static void tickPlayerSleep(Minecraft client){
+  if(++tick==30)capture(client,"jak-sleep.png");
+  if(tick<38)return;
+  RESULT.addProperty("native_player_asleep",client.player.isSleeping());
+  RESULT.addProperty("original_sleep_pose",dev.jakmc.client.model.JakRenderer.sleepRenderSerial>priorSleepFrames);
+  boolean pass=RESULT.entrySet().stream().allMatch(e->e.getValue().getAsBoolean());
+  RESULT.addProperty("reason",pass?"complete":"Jak bed pose assertion failed");
+  try{
+   Path dir=client.gameDirectory.toPath().resolve("jakmc/evidence/player_sleep");
+   Files.createDirectories(dir);
+   Files.writeString(dir.resolve("result.json"),RESULT.toString());
+  }catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
+  running=playerSleep=false;
+  view=null;
+  sleepCleanup.run();
+  client.stop();
+ }
+
  public static void start(Minecraft c){if(running||c.player==null||c.getSingleplayerServer()==null)throw new IllegalStateException("Open isolated dev world");tick=0;IDS.clear();INVENTORY.clear();RESULT.entrySet().clear();PHASES.clear();JakCitizenRenderer.SEEN.clear();JakCitizenRenderer.rendered=JakCitizenRenderer.sleepers=0;player=c.player.getUUID();output=c.gameDirectory.toPath().resolve("jakmc/evidence/citizens");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}running=true;c.options.setCameraType(CameraType.THIRD_PERSON_BACK);
  c.getSingleplayerServer().execute(()->{var server=c.getSingleplayerServer();var p=server.getPlayerList().getPlayer(player);base=p.blockPosition().offset(20,0,0);int top=base.getY();for(int x=-7;x<=7;x++)for(int z=-3;z<=10;z++)top=Math.max(top,p.level().getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,base.getX()+x,base.getZ()+z));base=new BlockPos(base.getX(),top+1,base.getZ());center=Vec3.atBottomCenterOf(base.offset(0,0,3));
  for(int x=-7;x<=7;x++)for(int z=-3;z<=10;z++){p.level().setBlock(base.offset(x,-1,z),Blocks.SMOOTH_STONE.defaultBlockState(),3);for(int y=0;y<6;y++)p.level().setBlock(base.offset(x,y,z),Blocks.AIR.defaultBlockState(),3);}
@@ -34,7 +105,7 @@ public final class CitizenScene {
  var v=(Villager)p.level().getEntity(IDS.get(0));var offers=new MerchantOffers();offers.add(new MerchantOffer(new ItemCost(Items.EMERALD,2),new ItemStack(Items.BREAD,3),12,2,0));v.setOffers(offers);
  var saved=TagValueOutput.createWithContext(ProblemReporter.DISCARDING,v.registryAccess());v.saveWithoutId(saved);var copy=EntityTypes.VILLAGER.create(p.level(),EntitySpawnReason.LOAD);copy.load(TagValueInput.create(ProblemReporter.DISCARDING,copy.registryAccess(),saved.buildResult()));RESULT.addProperty("native_save_roundtrip",copy.getType()==EntityTypes.VILLAGER&&((CitizenState)copy).citizenVariant()==0&&copy.getOffers().size()==1&&copy.getOffers().getFirst().getResult().is(Items.BREAD));
  });}
- private static void tick(Minecraft c){if(!running)return;if(c.player==null||c.getSingleplayerServer()==null){finish(c,"lost world");return;}int t=++tick;if(center==null)return;c.gui.hud.getChat().clearMessages(false);
+ private static void tick(Minecraft c){if(!running)return;if(playerSleep){tickPlayerSleep(c);return;}if(c.player==null||c.getSingleplayerServer()==null){finish(c,"lost world");return;}int t=++tick;if(center==null)return;c.gui.hud.getChat().clearMessages(false);
  if(t<85)look(center.add(0,2.1,-7),center.add(0,.9,0));else if(t<155)look(center.add(0,5,-5),center.add(0,.3,0));else look(center.add(-1.5,2,-4),center.add(-3,.7,0));
  if(t==35)capture(c,"citizens-standing.png");if(t==75){RESULT.addProperty("native_merchant_screen",c.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen);capture(c,"citizens-trade.png");}if(t==80)c.gui.setScreen(null);
  if(t==130)capture(c,"citizens-beds.png");if(t==110){look(center.add(2,1.8,-1),center.add(0,.7,0));capture(c,"citizens-bed-side.png");}if(t==172)capture(c,"citizens-hit.png");if(t==205)capture(c,"citizens-getup.png");if(t==270)capture(c,"citizens-walk.png");if(t==294)capture(c,"citizens-death.png");

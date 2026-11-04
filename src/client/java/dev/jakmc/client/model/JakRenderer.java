@@ -3,6 +3,8 @@ package dev.jakmc.client.model;
 import dev.jakmc.*;
 import dev.jakmc.client.*;
 import dev.jakmc.content.JakItems;
+import dev.jakmc.nativebridge.NativeJak;
+import com.google.gson.JsonParser;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
@@ -10,6 +12,7 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import java.io.IOException;
 import java.util.Map;
@@ -23,10 +26,10 @@ public final class JakRenderer {
     private static final Map<Entity,JakChannels.Transition> transitions=new WeakHashMap<>();
     private static float bodyScale;
     private static float floorOffset;
-    private static boolean ridingLoaded,pilotLoaded;
-    private static GltfModel flutRider;
-    private static GltfModel.Posed flutRiderRest,jakRest;
-    public static long renderSerial;
+    private static boolean ridingLoaded,pilotLoaded,iceLoaded;
+    private static GltfModel jak1Rig;
+    private static GltfModel.Posed jak1Rest,jakRest;
+    public static long renderSerial,sleepRenderSerial;
     public static int lastEntityId=-1;
     public static float standingHeight;
     public static float currentTop=Float.NaN;
@@ -42,12 +45,13 @@ public final class JakRenderer {
             shield=new GltfModel(root.resolve("jakb-shield-shield-lod0.glb"),"light_shield");
             shield.attachmentAnimationsFrom(clips,"jakb-shield-");
             daxter=new GltfModel(root.resolve("daxter-lod0.glb"),"daxter");
-            var ladderArt=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ladderAnimations()).getAsJsonObject();
+            var ladderArt=JsonParser.parseString(NativeJak.ladderAnimations()).getAsJsonObject();
             body.originalAnimations(ladderArt,"jakb-ladder-");
             daxter.originalAnimations(ladderArt,"daxter-ladder-");
             if(!body.hasClip("jakb-ladder-up")||!daxter.hasClip("daxter-ladder-up"))
                 throw new IOException("Original ladder joint tracks are unavailable");
             var standing=body.pose("jakb-stance-loop",0);
+            jakRest=standing;
             Vector3f anchor=body.joint(standing,"LshoulderPad").getTranslation(new Vector3f());
             var bodyBounds=body.bounds(standing,new Matrix4f());
             var daxterBounds=daxter.bounds(daxter.pose("daxter-stance-loop",0),new Matrix4f().translation(anchor).scale(1/1.4f));
@@ -80,14 +84,22 @@ public final class JakRenderer {
             submitCarRider(state,stack,collector,car,client.getDeltaTracker().getGameTimeDeltaPartialTick(false));
             return true;
         }
+        if(state.bedOrientation!=null&&actor instanceof net.minecraft.world.entity.LivingEntity living&&living.isSleeping()){
+            load();
+            submitSleeping(state,stack,collector);
+            return true;
+        }
         if(pose==null)return false;
         load();
         renderSerial++;lastEntityId=state.id;
         var flight=pose.raw().get("hellcat") instanceof com.google.gson.JsonObject craft?craft:null;
+        var ride=pose.raw().get("ride");
+        boolean mounted=ride!=null&&ride.isJsonObject();
         stack.pushPose();
         float elapsed=Math.clamp((System.nanoTime()-pose.received())/1e9f,0,.05f);
         var boardFrame=pose.boardAt(elapsed);
-        if(boardFrame==null)stack.rotateDegrees(Axis.YP,-pose.yaw());
+        float shownYaw=flight!=null?pose.yaw():pose.yawAt(elapsed);
+        if(boardFrame==null)stack.rotateDegrees(Axis.YP,-shownYaw);
         else {
             stack.mulPose(new Matrix4f().rotation(boardFrame.rotation()));
             stack.translate(0,boardFrame.lift(),0);
@@ -100,34 +112,64 @@ public final class JakRenderer {
             }
             loadPilot();
         }
-        if(pose.raw().has("ladderWeight")){
+        if(boardFrame==null&&!mounted&&flight==null){
+            var root=pose.rootAt(elapsed);
+            // 0.9 original metres, measured above the feet before rotating a dive.
+            float pivot=.576f;
+            stack.translate(0,root.lift(),0);
+            if(root.swimTilt()!=0){
+                stack.translate(0,pivot,0);
+                stack.mulPose(new Matrix4f().rotationX(-root.swimTilt()));
+                stack.translate(0,-pivot,0);
+            }
             // Vanilla's rung plane is 15.2/16 from the open edge. The capsule sits
             // at .49 while the authored hands reach .39 model metres forward.
-            float ladder=pose.raw().get("ladderWeight").getAsFloat();
-            if(ladder>0)stack.translate(0,0,(.46f-.39f*bodyScale)*ladder);
+            if(root.ladderWeight()>0)stack.translate(0,0,(.46f-.39f*bodyScale)*root.ladderWeight());
         }
         stack.scale(bodyScale,bodyScale,bodyScale);stack.translate(0,floorOffset,0);
         float frame=pose.frame()+(pose.raw().has("frameRate")?pose.raw().get("frameRate").getAsFloat()*elapsed:0);
-        var ride=pose.raw().get("ride");
-        boolean mounted=ride!=null&&ride.isJsonObject();
         int frames=body.frames(pose.clip());
         if(pose.raw().has("loop")&&pose.raw().get("loop").getAsBoolean()){
             float period=pose.raw().has("framePeriod")?pose.raw().get("framePeriod").getAsFloat():frames;
             if(period>0)frame-=Math.floor(frame/period)*period;
         }
         boolean climbing=pose.raw().get("state").getAsString().equals("target-ladder");
-        boolean flut=mounted&&ride.getAsJsonObject().has("flut")&&ride.getAsJsonObject().get("flut").getAsBoolean();
-        if(mounted)loadRide(flut);
-        var skeleton=flut?body.retargetRider(flutRider,flutRiderRest,
-                JakLeaperRenderer.ridePose(flutRider,"jakb1-",pose,elapsed),jakRest):
-            mounted?JakLeaperRenderer.ridePose(body,"jakb-",pose,elapsed):JakChannels.sample(body,false,pose,boardFrame,frame);
-        if(flight!=null)skeleton=pilotPose(body,"jakb",flight,elapsed);
-        var daxPose=flight!=null?pilotPose(daxter,"daxter",flight,elapsed):
-            mounted?JakLeaperRenderer.ridePose(daxter,"daxter-",pose,elapsed):JakChannels.sample(daxter,true,pose,boardFrame,frame);
+        GltfModel.Posed skeleton,daxPose;
+        String program=null;
+        if(flight!=null){
+            skeleton=pilotPose(body,"jakb",flight,elapsed);
+            daxPose=pilotPose(daxter,"daxter",flight,elapsed);
+        }else if(mounted){
+            boolean flut=ride.getAsJsonObject().has("flut")&&ride.getAsJsonObject().get("flut").getAsBoolean();
+            loadRide(flut);
+            skeleton=flut?body.retargetRider(jak1Rig,jak1Rest,
+                JakLeaperRenderer.ridePose(jak1Rig,"jakb1-",pose,elapsed),jakRest):
+                JakLeaperRenderer.ridePose(body,"jakb-",pose,elapsed);
+            daxPose=JakLeaperRenderer.ridePose(daxter,"daxter-",pose,elapsed);
+        }else if(pose.raw().get("darkPose") instanceof com.google.gson.JsonObject dark){
+            float age=pose.raw().getAsJsonObject("transition").get("stateAge").getAsFloat()+elapsed;
+            skeleton=JakChannels.dark(body,"jakb-darkjak-",dark,age);
+            daxPose=JakChannels.dark(daxter,"daxter-darkjak-",dark,age);
+            program="dark:"+dark.get("clip").getAsString();
+        }else{
+            var surface=pose.raw().get("surfaceClip");
+            String clip=surface instanceof com.google.gson.JsonPrimitive selected?selected.getAsString():null;
+            boolean ice=clip!=null&&clip.startsWith("jakb1-ice-");
+            if(ice)loadIce();
+            if(clip!=null&&body.hasClip(clip)){
+                float age=pose.raw().getAsJsonObject("transition").get("stateAge").getAsFloat()+elapsed;
+                program=clip;
+                skeleton=JakChannels.loop(body,clip,age);
+                daxPose=JakChannels.loop(daxter,ice?"daxter-stance-loop":"daxter-"+clip.substring(5),age);
+            }else{
+                skeleton=JakChannels.sample(body,false,pose,boardFrame,frame);
+                daxPose=JakChannels.sample(daxter,true,pose,boardFrame,frame);
+            }
+        }
         if(mounted||flight!=null)transitions.remove(actor);
         else{
             var next=new JakChannels.Pair(skeleton,daxPose);
-            var mixed=transitions.computeIfAbsent(actor,key->new JakChannels.Transition()).blend(body,daxter,next,pose,elapsed);
+            var mixed=transitions.computeIfAbsent(actor,key->new JakChannels.Transition()).blend(body,daxter,next,pose,elapsed,program);
             skeleton=mixed.body();
             daxPose=mixed.daxter();
         }
@@ -153,11 +195,10 @@ public final class JakRenderer {
         boolean aiming=pose.raw().has("aim")&&pose.raw().get("aim").getAsBoolean();
         float lookYaw=pose.raw().has("lookYaw")?pose.raw().get("lookYaw").getAsFloat():pose.yaw();
         if(actor==client.player)lookYaw=actor.getYRot();
-        float twist=aiming&&!climbing?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(pose.yaw()-lookYaw)),-1.6f,1.6f):0;
+        float twist=aiming&&!climbing?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(shownYaw-lookYaw)),-1.6f,1.6f):0;
         skeleton=body.jakForm(skeleton,pose.dark(),twist);
         boolean luminous=pose.raw().has("lightInterp")&&pose.raw().get("lightInterp").getAsFloat()>0;
-        boolean asleep=actor instanceof net.minecraft.world.entity.LivingEntity living&&living.isSleeping();
-        body.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,asleep);
+        body.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,false);
         var wingState=pose.raw().get("wings");
         if(wingState!=null&&wingState.isJsonObject()){
             var wing=wingState.getAsJsonObject();
@@ -181,7 +222,7 @@ public final class JakRenderer {
             var d=daxter.bounds(daxPose,new Matrix4f(daxAnchor).scale(1/1.4f));
             currentTop=(Math.max(b[1].y,d[1].y)+floorOffset)*bodyScale;
         }
-        daxter.submitEyes(daxPose,stack,collector,state.lightCoords,asleep);stack.popPose();
+        daxter.submitEyes(daxPose,stack,collector,state.lightCoords,false);stack.popPose();
         if(boardJoint!=null||!actor.getAttachedOrCreate(JakData.BOARD).isEmpty()){
             boolean folding=boardFrame!=null&&boardFrame.closing();
             String clip=boardJoint==null||folding?"board-close":"board-open";
@@ -200,6 +241,42 @@ public final class JakRenderer {
         if(!pose.board()&&!mounted&&flight==null&&!climbing){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
         stack.popPose();return true;
     }
+    private record Sleeping(GltfModel.Posed jak,GltfModel.Posed daxter,Matrix4f bed,Matrix4f shoulder,float heading){}
+    private static Sleeping sleeping;
+
+    private static void submitSleeping(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector){
+        if(sleeping==null){
+            var jak=body.poseAtTime("jakb-deatha",Float.MAX_VALUE);
+            var sidekick=daxter.poseAtTime("daxter-deatha",Float.MAX_VALUE);
+            var head=body.joint(jak,"neckB").getTranslation(new Vector3f());
+            var feet=body.joint(jak,"Lankle").getTranslation(new Vector3f())
+                .add(body.joint(jak,"Rankle").getTranslation(new Vector3f())).mul(.5f);
+            var axis=head.sub(feet).normalize();
+            var horizontal=new Vector3f(axis.x,0,axis.z).normalize();
+            var rotation=new Matrix4f().rotation(new Quaternionf().rotationTo(axis,horizontal));
+            var bounds=body.bounds(jak,rotation);
+            var center=new Vector3f(bounds[0]).add(bounds[1]).mul(.5f);
+            var bed=new Matrix4f().translation(-center.x,-bounds[0].y,-center.z).mul(rotation);
+            var shoulder=new Matrix4f().translation(body.joint(jak,"LshoulderPad").getTranslation(new Vector3f())).scale(1/1.4f);
+            sleeping=new Sleeping(jak,sidekick,bed,shoulder,(float)Math.atan2(horizontal.x,horizontal.z));
+        }
+        var direction=state.bedOrientation;
+        stack.pushPose();
+        // Minecraft places a sleeper at the pillow with a 1/8-block lift.
+        stack.translate(-direction.getStepX()*.5,-.125,-direction.getStepZ()*.5);
+        float heading=(float)Math.atan2(direction.getStepX(),direction.getStepZ());
+        stack.rotate(Axis.YP,heading-sleeping.heading);
+        stack.scale(bodyScale,bodyScale,bodyScale);
+        stack.mulPose(sleeping.bed);
+        body.submitJakBody(sleeping.jak,stack,collector,state.lightCoords,false,false,true);
+        stack.mulPose(sleeping.shoulder);
+        daxter.submitEyes(sleeping.daxter,stack,collector,state.lightCoords,true);
+        stack.popPose();
+        renderSerial++;
+        sleepRenderSerial++;
+        lastEntityId=state.id;
+    }
+
     private static void submitCarRider(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
         dev.jakmc.entity.JakVehicle car,float partial){
         load();
@@ -227,7 +304,7 @@ public final class JakRenderer {
     }
     private static void loadPilot(){
         if(pilotLoaded)return;
-        var art=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ridingAnimations()).getAsJsonObject();
+        var art=JsonParser.parseString(NativeJak.ridingAnimations()).getAsJsonObject();
         body.originalAnimations(art,"jakb-pilot-car-");
         daxter.originalAnimations(art,"daxter-pilot-car-");
         body.originalAnimations(art,"jakb-pilot-wcar-");
@@ -269,8 +346,8 @@ public final class JakRenderer {
     }
 
     private static void loadRide(boolean flut){
-        if(ridingLoaded&&(!flut||flutRider!=null))return;
-        var art=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.ridingAnimations()).getAsJsonObject();
+        if(ridingLoaded&&(!flut||jak1Rig!=null&&jak1Rig.hasClip("jakb1-flut-get-on")))return;
+        var art=JsonParser.parseString(NativeJak.ridingAnimations()).getAsJsonObject();
         if(!ridingLoaded){
             body.originalAnimations(art,"jakb-flut-");
             daxter.originalAnimations(art,"daxter-flut-");
@@ -279,18 +356,32 @@ public final class JakRenderer {
             }
             ridingLoaded=true;
         }
-        if(flut&&flutRider==null){
-            try{
-                var model=new GltfModel(FlutMaterial.jak1().resolve("levels/common/eichar-lod0.glb"),"original_flut_rider");
-                model.originalAnimations(art,"jakb1-flut-");
-                if(!model.hasClip("jakb1-flut-get-on")){
-                    throw new IllegalStateException("Original Flut Flut riding animations are unavailable");
-                }
-                flutRiderRest=model.pose("eichar-stance-loop",0);
-                jakRest=body.pose("jakb-stance-loop",0);
-                flutRider=model;
-            }catch(IOException failure){throw new java.io.UncheckedIOException(failure);}
+        if(flut){
+            loadJak1Rig();
+            jak1Rig.originalAnimations(art,"jakb1-flut-");
+            if(!jak1Rig.hasClip("jakb1-flut-get-on"))
+                throw new IllegalStateException("Original Flut Flut riding animations are unavailable");
         }
+    }
+
+    private static void loadIce(){
+        if(iceLoaded)return;
+        var art=JsonParser.parseString(NativeJak.iceAnimations()).getAsJsonObject();
+        if(art.size()>0){
+            loadJak1Rig();
+            jak1Rig.originalAnimations(art,"jakb1-ice-");
+            body.retargetClips(jak1Rig,jak1Rest,jakRest,"jakb1-ice-");
+            if(!body.hasClip("jakb1-ice-skate"))throw new IllegalStateException("Original Jak 1 ice joint tracks are unavailable");
+        }
+        iceLoaded=true;
+    }
+
+    private static void loadJak1Rig(){
+        if(jak1Rig!=null)return;
+        try{
+            jak1Rig=new GltfModel(FlutMaterial.jak1().resolve("levels/common/eichar-lod0.glb"),"original_flut_rider");
+            jak1Rest=jak1Rig.pose("eichar-stance-loop",0);
+        }catch(IOException failure){throw new java.io.UncheckedIOException(failure);}
     }
     private record ShieldTiming(boolean open,float changed){}
     private static final java.util.Map<net.minecraft.world.entity.Entity,ShieldTiming> SHIELDS=new java.util.WeakHashMap<>();

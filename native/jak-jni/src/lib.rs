@@ -221,15 +221,18 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
    }
   }
   if let Some(active)=root.ancestors().find(|p|p.file_name().is_some_and(|n|n=="active")){
-   let path=active.join("jak1/data/decompiler_out/jak1/raw_obj/eichar-flut+0-ag.go");
-   if let Ok(data)=std::fs::read(path){
-    authored.extend(art_group::read_jak1(&data).into_iter().filter_map(|(name,art)|{
-     let suffix=name.strip_prefix("eichar-flut-")?;
-     Some((format!("jakb1-flut-{suffix}"),art))
-    }));
+   let raw_jak1=active.join("jak1/data/decompiler_out/jak1/raw_obj");
+   for group in ["flut","ice"] {
+    if let Ok(data)=std::fs::read(raw_jak1.join(format!("eichar-{group}+0-ag.go"))){
+     let prefix=format!("eichar-{group}-");
+     authored.extend(art_group::read_jak1(&data).into_iter().filter_map(|(name,art)|{
+      let suffix=name.strip_prefix(&prefix)?;
+      Some((format!("jakb1-{group}-{suffix}"),art))
+     }));
+    }
    }
   }
-  let extra_art=authored.iter().filter(|(name,_)|name.starts_with("jakb-ladder-")||name.starts_with("daxter-ladder-")||name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-")||name.starts_with("jakb-pilot-car-")||name.starts_with("daxter-pilot-car-")||name.starts_with("jakb-pilot-wcar-")||name.starts_with("jakb-pilot-bike-")||name.starts_with("daxter-pilot-bike-"))
+  let extra_art=authored.iter().filter(|(name,_)|name.starts_with("jakb1-ice-")||name.starts_with("jakb-ladder-")||name.starts_with("daxter-ladder-")||name.starts_with("jakb-flut-")||name.starts_with("daxter-flut-")||name.starts_with("jakb1-flut-")||name.starts_with("jakb-pilot-car-")||name.starts_with("daxter-pilot-car-")||name.starts_with("jakb-pilot-wcar-")||name.starts_with("jakb-pilot-bike-")||name.starts_with("daxter-pilot-bike-"))
    .map(|(name,art)|(name.clone(),art.clone())).collect();
   EXTRA_ART.set(extra_art).map_err(|_|"extra animation configuration raced")?;
   let rows:Vec<_>=authored.iter().filter_map(|(name,a)|{
@@ -500,6 +503,35 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   let walk_mix=j.chan.mix.map(|mix|json!({
    "clips":mix.anims().map(|anim|anim.name()),"up":mix.up,"side":mix.side,"run":mix.run
   }));
+  let surface_clip=if let Some(depth)=j.wade.filter(|_|j.state==jak_core::State::Walk){
+   let deep=depth/j.size.max(0.1)>jak_core::math::meters(1.25);
+   Some(if deep{"jakb-wade-deep-walk"}else{"jakb-wade-shallow-walk"})
+  }else if !j.gun.out&&j.control.on_surface()&&j.control.ground_pat.material.is_ice(){
+   match j.state {
+    jak_core::State::Stance if j.control.ctrl_xz_vel>16384.=>Some("jakb1-ice-slide"),
+    jak_core::State::Stance=>Some("jakb1-ice-stance"),
+    jak_core::State::Walk=>Some("jakb1-ice-skate"),
+    _=>None
+   }
+  }else{None};
+  let dark_pose=if j.dark&&j.dark_transition.is_none()&&!j.light()&&!j.swimming()&&!j.state.is_board() {
+   use jak_core::State;
+   let sequence=match j.state {
+    State::Stance=>Some(("stance",None,true)),
+    State::Walk=>{
+     let clip=if j.velocity().length()>jak_core::math::meters(5.){"run"}else{"walk"};
+     Some((clip,None,true))
+    },
+    State::Attack|State::AttackAir{..}=>Some(("attack-spin",Some("attack-spin-end"),false)),
+    State::Jump{..}|State::DoubleJump{..}|State::HighJump{..}=>Some(("jump",None,false)),
+    State::HitGround{..}=>Some(("jump-land",None,false)),
+    State::DuckStance{..}=>Some(("duck-stance",None,true)),
+    _=>None
+   };
+   sequence.map(|(clip,next,loops)|json!({"clip":clip,"next":next,"loop":loops}))
+  }else{None};
+  let root_pose=json!({"swimTilt":if j.swimming(){j.swim_tilt}else{0.},
+   "lift":j.control.draw_offset_y/BLOCK,"ladderWeight":j.ladder_pose_weight()});
   let transition=json!({"stateAge":state_age,"pushTick":j.push.tick,
     "pushAge":(j.time-j.push.tick) as f32/300.,"pushDuration":j.push.ticks as f32/300.});
   let gun=json!({"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
@@ -513,28 +545,37 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
    json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"ladderWeight":j.ladder_pose_weight(),"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
+  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
 }
 
-fn extra_animations(env: JNIEnv, ladder: bool) -> jstring {
+fn extra_animations(env: JNIEnv, group: &str) -> jstring {
  let rows:HashMap<&str,Value>=EXTRA_ART.get().into_iter().flat_map(|bank|bank.iter())
-  .filter(|(name,_)|name.contains("-ladder-")==ladder)
+  .filter(|(name,_)|match group {
+   "ladder"=>name.contains("-ladder-"),
+   "ice"=>name.starts_with("jakb1-ice-"),
+   _=>!name.contains("-ladder-")&&!name.starts_with("jakb1-ice-")
+  })
   .filter_map(|(name,art)|Some((name.as_str(),json!({"speed":art.speed,"joints":art.joints.as_ref()?,
-    "prejoint":if ladder{art.prejoint.as_ref()}else{None}}))))
+    "prejoint":if group=="ladder"{art.prejoint.as_ref()}else{None}}))))
   .collect();
  env.new_string(json!(rows).to_string()).map_or(std::ptr::null_mut(),|s|s.into_raw())
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_ridingAnimations(env:JNIEnv,_:JClass)->jstring{
- extra_animations(env,false)
+ extra_animations(env,"ride")
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_ladderAnimations(env:JNIEnv,_:JClass)->jstring{
- extra_animations(env,true)
+ extra_animations(env,"ladder")
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_iceAnimations(env:JNIEnv,_:JClass)->jstring{
+ extra_animations(env,"ice")
 }
 
 #[unsafe(no_mangle)]

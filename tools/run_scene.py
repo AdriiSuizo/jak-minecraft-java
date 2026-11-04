@@ -28,11 +28,11 @@ def owned_game_pid(parent_pid):
 
 
 def run():
-    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','spydroid','powers','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','cars','cities','sites','zoomers'],default='scale');parser.add_argument('--origin',nargs=3,type=float);parser.add_argument('--fresh-world',action='store_true');args=parser.parse_args();scene=args.scene
+    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','zoomers'],default='scale');parser.add_argument('--origin',nargs=3,type=float);parser.add_argument('--fresh-world',action='store_true');args=parser.parse_args();scene=args.scene
     stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     evidence=ROOT/'.local/evidence'/(scene+'-'+stamp);evidence.mkdir(parents=True)
     result=ROOT/f'run/jakmc/evidence/{scene}/result.json'
-    image=ROOT/('run/screenshots/zoomers-bike.png' if scene=='zoomers' else 'run/screenshots/cities-haven.png' if scene=='cities' else 'run/screenshots/cars-toad.png' if scene=='cars' else 'run/screenshots/jak-track.png' if scene=='track' else 'run/screenshots/jak-ladder.png' if scene=='ladder' else 'run/screenshots/jak-altar.png' if scene=='altar' else 'run/screenshots/weather-storm.png' if scene=='weather' else 'run/screenshots/jak-vents.png' if scene=='vents' else 'run/screenshots/jak-materials.png' if scene=='materials' else 'run/screenshots/hellcat-idle.png' if scene=='helldog' else f'run/screenshots/{scene}-idle.png' if scene in ('leaper','flut','hellcat','helldog','hellcat_crossing') else 'run/screenshots/powers-dark.png' if scene=='powers' else 'run/screenshots/citizens-standing.png' if scene=='citizens' else 'run/screenshots/collision-perf.png' if scene=='collision_perf' else 'run/screenshots/gems-palm-day.png' if scene=='gems_visual' else 'run/screenshots/gems-world-110.png' if scene=='gems' else 'run/screenshots/menus-anvil.png' if scene=='menus' else 'run/screenshots/input-actions-gui.png' if scene=='input_actions' else 'run/screenshots/input-move-86.png' if scene=='input' else 'run/screenshots/scale-two-block-ceiling.png' if scene=='scale' else 'run/screenshots/weapon-10-28.png' if scene=='rings' else 'run/screenshots/weapon-7-28.png' if scene in ('weapons','rings','input','input_actions') else 'run/screenshots/port-blaster.png' if scene=='effects' else 'run/screenshots/enemy-babak-idle.png' if scene=='enemies' else 'run/screenshots/spydroid-explosion.png' if scene=='spydroid' else 'run/screenshots/enemy-chase-step.png')
+    image=ROOT/('run/screenshots/zoomers-bike.png' if scene=='zoomers' else 'run/screenshots/cities-haven.png' if scene=='cities' else 'run/screenshots/cars-toad.png' if scene=='cars' else 'run/screenshots/jak-track.png' if scene=='track' else 'run/screenshots/jak-ladder.png' if scene=='ladder' else 'run/screenshots/jak-surface-ice.png' if scene=='surface' else 'run/screenshots/jak-altar.png' if scene=='altar' else 'run/screenshots/weather-storm.png' if scene=='weather' else 'run/screenshots/jak-vents.png' if scene=='vents' else 'run/screenshots/jak-materials.png' if scene=='materials' else 'run/screenshots/hellcat-idle.png' if scene=='helldog' else f'run/screenshots/{scene}-idle.png' if scene in ('leaper','flut','hellcat','helldog','hellcat_crossing') else 'run/screenshots/powers-dark.png' if scene=='powers' else 'run/screenshots/jak-dark-run.png' if scene=='dark_motion' else 'run/screenshots/citizens-standing.png' if scene=='citizens' else 'run/screenshots/jak-sleep.png' if scene=='player_sleep' else 'run/screenshots/collision-perf.png' if scene=='collision_perf' else 'run/screenshots/gems-palm-day.png' if scene=='gems_visual' else 'run/screenshots/gems-world-110.png' if scene=='gems' else 'run/screenshots/menus-anvil.png' if scene=='menus' else 'run/screenshots/input-actions-gui.png' if scene=='input_actions' else 'run/screenshots/input-move-86.png' if scene=='input' else 'run/screenshots/scale-two-block-ceiling.png' if scene=='scale' else 'run/screenshots/weapon-10-28.png' if scene=='rings' else 'run/screenshots/weapon-7-28.png' if scene in ('weapons','rings','input','input_actions') else 'run/screenshots/port-blaster.png' if scene=='effects' else 'run/screenshots/enemy-babak-idle.png' if scene=='enemies' else 'run/screenshots/spydroid-explosion.png' if scene=='spydroid' else 'run/screenshots/enemy-chase-step.png')
     if result.exists():shutil.copyfile(result,evidence/'previous-result.json')
     if scene!='sites' and image.exists():shutil.copyfile(image,evidence/'previous-screen.png')
     ready=ROOT/'run/jakmc/bridge/ready.json'
@@ -70,8 +70,13 @@ def run():
         process.wait(timeout=120 if scene in ('enemies','weapons','input','gems','citizens','cities','sites') else 90 if scene in ('powers','hellcat_crossing','weather') else 60 if scene=='systems' else 40)
         if process.returncode!=0:raise RuntimeError(f'Native game exited {process.returncode}')
         shutil.copyfile(result,evidence/'result.json')
-        if scene in ('weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','spydroid','powers','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','cars','cities','sites','zoomers') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
-        if scene!='sites':shutil.copyfile(image,evidence/'screen.png')
+        if scene in ('weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','zoomers') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
+        if scene!='sites':
+            if scene in ('dark_motion','surface','player_sleep') and (not image.exists() or image.stat().st_mtime_ns<capture_after):
+                raise RuntimeError(f'{scene} completed without a fresh screenshot')
+            shutil.copyfile(image,evidence/'screen.png')
+        if scene=='surface':
+            shutil.copyfile(ROOT/'run/screenshots/jak-surface-swim.png',evidence/'swim.png')
         if scene=='sites':
             for name in ('sites-haven.png','sites-spargus.png'):
                 shot=ROOT/'run/screenshots'/name
@@ -145,8 +150,8 @@ def run():
     finally:
         # Copy evidence on failure too. A result is not a normal-shutdown pass.
         if sent and result.exists():shutil.copyfile(result,evidence/'result.json')
-        if sent and image.exists() and image.stat().st_mtime_ns>=capture_after:
-            if scene!='sites':shutil.copyfile(image,evidence/'screen.png')
+        if sent and scene!='sites' and image.exists() and image.stat().st_mtime_ns>=capture_after:
+            shutil.copyfile(image,evidence/'screen.png')
         if sent and scene in ('leaper','flut','hellcat','helldog','hellcat_crossing'):
             for capture in (ROOT/'run/screenshots').glob(f'{scene}-*.png'):
                 if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)

@@ -260,6 +260,40 @@ public final class GltfModel {
         if(compensateScale)return g[i]=new Matrix4f().translationRotateScale(parent.transformPosition(new Vector3f(t[i])),rotation.mul(r[i]),s[i]);
         return g[i]=new Matrix4f().translationRotate(parent.getTranslation(new Vector3f()),rotation).mul(local);
     }
+    void retargetClips(GltfModel source,Posed sourceRest,Posed targetRest,String prefix){
+        for(var entry:source.clips.entrySet()){
+            String name=entry.getKey();
+            if(!name.startsWith(prefix))continue;
+            Clip original=entry.getValue();
+            Posed[] poses=new Posed[original.frames];
+            float[] times=new float[poses.length];
+            for(int f=0;f<poses.length;f++){
+                poses[f]=retargetRider(source,sourceRest,source.pose(name,f),targetRest);
+                times[f]=f*original.duration/Math.max(1,poses.length-1);
+            }
+            var channels=new ArrayList<Channel>();
+            for(int j=2;j<joints.length;j++){
+                int node=joints[j];
+                float[] translations=new float[poses.length*3], rotations=new float[poses.length*4];
+                float[] scales=new float[poses.length*3];
+                for(int f=0;f<poses.length;f++){
+                    var pose=poses[f];
+                    var t=pose.translations[node];
+                    var q=pose.rotations[node];
+                    var size=pose.scales[node];
+                    int a=f*3,b=f*4;
+                    translations[a]=t.x;translations[a+1]=t.y;translations[a+2]=t.z;
+                    rotations[b]=q.x;rotations[b+1]=q.y;rotations[b+2]=q.z;rotations[b+3]=q.w;
+                    scales[a]=size.x;scales[a+1]=size.y;scales[a+2]=size.z;
+                }
+                channels.add(new Channel(node,"translation",times,translations,3,false));
+                channels.add(new Channel(node,"rotation",times,rotations,4,false));
+                channels.add(new Channel(node,"scale",times,scales,3,false));
+            }
+            clips.put(name,new Clip(channels,original.duration,original.frames));
+        }
+    }
+
     /** Transfer a bone's model-space rotation delta from the source standing pose. */
     Posed retargetRider(GltfModel source,Posed sourceRest,Posed motion,Posed targetRest){
         Vector3f[] t=new Vector3f[nodes.length],s=new Vector3f[nodes.length];

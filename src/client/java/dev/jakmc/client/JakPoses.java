@@ -31,8 +31,32 @@ public final class JakPoses {
         }
     }
 
+    public record RootPose(float swimTilt,float lift,float ladderWeight) {
+        static final RootPose REST=new RootPose(0,0,0);
+
+        static RootPose read(JsonObject json){
+            if(json==null)return REST;
+            return new RootPose(json.get("swimTilt").getAsFloat(),json.get("lift").getAsFloat(),
+                json.get("ladderWeight").getAsFloat());
+        }
+
+        RootPose interpolate(RootPose from,float fraction){
+            if(from.equals(this)||fraction>=1)return this;
+            return new RootPose(Mth.lerp(fraction,from.swimTilt,swimTilt),
+                Mth.lerp(fraction,from.lift,lift),Mth.lerp(fraction,from.ladderWeight,ladderWeight));
+        }
+    }
+
     public record Pose(Vec3 position,float yaw,String clip,float frame,boolean board,boolean dark,boolean light,
-                       JsonObject raw,long received,BoardPose boardPose,BoardPose boardFrom) {
+                       JsonObject raw,long received,BoardPose boardPose,BoardPose boardFrom,RootPose rootPose,RootPose rootFrom,float yawFrom) {
+        public float yawAt(float elapsed){
+            return yawFrom+Mth.wrapDegrees(yaw-yawFrom)*Math.clamp(elapsed*20,0,1);
+        }
+
+        public RootPose rootAt(float elapsed){
+            return rootPose.interpolate(rootFrom,Math.clamp(elapsed*20,0,1));
+        }
+
         public BoardPose boardAt(float elapsed) {
             return boardPose==null?null:boardPose.interpolate(boardFrom,Math.clamp(elapsed*20,0,1));
         }
@@ -64,8 +88,12 @@ public final class JakPoses {
         boolean continuous=previous!=null&&previous.raw().get("session").getAsLong()==nextSession
             &&previous.position().distanceToSqr(position)<=16;
         var boardFrom=board!=null&&continuous?previous.boardAt((now-previous.received())/1e9f):null;
-        var pose=new Pose(position,json.get("yaw").getAsFloat(),json.get("clip").getAsString(),json.get("frame").getAsFloat(),
-            json.get("board").getAsBoolean(),json.get("dark").getAsBoolean(),json.get("light").getAsBoolean(),json,now,board,boardFrom);
+        var root=RootPose.read(json.getAsJsonObject("rootPose"));
+        var rootFrom=continuous?previous.rootAt((now-previous.received())/1e9f):root;
+        float yaw=json.get("yaw").getAsFloat();
+        float yawFrom=continuous?previous.yawAt((now-previous.received())/1e9f):yaw;
+        var pose=new Pose(position,yaw,json.get("clip").getAsString(),json.get("frame").getAsFloat(),
+            json.get("board").getAsBoolean(),json.get("dark").getAsBoolean(),json.get("light").getAsBoolean(),json,now,board,boardFrom,root,rootFrom,yawFrom);
         POSES.put(p.entityId(),pose);
         if(client.player!=null&&client.player.getId()==p.entityId()){
             from=previous==null||from==null||session!=nextSession||previous.position().distanceToSqr(position)>16

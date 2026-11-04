@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Replay through real SDL Ã¢â€ â€™ normal client input Ã¢â€ â€™ packets Ã¢â€ â€™ server Jak; no probeInput. */
 public final class InputScene {
- private static boolean running,interactions,powers,leaper,hellcat;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
+ private static boolean running,interactions,powers,leaper,hellcat,darkMotion;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
  private static long deviceDeadline;private static Vec3 start,ecoCenter;private static double peak,walk;private static float yawStart,yawAfter;
  private static final Set<String> STATES=new TreeSet<>();private static final Set<UUID> ITEMS=new HashSet<>();
  public record CameraView(Vec3 position,float yaw,float pitch){}
@@ -28,6 +28,8 @@ public final class InputScene {
   if(SpydroidScene.camera()!=null)return SpydroidScene.camera();
   if(VentScene.camera()!=null)return VentScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
+  var surface=SurfaceScene.camera();
+  if(surface!=null)return surface;
   var ladder=LadderScene.camera();
   if(ladder!=null)return ladder;
   var track=TrackScene.camera();
@@ -41,7 +43,7 @@ public final class InputScene {
  private static void start(Minecraft c,boolean outdoor,Vec3 seed){
   if(running||c.player==null||c.getSingleplayerServer()==null)throw new IllegalStateException("Open the isolated dev world");
   output=c.gameDirectory.toPath().resolve("jakmc/evidence/input");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
-  interactions=powers=leaper=hellcat=false;ACTIONS.entrySet().clear();VIEWS.clear();
+  interactions=powers=leaper=hellcat=darkMotion=false;ACTIONS.entrySet().clear();VIEWS.clear();
   start=seed.add(7,0,0);tick=0;peak=0;walk=0;STATES.clear();ITEMS.clear();view=null;ecoCenter=null;
   c.gui.setScreen(null);c.options.setCameraType(CameraType.THIRD_PERSON_BACK);c.player.setYRot(0);c.player.setXRot(10);yawStart=0;yawAfter=0;
   pad=new SdlVirtualPad();deviceDeadline=System.nanoTime()+5_000_000_000L;running=true;var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{
@@ -502,7 +504,7 @@ public final class InputScene {
  private static UUID aimTarget,freezeTarget;
  private static volatile int slowStart,slowEnd,resumeStart,resumeEnd;
  private static boolean freezeSeen,pauseOnLostFocus;
- static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||running&&(powers||leaper||hellcat)&&pad!=null&&pad.id==id;}
+ static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||running&&(powers||leaper||hellcat||darkMotion)&&pad!=null&&pad.id==id;}
  private static int darkScreenshot,shieldScreenshot,wingsScreenshot,betweenPackets,flightJump;
  private static Vec3 lastCamera;
  private static long cameraSnapshot;
@@ -515,6 +517,51 @@ public final class InputScene {
   if(lastCamera!=null&&pose.received()==cameraSnapshot&&at.distanceToSqr(lastCamera)>1e-8)betweenPackets++;
   lastCamera=at;
   cameraSnapshot=pose.received();
+ }
+ private static int darkStanceAt,darkRunShot,darkPress;
+ public static void startDarkMotion(Minecraft c){
+  start(c,true);
+  darkMotion=true;
+  darkStanceAt=darkRunShot=darkPress=0;
+  pauseOnLostFocus=c.options.pauseOnLostFocus;
+  c.options.pauseOnLostFocus=false;
+  output=c.gameDirectory.toPath().resolve("jakmc/evidence/dark_motion");
+  try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
+  onServer(c,p->p.setAttached(JakData.DARK_ECO,100f));
+ }
+ private static void darkMotionActions(Minecraft c){
+  int t=++tick;
+  if(t==10)c.gui.hud.getChat().clearMessages(false);
+  if(darkPress==0&&JakInput.controller().id()==pad.id&&c.gui.screen()==null){
+   darkPress=t+8;
+  }
+  pad.axis(2,t>=5&&darkPress==0?.7f:0);
+  if(t==darkPress-2)c.player.setYRot(0);
+  var pose=JakPoses.get(c.player.getId());
+  if(pose!=null&&pose.raw().get("darkPose") instanceof JsonObject program){
+   String clip=program.get("clip").getAsString();
+   STATES.add(clip);
+   if(clip.equals("stance")&&darkStanceAt==0)darkStanceAt=t;
+   if(clip.equals("run")&&darkRunShot==0){
+    var target=pose.position().add(0,.9,0);
+    look(target.add(3,1.2,2.4),target);
+    darkRunShot=t+2;
+   }
+  }
+  int age=darkStanceAt==0?-1:t-darkStanceAt;
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK,darkPress>0&&t>=darkPress&&t<darkPress+7);
+  pad.axis(1,age>=2&&age<22?-1:0);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,age==31);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,age>=52&&age<55);
+  if(darkRunShot>0&&t==darkRunShot)capture(c,"jak-dark-run.png");
+  if(darkRunShot>0&&t==darkRunShot+1)view=null;
+  if(age>=72||t>=145){
+   if(darkStanceAt==0&&pose!=null)STATES.add("last:"+pose.clip()+":eco="+pose.raw().get("darkEco")
+       +":dark="+pose.dark()+":device="+JakInput.controller().name()+":press="+darkPress);
+   for(String clip:List.of("stance","run","attack-spin","jump"))
+    ACTIONS.addProperty(clip,STATES.contains(clip));
+   finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"Dark Jak motion assertion failed");
+  }
  }
  public static void startPowers(Minecraft c){
   start(c);
@@ -682,6 +729,7 @@ public final class InputScene {
   // to open the device at rest, as SDL calibrates virtual triggers on open.
   if(!JakInput.controllerReady(pad.id)){if(System.nanoTime()>deviceDeadline)finish(c,"SDL replay device not opened");return;}
   if(powers){powerActions(c);return;}
+  if(darkMotion){darkMotionActions(c);return;}
   if(hellcat){hellcatActions(c);return;}
   if(leaper){leaperActions(c);return;}
   if(interactions){actions(c);return;}
@@ -720,8 +768,8 @@ public final class InputScene {
  private static void look(Vec3 at,Vec3 target){Vec3 d=target.subtract(at);view=new CameraView(at,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),(float)Math.toDegrees(Math.atan2(-d.y,d.horizontalDistance())));}
  private static void capture(Minecraft c,String file){Screenshot.grab(c.gameDirectory,file,c.gameRenderer.mainRenderTarget(),1,m->{});}
  private static void finish(Minecraft c,String reason){
-  if(powers||leaper||hellcat)c.options.pauseOnLostFocus=pauseOnLostFocus;
-  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(ACTIONS.has("minimap_reads_displayed_camera"))result.addProperty("minimap_reads_displayed_camera",ACTIONS.get("minimap_reads_displayed_camera").getAsBoolean());if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper||hellcat){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason",reason.equals("complete")?"interaction assertion failed":reason);}
+  if(powers||leaper||hellcat||darkMotion)c.options.pauseOnLostFocus=pauseOnLostFocus;
+  running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(ACTIONS.has("minimap_reads_displayed_camera"))result.addProperty("minimap_reads_displayed_camera",ACTIONS.get("minimap_reads_displayed_camera").getAsBoolean());if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper||hellcat||darkMotion){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason",reason.equals("complete")?"interaction assertion failed":reason);}
   result.addProperty("jak_actions_reached",STATES.containsAll(Set.of("double-jump","roll","attack","board-stance")));
   try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
   if(c.getSingleplayerServer()!=null){var server=c.getSingleplayerServer();server.execute(()->{for(UUID id:ITEMS){var item=server.overworld().getEntity(id);if(item!=null)item.discard();}});}c.stop();

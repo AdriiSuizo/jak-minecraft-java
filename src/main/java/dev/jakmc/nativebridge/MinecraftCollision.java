@@ -8,6 +8,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -104,8 +105,18 @@ public final class MinecraftCollision {
     private record Track(BlockPos at,net.minecraft.world.level.block.state.BlockState state,JakAssemblies.TrackMesh mesh){}
     private static final class Boxes {
         final java.util.ArrayList<Track> tracks=new java.util.ArrayList<>();
-        float[] values=new float[384];int used;
-        void add(double x,double y,double z,double X,double Y,double Z){if(used+6>values.length)values=Arrays.copyOf(values,values.length*2);values[used++]=(float)x;values[used++]=(float)y;values[used++]=(float)z;values[used++]=(float)X;values[used++]=(float)Y;values[used++]=(float)Z;}
+        float[] values=new float[384];
+        byte[] materials=new byte[64];
+        int used;
+        void add(double x,double y,double z,double X,double Y,double Z,int material){
+            if(used+6>values.length){
+                values=Arrays.copyOf(values,values.length*2);
+                materials=Arrays.copyOf(materials,materials.length*2);
+            }
+            materials[used/6]=(byte)material;
+            values[used++]=(float)x;values[used++]=(float)y;values[used++]=(float)z;
+            values[used++]=(float)X;values[used++]=(float)Y;values[used++]=(float)Z;
+        }
     }
     public static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region){return triangles(level,actor,origin,region,new Boxes(),null);}
     private static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region,Boxes boxes,DirectBufferArena arena){
@@ -114,7 +125,7 @@ public final class MinecraftCollision {
         for(BlockPos pos:BlockPos.betweenClosed(BlockPos.containing(region.minX,region.minY,region.minZ),BlockPos.containing(region.maxX,region.maxY,region.maxZ))){
             double x=pos.getX(),y=pos.getY(),z=pos.getZ();
             // A missing column remains solid, never air beneath fast-moving actors.
-            if(!level.hasChunkAt(pos)){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z);continue;}
+            if(!level.hasChunkAt(pos)){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z,0);continue;}
             var state=level.getBlockState(pos);
             var track=JakAssemblies.trackMesh(state);
             if(track!=null){
@@ -122,16 +133,18 @@ public final class MinecraftCollision {
                 boxes.tracks.add(new Track(pos.immutable(),state,track));
                 continue;
             }
+            int material=state.is(Blocks.BLUE_ICE)?12:state.is(Blocks.PACKED_ICE)?8:
+                state.is(Blocks.ICE)||state.is(Blocks.FROSTED_ICE)?4:0;
             var shape=state.getCollisionShape(level,pos,context);
-            if(shape==net.minecraft.world.phys.shapes.Shapes.block()){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z);}
-            else if(!shape.isEmpty())shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->boxes.add(x0+x-origin.x,y0+y-origin.y,z0+z-origin.z,x1+x-origin.x,y1+y-origin.y,z1+z-origin.z));
+            if(shape==net.minecraft.world.phys.shapes.Shapes.block()){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z,material);}
+            else if(!shape.isEmpty())shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->boxes.add(x0+x-origin.x,y0+y-origin.y,z0+z-origin.z,x1+x-origin.x,y1+y-origin.y,z1+z-origin.z,material));
         }
         var decks=level.getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,region.inflate(4),
             deck->deck!=actor&&!deck.wrecked()&&(actor==null||deck.pilotId()!=actor.getId()));
         int bytes=Math.addExact(Math.multiplyExact(boxes.used/6,480),trackBytes);
         int capacity=decks.isEmpty()?bytes:Math.addExact(bytes,Math.multiplyExact(decks.size(),dev.jakmc.entity.JakHellcat.deckCapacity()));
         ByteBuffer data=arena==null?NativeJak.buffer(capacity):arena.acquire(capacity);
-        for(int i=0;i<boxes.used;i+=6)box(data,boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);
+        for(int i=0;i<boxes.used;i+=6)box(data,boxes.materials[i/6],boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);
         for(var track:boxes.tracks){
             var pos=track.at();
             track.mesh().write(data,level,pos,track.state(),pos.getX()-origin.x,pos.getY()-origin.y,pos.getZ()-origin.z);
@@ -139,13 +152,13 @@ public final class MinecraftCollision {
         for(var deck:decks)deck.appendDeck(origin,region,data);
         return data.slice(0,data.position()).order(java.nio.ByteOrder.LITTLE_ENDIAN);
     }
-    private static void box(ByteBuffer b,float x,float y,float z,float X,float Y,float Z){
-        face(b,0,x,Y,z,x,Y,Z,X,Y,Z,X,Y,z);
-        face(b,1,x,y,z,X,y,z,X,y,Z,x,y,Z);
-        face(b,1,x,y,z,x,y,Z,x,Y,Z,x,Y,z);
-        face(b,1,X,y,Z,X,y,z,X,Y,z,X,Y,Z);
-        face(b,1,X,y,z,x,y,z,x,Y,z,X,Y,z);
-        face(b,1,x,y,Z,X,y,Z,X,Y,Z,x,Y,Z);
+    private static void box(ByteBuffer b,int material,float x,float y,float z,float X,float Y,float Z){
+        face(b,material,x,Y,z,x,Y,Z,X,Y,Z,X,Y,z);
+        face(b,material|1,x,y,z,X,y,z,X,y,Z,x,y,Z);
+        face(b,material|1,x,y,z,x,y,Z,x,Y,Z,x,Y,z);
+        face(b,material|1,X,y,Z,X,y,z,X,Y,z,X,Y,Z);
+        face(b,material|1,X,y,z,x,y,z,x,Y,z,X,Y,z);
+        face(b,material|1,x,y,Z,X,y,Z,X,Y,Z,x,Y,Z);
     }
     private static void face(ByteBuffer b,int flags,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz,float dx,float dy,float dz){triangle(b,flags,ax,ay,az,bx,by,bz,cx,cy,cz);triangle(b,flags,ax,ay,az,cx,cy,cz,dx,dy,dz);}
     private static void triangle(ByteBuffer b,int flags,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz){b.putFloat(ax).putFloat(ay).putFloat(az).putFloat(bx).putFloat(by).putFloat(bz).putFloat(cx).putFloat(cy).putFloat(cz).putInt(flags);}

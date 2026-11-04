@@ -27,6 +27,7 @@ public final class NativeJak {
     public static native String animationMetadata(String originalExportRoot,String model,boolean jak1);
     public static native String ridingAnimations();
     public static native String ladderAnimations();
+    public static native String iceAnimations();
     public static native boolean mountReady();
     public static native void mountControl(long session,int action,float x,float y,float z,float yaw);
     public static native long create(float minecraftYaw);

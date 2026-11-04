@@ -33,6 +33,7 @@ public final class JakClient implements ClientModInitializer {
   AltarScene.initialize();
   TrackScene.initialize();
   LadderScene.initialize();
+  SurfaceScene.initialize();
   CarScene.initialize();
   CityScene.initialize();
   SitesScene.initialize();

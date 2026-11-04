@@ -58,6 +58,22 @@ final class JakChannels {
         return weight >= 1 ? other : rig.blendLocal(pose, other, weight);
     }
 
+    static GltfModel.Posed loop(GltfModel model,String clip,float age){
+        float duration=model.duration(clip);
+        return model.pose(clip,duration>0?age%duration/duration*(model.frames(clip)-1):0);
+    }
+
+    static GltfModel.Posed dark(GltfModel rig,String prefix,JsonObject program,float age){
+        String clip=prefix+program.get("clip").getAsString();
+        if(program.get("loop").getAsBoolean())return loop(rig,clip,age);
+        float duration=rig.duration(clip);
+        if(age>=duration&&program.get("next").isJsonPrimitive()){
+            clip=prefix+program.get("next").getAsString();
+            age-=duration;
+        }
+        return rig.poseAtTime(clip,age>=rig.duration(clip)?Float.MAX_VALUE:age);
+    }
+
     private static String clip(GltfModel rig, boolean sidekick, String bodyClip) {
         if (!sidekick || !bodyClip.startsWith("jakb-")) return bodyClip;
         String suffix = bodyClip.substring(5);
@@ -81,22 +97,29 @@ final class JakChannels {
         private long session = -1;
         private long pushTick;
         private float duration;
+        private String program;
+        private long programStarted;
+        private boolean fromPush;
         private Pair from, last;
 
-        Pair blend(GltfModel body, GltfModel daxter, Pair next, JakPoses.Pose pose, float elapsed) {
+        Pair blend(GltfModel body, GltfModel daxter, Pair next, JakPoses.Pose pose, float elapsed,String nextProgram) {
             if (!(pose.raw().get("transition") instanceof JsonObject input)) return next;
             long newSession = pose.raw().get("session").getAsLong();
             long nextPush = input.get("pushTick").getAsLong();
             if (newSession != session) {
                 from = null;
                 last = null;
-            } else if (nextPush != pushTick) {
+            } else if (nextPush != pushTick || !java.util.Objects.equals(program,nextProgram)) {
                 from = last;
-                duration = input.get("pushDuration").getAsFloat();
+                fromPush = nextPush != pushTick;
+                duration = fromPush ? input.get("pushDuration").getAsFloat() : .1f;
+                programStarted = pose.received();
             }
             session = newSession;
             pushTick = nextPush;
-            float age = input.get("pushAge").getAsFloat() + elapsed;
+            program = nextProgram;
+            float age = fromPush ? input.get("pushAge").getAsFloat() + elapsed
+                : (pose.received()-programStarted)/1e9f + elapsed;
             if (from != null && duration > 0 && age < duration) {
                 float weight = Math.clamp(age / duration, 0, 1);
                 next = new Pair(body.blend(from.body, next.body, weight), daxter.blend(from.daxter, next.daxter, weight));
