@@ -91,8 +91,10 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
             &&channel.get("entity").getAsInt()==craft.getId()){
             Vec3 presented=JakPoses.presented();
             if(presented!=null){
-                Vec3 at=presented.add(dev.jakmc.player.JakPlayers.vector(channel.getAsJsonArray("offset")));
+                Vec3 at=presented.add(JakPoses.flightOffset());
                 state.x=at.x;state.y=at.y;state.z=at.z;
+                var rotation=JakPoses.flightRotation();
+                if(rotation!=null)state.attitude.set(rotation);
             }
         }
         state.flame=craft.thrust();

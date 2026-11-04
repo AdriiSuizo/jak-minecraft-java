@@ -294,6 +294,7 @@ public final class JakPlayers {
             applyEvent(p,s.origin,e.getAsJsonObject());
             if(s.hostMoved)return;
         }
+        pose.addProperty("serverTick",p.level().getGameTime());
         var packet=new JakPackets.Pose(p.getId(),input.sequence(),s.origin.x,s.origin.y,s.origin.z,pose.toString());
         ServerPlayNetworking.send(p,packet);
         for(ServerPlayer watcher:PlayerLookup.tracking(p))if(watcher!=p)ServerPlayNetworking.send(watcher,packet);

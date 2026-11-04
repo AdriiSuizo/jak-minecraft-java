@@ -1,6 +1,5 @@
 use super::*;
 use jak_core::hellcat::{HellCat, HellCatEvent};
-use jak_core::pad::button;
 use jak_core::particles::vehicle_lights::State as Lamps;
 
 struct Vehicle {
@@ -63,17 +62,6 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatDestroy(
     });
 }
 
-fn flight_pad(mut input: PadInput) -> PadInput {
-    fn remap(bits: u32) -> u32 {
-        (bits & !(button::X | button::CIRCLE))
-            | if bits & button::X != 0 { button::CIRCLE } else { 0 }
-            | if bits & button::CIRCLE != 0 { button::X } else { 0 }
-    }
-    input.held = remap(input.held);
-    input.pressed = remap(input.pressed);
-    input
-}
-
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatStep(
     mut env: JNIEnv, _: JClass, id: jlong, input: JByteBuffer, actors: JByteBuffer,
@@ -98,11 +86,11 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatStep(
         }
         let mut vehicles = vehicles()?;
         let v = vehicles.active.get_mut(&(id as u64)).ok_or("Stale HellCat")?;
-        let mut pad = flight_pad(PadInput {
+        let mut pad = PadInput {
             held: read_u(b, 0) & 0xffff, pressed: read_u(b, 4) & 0xffff,
             left: [read_f(b, 8), read_f(b, 12)], right: [read_f(b, 16), read_f(b, 20)],
             triggers: [read_f(b, 24), read_f(b, 28)],
-        });
+        };
         v.actors.boxes.clear();
         for row in a.chunks_exact(32) {
             let lo = vec(row, 8) * BLOCK;

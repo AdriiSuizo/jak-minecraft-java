@@ -63,19 +63,21 @@ public final class JakPoses {
     }
     // Follow server snapshots on a render clock shared by the local avatar and camera.
     // Keep the collision entity at the latest authoritative position.
-    private static Vec3 from, presented;
-    private static long session = -1;
-    private static Vec3 sample(Pose pose,long now){
-        return from.lerp(pose.position(),Math.clamp((now-pose.received())/50_000_000.0,0,1));
-    }
+    private static final JakMotion MOTION=new JakMotion();
+    private static JakMotion.Frame motionFrame;
+    private static Vec3 presented;
+    private static long fallbackTick;
     public static void beginFrame(Minecraft client){
         InputScene.crossingFrame();
         var player=client.player;
         var pose=player==null?null:get(player.getId());
-        presented=pose!=null&&from!=null&&dev.jakmc.player.JakPlayers.active(player)&&!player.isSleeping()
-            ?sample(pose,System.nanoTime()):null;
+        motionFrame=pose!=null&&dev.jakmc.player.JakPlayers.active(player)&&!player.isSleeping()
+            ?MOTION.sample(System.nanoTime()):null;
+        presented=motionFrame==null?null:motionFrame.position();
     }
     public static Vec3 presented(){return presented;}
+    public static Quaternionf flightRotation(){return motionFrame==null||motionFrame.rotation()==null?null:new Quaternionf(motionFrame.rotation());}
+    public static Vec3 flightOffset(){return motionFrame==null?Vec3.ZERO:motionFrame.offset();}
     private static final Map<Integer,Pose> POSES=new HashMap<>();
     public static void receive(JakPackets.Pose p){
         var client=Minecraft.getInstance();if(client.level==null)return;
@@ -85,8 +87,7 @@ public final class JakPoses {
         long nextSession=json.get("session").getAsLong();
         BoardPose board=json.get("boardPose") instanceof JsonObject b?BoardPose.read(b):null;
         Pose previous=POSES.get(p.entityId());
-        boolean continuous=previous!=null&&previous.raw().get("session").getAsLong()==nextSession
-            &&previous.position().distanceToSqr(position)<=16;
+        boolean continuous=previous!=null&&previous.raw().get("session").getAsLong()==nextSession;
         var boardFrom=board!=null&&continuous?previous.boardAt((now-previous.received())/1e9f):null;
         var root=RootPose.read(json.getAsJsonObject("rootPose"));
         var rootFrom=continuous?previous.rootAt((now-previous.received())/1e9f):root;
@@ -96,9 +97,15 @@ public final class JakPoses {
             json.get("board").getAsBoolean(),json.get("dark").getAsBoolean(),json.get("light").getAsBoolean(),json,now,board,boardFrom,root,rootFrom,yawFrom);
         POSES.put(p.entityId(),pose);
         if(client.player!=null&&client.player.getId()==p.entityId()){
-            from=previous==null||from==null||session!=nextSession||previous.position().distanceToSqr(position)>16
-                ?position:sample(previous,pose.received());
-            session=nextSession;
+            Vec3 offset=Vec3.ZERO;
+            Quaternionf rotation=null;
+            if(json.get("hellcat") instanceof JsonObject flight){
+                offset=JakPlayers.vector(flight.getAsJsonArray("offset"));
+                var q=flight.getAsJsonArray("rotation");
+                rotation=new Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat());
+            }
+            long tick=json.has("serverTick")?json.get("serverTick").getAsLong():++fallbackTick;
+            MOTION.accept(tick,new JakMotion.Frame(position,offset,rotation),now,!continuous);
         }
         Vec3 origin=new Vec3(p.originX(),p.originY(),p.originZ());
         dev.jakmc.client.model.JakShotRenderer.receive(p.entityId(),origin,json);
@@ -121,5 +128,5 @@ public final class JakPoses {
     }
     public static Pose get(int id){return POSES.get(id);}
     public static Map<Integer,Pose> all(){return java.util.Collections.unmodifiableMap(POSES);}
-    public static void clear(){POSES.clear();from=presented=null;session=-1;dev.jakmc.client.model.JakShotRenderer.clear();}
+    public static void clear(){POSES.clear();presented=null;motionFrame=null;MOTION.clear();fallbackTick=0;dev.jakmc.client.model.JakShotRenderer.clear();}
 }

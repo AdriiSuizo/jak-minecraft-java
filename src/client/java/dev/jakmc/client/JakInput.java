@@ -25,7 +25,9 @@ public final class JakInput {
     public static final KeyMapping FIRE=key("fire",InputConstants.KEY_R);
     public static final KeyMapping INTERACT=key("interact",InputConstants.KEY_F);
     private static int previous,sequence,physicalHeld,physicalSystem,suppressed,pressedPad,systemEdges;
-    private static final int TRIANGLE=8,L2=32,R1=64,R2=128,R3=512;
+    private static final int TRIANGLE=8,L2=32,R1=64,R2=128,L3=256,R3=512;
+    private static final float DEFAULT_ZOOM=3.84f,FIRST_PERSON_ZOOM=.384f;
+    private static float cameraZoom=DEFAULT_ZOOM;
     private enum Trigger { BOARD, FIRE, USE, PLACE, MINE, RESERVED }
     private static long lastFrame;
     private static int controllerId;
@@ -45,11 +47,27 @@ public final class JakInput {
         float dt=lastFrame==0?0:Math.clamp((now-lastFrame)/1e9f,0,.1f);
         lastFrame=now;
         poll(c);
-        JakMenuControls.frame(c,uiPad,dt,MenuScene.backgroundPad(controllerId));
+        JakMenuControls.frame(c,uiPad,dt,MenuScene.backgroundPad(controllerId)||InputScene.backgroundPad(controllerId));
         if(!blocked(c)){
+            zoom(c,dt);
             var look=dev.jakmc.client.input.ControllerMath.look(pad.rightX(),pad.rightY());
             c.player.turn(look[0]*180*dt/.15,-look[1]*180*dt/.15);
         }
+    }
+
+    public static float cameraZoomFactor(){return cameraZoom==0?1:cameraZoom/DEFAULT_ZOOM;}
+
+    private static void zoom(Minecraft client,float dt){
+        if((uiPad.held()&R3)==0)return;
+        boolean up=(uiPad.system()&dev.jakmc.client.input.SdlGamepad.UP)!=0;
+        boolean down=(uiPad.system()&dev.jakmc.client.input.SdlGamepad.DOWN)!=0;
+        if(up==down)return;
+        float distance=client.options.getCameraType().isFirstPerson()?0:cameraZoom==0?DEFAULT_ZOOM:cameraZoom;
+        cameraZoom=Math.clamp(Math.max(FIRST_PERSON_ZOOM,distance)+(up?-1:1)*3.84f*dt,0,DEFAULT_ZOOM*2);
+        if(cameraZoom<FIRST_PERSON_ZOOM){
+            cameraZoom=0;
+            client.options.setCameraType(CameraType.FIRST_PERSON);
+        }else client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
     }
 
     private static Trigger triggerFor(ItemStack item,boolean board){
@@ -102,7 +120,8 @@ public final class JakInput {
             trigger=null;
             if(controllerId!=0)dev.jakmc.JakMod.LOG.info("Jak controller connected/active: {} (SDL {})",next.name(),controllerId);
         }
-        systemEdges|=next.system()&~physicalSystem;
+        int zoomDirections=(next.held()&R3)!=0?60:0;
+        systemEdges|=next.system()&~physicalSystem&~zoomDirections;
         if(c.gui.screen()!=null&&(next.held()&4)!=0&&(physicalHeld&4)==0)systemEdges|=64;
         if(blocked(c)){
             suppressed=next.held();
@@ -132,7 +151,7 @@ public final class JakInput {
             }
             boolean board=pose!=null&&pose.board();
             boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
-            boolean powers=(held&R3)!=0||DARK.isDown()||LIGHT.isDown();
+            boolean powers=(held&L3)!=0||DARK.isDown()||LIGHT.isDown();
             var itemAction=triggerFor(c.player.getMainHandItem(),board);
             boolean busy=c.player.isInWater()||powers||mounted;
             aiming=!board&&!busy&&!c.options.getCameraType().isMirrored()
@@ -152,7 +171,7 @@ public final class JakInput {
             attackClicked|=mineTrigger&&(edges&R2)!=0;
 
             // Only the current owner of R2 can pass that press to the game.
-            int reserved=board?R2:R1|R2;
+            int reserved=(board?R2:R1|R2)|R3;
             int mapped=held&~reserved;
             int mappedEdges=edges&~reserved;
             if(mounted&&triangle){mapped&=~TRIANGLE;mappedEdges&=~TRIANGLE;}
@@ -175,11 +194,10 @@ public final class JakInput {
     public static boolean consumeUse(){boolean value=useClicked;useClicked=false;return value;}
     public static boolean consumeAttack(){boolean value=attackClicked;attackClicked=false;return value;}
     private static void ui(Minecraft c){
-        int edges=systemEdges;systemEdges=0;if(!enabled(c)||!c.isWindowActive()&&!MenuScene.backgroundPad(controllerId))return;
+        int edges=systemEdges;systemEdges=0;if(!enabled(c)||!c.isWindowActive()&&!MenuScene.backgroundPad(controllerId)&&!InputScene.backgroundPad(controllerId))return;
         if(c.gui.screen()!=null){if((edges&(dev.jakmc.client.input.SdlGamepad.START|dev.jakmc.client.input.SdlGamepad.BACK|64))!=0)c.gui.screen().onClose();return;}
         if((edges&dev.jakmc.client.input.SdlGamepad.START)!=0){c.pauseGame(false);return;}
-        if((edges&dev.jakmc.client.input.SdlGamepad.BACK)!=0)c.options.setCameraType(c.options.getCameraType().cycle());
-        if((edges&dev.jakmc.client.input.SdlGamepad.UP)!=0){c.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(c.player));return;}
+        if((edges&(dev.jakmc.client.input.SdlGamepad.BACK|dev.jakmc.client.input.SdlGamepad.UP))!=0){c.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(c.player));return;}
         var inventory=c.player.getInventory();int slot=inventory.getSelectedSlot();
         if((edges&dev.jakmc.client.input.SdlGamepad.LEFT)!=0)slot=(slot+8)%9;
         if((edges&dev.jakmc.client.input.SdlGamepad.RIGHT)!=0)slot=(slot+1)%9;
@@ -191,7 +209,7 @@ public final class JakInput {
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STOPPING.register(c->GAMEPAD.close());
         ClientTickEvents.END_CLIENT_TICK.register(client->{
             poll(client);
-            JakMenuControls.frame(client,uiPad,0,MenuScene.backgroundPad(controllerId));
+            JakMenuControls.frame(client,uiPad,0,MenuScene.backgroundPad(controllerId)||InputScene.backgroundPad(controllerId));
             ui(client);
             if(!enabled(client)){previous=0;return;}
             boolean blocked=blocked(client);int held=blocked?0:held(client)|pad.held(),pressed=(held&~previous)|pressedPad;previous=held;pressedPad=0;
@@ -220,8 +238,8 @@ public final class JakInput {
         if(SPIN.isDown())b|=4;
         if(INTERACT.isDown())b|=8;
         if(client.options.keyShift.isDown())b|=16;
-        if(DARK.isDown())b|=R3;
-        if(LIGHT.isDown())b|=R3|1;
+        if(DARK.isDown())b|=L3;
+        if(LIGHT.isDown())b|=L3|1;
         if(FIRE.isDown())b|=64;
         if(BOARD.isDown())b|=128;
         return b;

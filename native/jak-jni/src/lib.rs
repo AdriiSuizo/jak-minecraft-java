@@ -368,10 +368,10 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   s.jak.gun.aim_dir = (!host_controls).then_some(view);
   if host_controls {
       use jak_core::pad::button::*;
-      let power = pad.held & R3 != 0;
+      let power = pad.held & L3 != 0;
       let faces = X | SQUARE | CIRCLE | TRIANGLE;
       let cancel = board || mounted || s.jak.swimming() || s.jak.powers_blocked || flags & (1 << 15) != 0;
-      let power_edge = pad.pressed & R3 != 0;
+      let power_edge = pad.pressed & L3 != 0;
       if (power || power_edge) && !s.power_held {
           s.dark_pending = !s.jak.light() && !cancel;
       }
@@ -387,13 +387,13 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
           pad.pressed &= !L2;
           if power && !cancel {
               pad.held |= L2;
-              if pad.pressed & R3 != 0 {
+              if pad.pressed & L3 != 0 {
                   pad.pressed |= L2;
               }
           }
       }
-      pad.held &= !R3;
-      pad.pressed &= !R3;
+      pad.held &= !(L3 | R3);
+      pad.pressed &= !(L3 | R3);
       if !board && !mounted && (first_person || manual_aim && pad.left[0].hypot(pad.left[1]) <= 0.2) {
           s.jak.control.quat = facing;
           s.jak.control.dir_targ = facing;

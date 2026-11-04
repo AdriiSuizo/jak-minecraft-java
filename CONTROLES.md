@@ -1,6 +1,6 @@
 # Controles actuales del port Java
 
-Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo si estás en creativo. Usa F5 o el botón Back/View del mando para cambiar de perspectiva. No hace falta instalar otro mod de mando: se usa SDL, incluido en esta versión de Minecraft.
+Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo si estás en creativo. Usa F5 para alternar las perspectivas. Mantén R3 y usa la cruceta arriba o abajo para acercar o alejar la cámara hasta entrar o salir de primera persona. No hace falta instalar otro mod de mando: se usa SDL, incluido en esta versión de Minecraft.
 
 | Acción | PlayStation | Xbox |
 |---|---|---|
@@ -16,19 +16,19 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Picar o atacar con herramienta o arma de Minecraft | R2 | RT |
 | Usar objeto, puerta o entidad de Minecraft | Triángulo | Y |
 | Sacar / guardar turbotabla equipada cuando el gatillo está libre | R2 | RT |
-| Activar o desactivar Jak oscuro | Pulsar y soltar R3 | Pulsar y soltar stick derecho |
-| Jak luminoso con alas | R3 + X | Stick derecho + A |
-| Escudo de Jak luminoso | R3 + Círculo | Stick derecho + B |
-| Curación de Jak luminoso | R3 + Triángulo | Stick derecho + Y |
-| Frenar el tiempo de las criaturas | R3 + Cuadrado | Stick derecho + X |
-| Cambiar perspectiva | Share / Create | Back / View |
-| Inventario / creativo | Cruceta arriba | Cruceta arriba |
+| Activar o desactivar Jak oscuro | Pulsar y soltar L3 | Pulsar y soltar stick izquierdo |
+| Jak luminoso con alas | L3 + X | Stick izquierdo + A |
+| Escudo de Jak luminoso | L3 + Círculo | Stick izquierdo + B |
+| Curación de Jak luminoso | L3 + Triángulo | Stick izquierdo + Y |
+| Frenar el tiempo de las criaturas | L3 + Cuadrado | Stick izquierdo + X |
+| Acercar / alejar cámara, hasta primera persona | R3 + cruceta arriba / abajo | Stick derecho pulsado + cruceta arriba / abajo |
+| Inventario / creativo | Select / Share / Create, o cruceta arriba | Back / View, o cruceta arriba |
 | Casilla anterior / siguiente | Cruceta izquierda / derecha | Cruceta izquierda / derecha |
 | Soltar una unidad | Cruceta abajo | Cruceta abajo |
 | Pausa / cerrar pantalla | Options | Start / Menu |
 | Cerrar una pantalla | Círculo o Share | B o Back |
 
-Para equipar la turbotabla, selecciónala en la mano y pulsa Triángulo/Y una vez. Se guarda en su propio equipamiento persistente; después R2/RT la saca o guarda. No ocupa el escudo. Selecciona el Morph Gun en la mano antes de disparar. Con un arco, un cubo u otro objeto de uso asignado al gatillo, R2 ejecuta su acción de Minecraft. Mantén R3 antes de pulsar el botón del poder luminoso. Con las alas desplegadas, salta y vuelve a pulsar X en el aire para aletear. El escudo, la curación y la ralentización consumen eco luminoso.
+Para equipar la turbotabla, selecciónala en la mano y pulsa Triángulo/Y una vez. Se guarda en su propio equipamiento persistente; después R2/RT la saca o guarda. No ocupa el escudo. Selecciona el Morph Gun en la mano antes de disparar. Con un arco, un cubo u otro objeto de uso asignado al gatillo, R2 ejecuta su acción de Minecraft. Mantén L3 antes de pulsar el botón del poder luminoso. Con las alas desplegadas, salta y vuelve a pulsar X en el aire para aletear. El escudo, la curación y la ralentización consumen eco luminoso.
 
 Se conservan teclado y ratón: B tabla, G puñetazo, V giro, R disparo, C apuntado, Z oscuro, X alas y Espacio salto; se pueden cambiar en las opciones de Minecraft. Las interacciones normales también mantienen clic derecho.
 
@@ -53,4 +53,4 @@ Alimenta al Flut Flut con semillas, inténtalo domar con Triángulo o clic derec
 
 ## HellCat
 
-Coloca el HellCat desde la pestaña de equipamiento de Jak y acércate al casco. Triángulo o clic derecho inicia la animación de subida. Ya sentado, R2 acelera y L2 frena y da marcha atrás. El stick izquierdo orienta el morro. X y Cuadrado hacen girar la nave sobre su eje en sentidos opuestos. Círculo activa el turbo mientras aceleras. R1 dispara el cañón y L1 el torpedo. Triángulo desmonta y deja la nave flotando con el motor encendido. Un golpe apaga el motor y las luces. Con teclado, W/S controlan aceleración y freno, y F desmonta.
+Coloca el HellCat desde la pestaña de equipamiento de Jak y acércate al casco. Triángulo o clic derecho inicia la animación de subida. Ya sentado, R2 acelera y L2 frena y da marcha atrás. El stick izquierdo orienta el morro. Círculo y Cuadrado controlan el giro de la nave en sentidos opuestos. X activa el turbo mientras aceleras. R1 dispara el cañón y L1 el torpedo. Triángulo desmonta y deja la nave flotando con el motor encendido. Un golpe apaga el motor y las luces. Con teclado, W/S controlan aceleración y freno, y F desmonta.

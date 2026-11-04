@@ -70,10 +70,11 @@ abstract class JakControllerCameraMixin {
         }
         float yaw=player.getYRot(),pitch=player.getXRot();
         var hull=jakmc$wheeled?car.getPosition(partial):
-            JakPoses.presented().add(dev.jakmc.player.JakPlayers.vector(channel.getAsJsonArray("offset")));
+            JakPoses.presented().add(JakPoses.flightOffset());
         var rotation=channel.getAsJsonArray("rotation");
         var q=new org.joml.Quaternionf(rotation.get(0).getAsFloat(),rotation.get(1).getAsFloat(),
             rotation.get(2).getAsFloat(),rotation.get(3).getAsFloat());
+        if(!jakmc$wheeled&&JakPoses.flightRotation()!=null)q.set(JakPoses.flightRotation());
         var nose=q.transform(new org.joml.Vector3f(0,0,1));
         float nosePitch=(float)Math.toDegrees(Math.asin(Math.clamp(nose.y,-1,1)));
         float targetYaw=(float)Math.toDegrees(Math.atan2(-nose.x,nose.z));
@@ -164,7 +165,7 @@ abstract class JakControllerCameraMixin {
         if(jakmc$flightPivot!=null){
             setRotation(jakmc$flightYaw,jakmc$flightPitch);
             float chase=(jakmc$wheeled?9f:15.4f)*.64f*(1-.25f*jakmc$speed)*(1+.3f*jakmc$pull);
-            return net.minecraft.util.Mth.lerp(jakmc$flightWeight,distance,chase);
+            return net.minecraft.util.Mth.lerp(jakmc$flightWeight,distance,chase)*JakInput.cameraZoomFactor();
         }
         if(jakmc$aim>.001f){
             Camera camera=(Camera)(Object)this;
@@ -178,7 +179,7 @@ abstract class JakControllerCameraMixin {
             setPosition(pivot.add(offset));
         }
         // Original aimed distance is 2.9 m, at 4096 Jak units per metre.
-        return net.minecraft.util.Mth.lerp(jakmc$aim,distance,2.9f*4096/6400);
+        return net.minecraft.util.Mth.lerp(jakmc$aim,distance*JakInput.cameraZoomFactor(),2.9f*4096/6400);
     }
 
     @Inject(method="alignWithEntity",at=@At("RETURN"))

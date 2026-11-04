@@ -117,3 +117,11 @@ Added the native wild creature, taming, saddle, plumage, laying and incubation, 
 ## 2026-11-03 — blue KG HellCat
 
 Persistent native hull, analog source flight and weapon solver, original rider clips, mesh-derived deck, authored damage panels, lamps, flames and audio. Triangle dismount retains the hovering engine and lamps until a real hit. Evidence and known gaps in docs/CURRENT-PORT-HANDOFF.md.
+
+## 2026-11-04 — native menus, L3 powers, R3 camera zoom and HellCat travel
+
+Select now opens Minecraft inventory, Start opens pause, R3 with D-pad Up or Down adjusts follow distance through first person, and L3 owns the transformation chords. Removed the obsolete JNI X/Circle swap so the original HellCat receives X boost. Updated CONTROLES.md and the SDL replay to verify the actual buttons.
+
+Fast travel uses server-timestamped snapshots and a shared two-tick render buffer for local Jak, the hull and the camera. The original four-block continuity cutoff reset high-speed presentation. The first replacement also needed correction for packet bursts and collision stops. The accepted crossing covers 2103 blocks, 126 chunks and 12 biomes with zero measured camera speed spikes. Brief world-loading stops remain. Exact receipts, failed takes, timing limits and the independent 150 Hz motion check are recorded in docs/CURRENT-PORT-HANDOFF.md.
+
+Actual SDL takes passed native inventory and pause, first-person zoom, L3 Dark and Light Jak powers, HellCat X boost, Circle without boost, analog acceleration, shots, lights and the powered air-dismount lifecycle. Native tests passed 87 core plus 6 JNI. The final keyboard F5 fallback received compilation review.

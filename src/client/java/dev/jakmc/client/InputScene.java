@@ -89,6 +89,13 @@ public final class InputScene {
  private static double crossingLowestClearance;
  private static Vec3 crossingLastPosition;
  private static int crossingStalledTicks,crossingStreak,crossingLongestStall;
+ private static int crossingCameraFrames,crossingCameraSpikes,crossingBetweenPackets,crossingLargeSteps;
+ private static long crossingCameraTime,crossingPoseReceived;
+ private static Vec3 crossingCameraPosition,crossingPacketPosition;
+ private static Vec3 crossingPresented;
+ private static final com.google.gson.JsonArray crossingSpikes=new com.google.gson.JsonArray();
+ private static final ArrayDeque<Double> crossingRecentSpeeds=new ArrayDeque<>();
+ private static double crossingSpeedRatio;
  public static void crossingFrame(){
   if(!running||!crossingSample)return;
   long now=System.nanoTime();
@@ -101,13 +108,20 @@ public final class InputScene {
   crossingFrameCount=crossingStalledTicks=crossingStreak=crossingLongestStall=0;
   crossingLastFrame=0;
   crossingLastPosition=null;
+  crossingCameraFrames=crossingCameraSpikes=crossingBetweenPackets=crossingLargeSteps=0;
+  crossingCameraTime=crossingPoseReceived=0;
+  crossingCameraPosition=crossingPacketPosition=null;
+  crossingPresented=null;
+  crossingRecentSpeeds.clear();
+  while(!crossingSpikes.isEmpty())crossingSpikes.remove(0);
+  crossingSpeedRatio=0;
   crossingBiomes.clear();
   crossingChunks.clear();
   crossingLowestClearance=Double.POSITIVE_INFINITY;
  }
 
  private static int hellcatBoardPress,hellcatMountedAt,hellcatEntryImage,hellcatOffAt;
- private static boolean hellcatBoarding,hellcatNight,hellcatLeftPowered,hellcatKickedOff,hellcatShot;
+ private static boolean hellcatBoarding,hellcatNight,hellcatLeftPowered,hellcatKickedOff,hellcatShot,hellcatBoost,hellcatCircle;
  private static volatile boolean hellcatPlaced,hellcatSaved;
  private static Vec3 hellcatStart;
  private static double hellcatClimb,hellcatHalfThrottle,hellcatFullThrottle;
@@ -119,7 +133,7 @@ public final class InputScene {
   crossingSample=false;
   hellcatId=-1;
   hellcatBoardPress=hellcatMountedAt=hellcatEntryImage=hellcatOffAt=0;
-  hellcatBoarding=hellcatNight=hellcatLeftPowered=hellcatKickedOff=hellcatShot=false;
+  hellcatBoarding=hellcatNight=hellcatLeftPowered=hellcatKickedOff=hellcatShot=hellcatBoost=hellcatCircle=false;
   hellcatPlaced=hellcatSaved=false;
   hellcatStart=null;
   hellcatClimb=hellcatHalfThrottle=hellcatFullThrottle=0;
@@ -187,6 +201,7 @@ public final class InputScene {
   pad.axis(5,ride>=10&&ride<27?0:ride>=27&&ride<65?1:-1);
   pad.axis(1,ride>=28&&ride<40?.75f:0);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,ride>=51&&ride<55);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,ride>=43&&ride<48);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,ride>=58&&ride<63);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,(hellcatBoardPress>0&&t>=hellcatBoardPress&&t<hellcatBoardPress+3&&ride<0)
    ||channel!=null&&ride>=69&&ride<105&&(ride-69)%12<5);
@@ -195,6 +210,8 @@ public final class InputScene {
    if(ride>=0){
     walk=Math.max(walk,cat.position().subtract(hellcatStart).horizontalDistance());
     hellcatClimb=Math.max(hellcatClimb,cat.getY()-hellcatStart.y);
+    if(ride>=52&&ride<56)hellcatBoost|=channel.get("boost").getAsBoolean();
+    if(ride>=44&&ride<48)hellcatCircle|=!channel.get("boost").getAsBoolean();
     double throttle=channel.get("throttle").getAsDouble();
     if(ride>=13&&ride<26)hellcatHalfThrottle=Math.max(hellcatHalfThrottle,throttle);
     if(ride>=39&&ride<62)hellcatFullThrottle=Math.max(hellcatFullThrottle,throttle);
@@ -241,6 +258,8 @@ public final class InputScene {
    ACTIONS.addProperty("air_dismount_powered",hellcatLeftPowered);
    ACTIONS.addProperty("kick_extinguishes",hellcatKickedOff);
    ACTIONS.addProperty("nose_gun",hellcatShot);
+   ACTIONS.addProperty("cross_boost",hellcatBoost);
+   ACTIONS.addProperty("circle_does_not_boost",hellcatCircle);
    peak=hellcatClimb;
    STATES.add("dismount="+hellcatOffAt);
    STATES.add("half="+hellcatHalfThrottle);
@@ -261,12 +280,12 @@ public final class InputScene {
   int floor=world.getHeight(heightType,bp.getX(),bp.getZ());
   int nextFloor=world.getHeight(heightType,bp.getX(),bp.getZ()+25);
   var heading=cat.attitude().transform(new org.joml.Vector3f(0,0,1));
-  double target=Math.max(117,Math.max(floor,nextFloor)+31);
+  double target=Math.max(220,Math.max(floor,nextFloor)+48);
   float desired=(float)Math.clamp((target-pos.y)*.024,-.25,.31);
   float error=desired-heading.y;
   pad.axis(1,Math.abs(error)<.025f?0:Math.copySign(Math.clamp(.3f+Math.abs(error)*2,0,.9f),error));
-  pad.axis(5,1);
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,ride>=65&&ride<580);
+  pad.axis(5,pos.y<175?-.25f:1);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,pos.y>=175&&ride>=65&&ride<580);
   if(ride==65){crossingSample=true;crossingLastFrame=0;}
   if(ride>65){
    crossingLowestClearance=Math.min(crossingLowestClearance,pos.y-floor);
@@ -297,10 +316,17 @@ public final class InputScene {
    STATES.add("lowest_clearance="+crossingLowestClearance);
    STATES.add("stationary_ticks="+crossingStalledTicks);
    STATES.add("longest_stall_ticks="+crossingLongestStall);
+   STATES.add("rendered_camera_frames="+crossingCameraFrames);
+   STATES.add("camera_frames_between_packets="+crossingBetweenPackets);
+   STATES.add("camera_speed_spikes="+crossingCameraSpikes);
+   STATES.add("camera_max_speed_ratio="+crossingSpeedRatio);
+   STATES.add("snapshots_over_four_blocks="+crossingLargeSteps);
+   STATES.add("camera_spike_samples="+crossingSpikes);
    ACTIONS.addProperty("kept_flight",walk>900&&crossingLongestStall<35);
    ACTIONS.addProperty("multiple_biomes",crossingBiomes.size()>=3);
    ACTIONS.addProperty("crossed_chunks",crossingChunks.size()>=50);
    ACTIONS.addProperty("stayed_above_surface",crossingLowestClearance>0);
+   ACTIONS.addProperty("continuous_camera",crossingCameraFrames>150&&crossingBetweenPackets>100&&crossingCameraSpikes==0);
    finish(c,ACTIONS.entrySet().stream().allMatch(a->a.getValue().getAsBoolean())?"complete":"Crossing assertion failed");
   }
  }
@@ -521,6 +547,51 @@ public final class InputScene {
  private static Vec3 lastCamera;
  private static long cameraSnapshot;
  public static void sampleCamera(Camera camera){
+  if(running&&crossing&&crossingSample){
+   var player=Minecraft.getInstance().player;
+   var pose=player==null?null:JakPoses.get(player.getId());
+   if(pose!=null&&pose.raw().get("hellcat") instanceof JsonObject flight){
+    long now=System.nanoTime();
+    double seconds=(now-crossingCameraTime)/1e9;
+    double speed=flight.get("speed").getAsDouble();
+    if(crossingPoseReceived!=pose.received()){
+     crossingRecentSpeeds.addLast(speed);
+     while(crossingRecentSpeeds.size()>8)crossingRecentSpeeds.removeFirst();
+    }
+    // The view trails buffered samples. Include their speed when a newer
+    // collision or brake packet has already slowed the authoritative hull.
+    double referenceSpeed=speed;
+    for(double recent:crossingRecentSpeeds)referenceSpeed=Math.max(referenceSpeed,recent);
+    Vec3 at=camera.position();
+    if(crossingCameraPosition!=null&&seconds>0&&seconds<.035&&speed>10){
+     double ratio=at.distanceTo(crossingCameraPosition)/seconds/referenceSpeed;
+     crossingSpeedRatio=Math.max(crossingSpeedRatio,ratio);
+     crossingCameraFrames++;
+     if(ratio>2){
+      crossingCameraSpikes++;
+      if(crossingSpikes.size()<12){
+       var detail=new JsonObject();
+       detail.addProperty("ratio",ratio);
+       detail.addProperty("root_ratio",JakPoses.presented().distanceTo(crossingPresented)/seconds/referenceSpeed);
+       detail.addProperty("speed",speed);
+       detail.addProperty("dt",seconds);
+       detail.addProperty("age_ms",(now-pose.received())/1e6);
+       detail.addProperty("tick",pose.raw().get("serverTick").getAsLong());
+       crossingSpikes.add(detail);
+      }
+     }
+     if(pose.received()==crossingPoseReceived&&at.distanceToSqr(crossingCameraPosition)>1e-7)crossingBetweenPackets++;
+    }
+    if(crossingPoseReceived!=pose.received()){
+     if(crossingPacketPosition!=null&&pose.position().distanceToSqr(crossingPacketPosition)>16)crossingLargeSteps++;
+     crossingPacketPosition=pose.position();
+    }
+    crossingPoseReceived=pose.received();
+    crossingCameraPosition=at;
+    crossingPresented=JakPoses.presented();
+    crossingCameraTime=now;
+   }
+  }
   if(!running||!powers||tick<410||tick>=440)return;
   var player=Minecraft.getInstance().player;
   var pose=player==null?null:JakPoses.get(player.getId());
@@ -561,7 +632,7 @@ public final class InputScene {
    }
   }
   int age=darkStanceAt==0?-1:t-darkStanceAt;
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK,darkPress>0&&t>=darkPress&&t<darkPress+7);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_STICK,darkPress>0&&t>=darkPress&&t<darkPress+7);
   pad.axis(1,age>=2&&age<22?-1:0);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,age==31);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,age>=52&&age<55);
@@ -611,7 +682,7 @@ public final class InputScene {
   pad.axis(4,t>=18&&t<83?1:-1);
   pad.axis(5,t>=40&&t<56||t>=78&&t<80||t>=95&&t<98?1:-1);
   pad.axis(1,t>=402&&t<445?-.75f:0);
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK,t>=109&&t<119||t>=149&&t<159||t>=195&&t<280||t>=324&&t<361||t>=475&&t<530||t>=620&&t<690);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_STICK,t>=109&&t<119||t>=149&&t<159||t>=195&&t<280||t>=324&&t<361||t>=475&&t<530||t>=620&&t<690);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,t>=235&&t<285);
   if(flightJump==0&&t>363&&t<445&&pose!=null&&pose.light()
       &&pose.raw().get("wings").isJsonObject()
@@ -718,8 +789,8 @@ public final class InputScene {
    ACTIONS.addProperty("r2_fired",shotSeen&&aimHit);
    ACTIONS.addProperty("r2_mined_native_block",mineSeen);
    ACTIONS.addProperty("r2_placed_native_block",placeSeen);
-   ACTIONS.addProperty("r3_dark",darkSeen);
-   ACTIONS.addProperty("r3_chords_light",lightSeen&&wingsSeen);
+   ACTIONS.addProperty("l3_dark",darkSeen);
+   ACTIONS.addProperty("l3_chords_light",lightSeen&&wingsSeen);
    ACTIONS.addProperty("light_flight",flightSeen);
    ACTIONS.addProperty("light_heals_survival",healSeen&&woundedHealth>0&&c.player.getHealth()>woundedHealth);
    ACTIONS.addProperty("shield_blocked_damage",shieldTested&&hit&&ACTIONS.has("shield_reacted"));
@@ -727,13 +798,39 @@ public final class InputScene {
    finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"power/aim assertion failed");
   }
  }
+ private static int firstPersonAt;
  private static void actions(Minecraft c){
-  int t=++tick;pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,t==25);pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_BACK,t==55||t==60||t==65);pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_UP,t==75);pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_START,t==95);
-  VIEWS.add(c.options.getCameraType());
-  if(t==24||t==26||t==42)dev.jakmc.JakMod.LOG.info("Input interaction {}: hand={}, board={}, controller={}, focus={}",t,c.player.getMainHandItem(),c.player.getAttachedOrCreate(JakData.BOARD),JakInput.controller(),c.isWindowActive());
+  int t=++tick;
+  if(t==1)firstPersonAt=0;
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,t==25);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_BACK,t==55||t==62);
   if(t==42)ACTIONS.addProperty("triangle_equipped_board",!c.player.getAttachedOrCreate(JakData.BOARD).isEmpty());
-  if(t==87){ACTIONS.addProperty("inventory_opened",c.gui.screen()!=null&&c.gui.screen().getClass().getSimpleName().equals("CreativeModeInventoryScreen"));capture(c,"input-actions-gui.png");}
-  if(t>=105){ACTIONS.addProperty("all_camera_views",VIEWS.containsAll(Set.of(CameraType.FIRST_PERSON,CameraType.THIRD_PERSON_BACK,CameraType.THIRD_PERSON_FRONT)));ACTIONS.addProperty("start_closed_inventory",c.gui.screen()==null);finish(c,"complete");}
+  if(t==58){
+   ACTIONS.addProperty("select_native_inventory",c.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen);
+   ACTIONS.addProperty("select_kept_perspective",c.options.getCameraType()==CameraType.THIRD_PERSON_BACK);
+   capture(c,"input-actions-gui.png");
+  }
+  if(t>=70&&firstPersonAt==0&&c.options.getCameraType().isFirstPerson())firstPersonAt=t;
+  int age=firstPersonAt==0?-1:t-firstPersonAt;
+  boolean zoomIn=t>=70&&firstPersonAt==0;
+  boolean zoomOut=age>=2&&age<24;
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK,zoomIn||zoomOut);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_UP,zoomIn);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_DOWN,zoomOut);
+  if(age==25){
+   ACTIONS.addProperty("r3_zoom_reached_first_person",true);
+   ACTIONS.addProperty("r3_zoom_returned_to_third_person",c.options.getCameraType()==CameraType.THIRD_PERSON_BACK&&JakInput.cameraZoomFactor()>.5);
+   ACTIONS.addProperty("zoom_did_not_open_inventory",c.gui.screen()==null);
+   var pose=JakPoses.get(c.player.getId());
+   ACTIONS.addProperty("r3_did_not_transform",pose!=null&&!pose.dark()&&!pose.light());
+  }
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_START,age==30||age==36);
+  if(age==33)ACTIONS.addProperty("start_native_pause",c.gui.screen() instanceof net.minecraft.client.gui.screens.PauseScreen);
+  if(age>=40||t>=180){
+   ACTIONS.addProperty("r3_zoom_reached_first_person",firstPersonAt>0);
+   ACTIONS.addProperty("start_closed_pause",c.gui.screen()==null);
+   finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"controller layout assertion failed");
+  }
  }
  private static void tick(Minecraft c){
   if(!running)return;if(c.player==null||c.getSingleplayerServer()==null){finish(c,"lost world");return;}
