@@ -23,6 +23,8 @@ public final class JakPlayers {
     public static void probeInput(ServerPlayer p,int held,int pressed,float forward){PROBE_INPUT.put(p.getUUID(),new JakPackets.Input(0,held,pressed,0,forward,0,0,p.getYRot(),p.getXRot(),0,0));}
     private static final Map<UUID,Session> LIVE=new HashMap<>();
     private static final int BOARD_BUTTON=1<<7;
+    private static final net.minecraft.resources.Identifier VANILLA_SPRINT=
+        net.minecraft.resources.Identifier.withDefaultNamespace("sprinting");
     private static final Map<net.minecraft.world.level.block.state.BlockState,Integer> FLOOR_SOUNDS=new IdentityHashMap<>();
     private static final class Session implements AutoCloseable {
         final long nativeId;
@@ -192,8 +194,13 @@ public final class JakPlayers {
         b.putFloat(fresh?input.rightX():0).putFloat(fresh?input.rightY():0).putFloat(fresh?input.brake():0).putFloat(fresh?input.throttle():0);
         b.putFloat(input.yaw()).putFloat(input.pitch());
         float water=waterSurface(p,s.origin);
-        float speed=(float)(p.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED)/.1);
-        b.putFloat(Float.isFinite(water)?water:0).putFloat(speed);
+        var movement=p.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
+        var vanillaSprint=movement.getModifier(VANILLA_SPRINT);
+        double speed=movement.getValue();
+        // Jak's stick and move state choose pace. Keep potion and equipment effects, but
+        // remove the stock double-tap sprint multiplier sent by the Minecraft client.
+        if(vanillaSprint!=null)speed/=1+vanillaSprint.amount();
+        b.putFloat(Float.isFinite(water)?water:0).putFloat((float)(speed/.1));
         int flags=p.getAttachedOrCreate(JakData.BOARD).isEmpty()?0:1;
         if(Float.isFinite(water))flags|=16;
         if(p.hasInfiniteMaterials())flags|=32;

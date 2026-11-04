@@ -199,7 +199,9 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_create(mut env:JNIE
   if let Some(anims)=ANIMS.get(){jak.anims=anims.clone();}
   if let Some(library)=effects::LIBRARY.get(){jak.set_particles(library.clone());jak.particles.as_mut().unwrap().start_journal();}
   jak.control.set_body_dimensions(0.3*BLOCK,1.8*BLOCK);
-  jak.size=0.64;jak.foot_smooth_step=Some(1.05*BLOCK);jak.board_smooth_step=Some(1.05*BLOCK);jak.flut_smooth_step=Some(1.05*BLOCK);
+  jak.size=0.64;
+  // Minecraft step sizes in the source host (render_anim/src/jak.rs).
+  jak.foot_smooth_step=Some(1.25*BLOCK);jak.board_smooth_step=Some(1.1*BLOCK);jak.flut_smooth_step=jak.board_smooth_step;
   jak.edge_grab_min_height=2.*BLOCK;
   let mut s=lock_sessions()?;s.next+=1;let id=s.next;
   s.live.insert(id,Session{jak,world:World::default(),actors:Actors::default(),audio:audio::JakSoundQueue::default(),power_held:false,dark_pending:false,joint_rotations:Vec::new(),board_started:None});Ok(id as jlong)

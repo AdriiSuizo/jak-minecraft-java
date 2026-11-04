@@ -14,6 +14,7 @@ pub struct BodyJoints {
     joints: Vec<Joint>,
     clips: HashMap<String, Vec<Vec<[f32; 10]>>>,
     flut_main: Vec<Vec3>,
+    fingers: Option<(usize,usize)>,
 }
 
 impl BodyJoints {
@@ -80,7 +81,9 @@ impl BodyJoints {
         let flut_main=authored.get("jakb1-flut-get-off").and_then(|art|art.joints.as_ref())
             .map_or_else(Vec::new,|frames|frames.iter().filter_map(|frame|frame.first())
                 .map(|main|Vec3::from_slice(main)*jak_core::METER).collect());
-        Ok(Self { joints, clips, flut_main })
+        let index=|name:&str|joint_nodes.iter().position(|&node|nodes[node]["name"].as_str()==Some(name));
+        let fingers=index("lindA").zip(index("rindA"));
+        Ok(Self { joints, clips, flut_main, fingers })
     }
 
     pub fn sample(&self, jak: &mut jak_core::Jak, rotations: &mut Vec<Quat>) {
@@ -117,5 +120,7 @@ impl BodyJoints {
             let hi=(lo+1).min(self.flut_main.len()-1);
             jak.joints[2]=self.flut_main[lo].lerp(self.flut_main[hi],(frame-lo as f32).clamp(0.,1.));
         }
+        // Jak 3 center-hold, as used by render_anim::jak_pose::Animator::hold in the Rust port.
+        jak.hold=self.fingers.map(|(left,right)|(jak.joints[left]+jak.joints[right])*0.5);
     }
 }
