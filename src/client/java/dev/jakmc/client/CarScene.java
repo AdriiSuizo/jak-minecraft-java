@@ -22,7 +22,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.sdl.SDLGamepad;
 
-final class CarScene {
+public final class CarScene {
     private static SdlVirtualPad pad;
     private static volatile int carId=-1;
     private static volatile Vec3 start;
@@ -35,6 +35,9 @@ final class CarScene {
     private static double airBoost,airborneSpeed;
     private static int index;
     private static boolean dismounted;
+    private static final boolean[] DROP_STACK=new boolean[2];
+    private static float lastYaw,maxYawJump;
+    private static int renderFrames,lastRenderIndex=-1;
     private static final boolean[] FIRED=new boolean[2];
     private static boolean grenadeBurst,hover;
     private static final boolean[] LAMPS=new boolean[2],LANE=new boolean[2],REVERSE=new boolean[2];
@@ -55,7 +58,7 @@ final class CarScene {
         java.util.Arrays.fill(FIRED,false);
         java.util.Arrays.fill(DISTANCE,0);java.util.Arrays.fill(HEIGHT,0);
         java.util.Arrays.fill(CONTACTS,0);java.util.Arrays.fill(STEP_SPEED,0);
-        airBoost=airborneSpeed=0;
+        airBoost=airborneSpeed=0;maxYawJump=0;renderFrames=0;java.util.Arrays.fill(DROP_STACK,false);
         camera=client.options.getCameraType();
         pause=client.options.pauseOnLostFocus;
         client.options.pauseOnLostFocus=false;
@@ -67,6 +70,7 @@ final class CarScene {
             var original=p.position();
             var rotation=new float[]{p.getYRot(),p.getXRot()};
             var enabled=p.getAttachedOrCreate(JakData.ENABLED);
+            var heldBefore=p.getMainHandItem().copy();
             var near=p.blockPosition();
             int y=near.getY();
             for(int x=-5;x<=16;x++)for(int z=-8;z<=55;z++)
@@ -75,10 +79,12 @@ final class CarScene {
             var snapshot=new LinkedHashMap<BlockPos,BlockState>();
             for(int x=-5;x<=16;x++)for(int z=-8;z<=55;z++){
                 int rise=z>=12?1:0;
-                for(int h=0;h<=rise;h++){
+                // The dev player may be inside the tower. The road needs real
+                // headroom for the high hover lane; restore every cleared cell.
+                for(int h=0;h<=12;h++){
                     var at=base.offset(x,h,z);
                     snapshot.put(at,level.getBlockState(at));
-                    level.setBlock(at,Blocks.SMOOTH_STONE.defaultBlockState(),3);
+                    level.setBlock(at,h<=rise?Blocks.SMOOTH_STONE.defaultBlockState():Blocks.AIR.defaultBlockState(),3);
                 }
             }
             start=Vec3.atBottomCenterOf(base.above());
@@ -87,6 +93,7 @@ final class CarScene {
                 player.stopRiding();
                 snapshot.forEach(level::setBlockAndUpdate);
                 player.setAttached(JakData.ENABLED,enabled);
+                player.setItemInHand(InteractionHand.MAIN_HAND,heldBefore);
                 player.teleportTo(original.x,original.y,original.z);
                 player.setYRot(rotation[0]);player.setXRot(rotation[1]);
             };
@@ -176,7 +183,16 @@ final class CarScene {
             pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,true);
         }
         if(tick==(hover?114:76)){pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,false);pad.axis(4,-1);}
-        if(tick!=(hover?118:80))return;
+        if(tick==114&&hover)onServer(client,p->p.setItemInHand(InteractionHand.MAIN_HAND,new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIRT,9)));
+        if(tick==118&&hover)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_DOWN,true);
+        if(tick==130&&hover)pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_DOWN,false);
+        if(tick==133&&hover){
+            int stage=index;
+            onServer(client,p->DROP_STACK[stage]=p.getMainHandItem().isEmpty()&&p.level().getEntitiesOfClass(
+                net.minecraft.world.entity.item.ItemEntity.class,p.getBoundingBox().inflate(5),
+                item->item.getItem().is(net.minecraft.world.item.Items.DIRT)&&item.getItem().getCount()==9).size()>0);
+        }
+        if(tick!=(hover?136:80))return;
         dismounted=client.player.getVehicle()==null;
         if(index==0){
             view=null;
@@ -199,6 +215,8 @@ final class CarScene {
         report.add("stepSpeed",new com.google.gson.Gson().toJsonTree(STEP_SPEED));
         report.addProperty("airBoostGain",airBoost);
         report.addProperty("dismounted",dismounted);
+        report.add("held_down_drops_stack",new com.google.gson.Gson().toJsonTree(DROP_STACK));
+        report.addProperty("cameraRenderSamples",renderFrames);report.addProperty("maxStraightCameraYawStep",maxYawJump);
         report.addProperty("grenade",FIRED[0]);
         report.addProperty("grenadeBurst",grenadeBurst);
         report.addProperty("gunBeam",FIRED[1]);
@@ -206,7 +224,7 @@ final class CarScene {
         report.add("lanes",new com.google.gson.Gson().toJsonTree(LANE));
         report.add("reverse",new com.google.gson.Gson().toJsonTree(REVERSE));
         boolean success=hover?DISTANCE[0]>5&&DISTANCE[1]>5&&LAMPS[0]&&LAMPS[1]&&LANE[0]&&LANE[1]
-            &&REVERSE[0]&&REVERSE[1]&&dismounted:
+            &&REVERSE[0]&&REVERSE[1]&&dismounted&&DROP_STACK[0]&&DROP_STACK[1]:
             DISTANCE[0]>=16&&DISTANCE[1]>=16&&CONTACTS[0]>=2&&CONTACTS[1]>=2
             &&STEP_SPEED[0]>.1&&STEP_SPEED[1]>.1&&airBoost>.02&&dismounted&&FIRED[0]&&FIRED[1]&&grenadeBurst;
         report.addProperty("reason",success?"complete":"Vehicle acceptance failed");
@@ -232,6 +250,13 @@ final class CarScene {
             cleanup.accept(p);
             client.execute(client::stop);
         });
+    }
+
+    public static void sampleCamera(net.minecraft.client.Camera camera){
+        if(pad==null||tick<28||tick>=47)return;
+        float yaw=camera.yRot();
+        if(renderFrames++>0&&lastRenderIndex==index)maxYawJump=Math.max(maxYawJump,Math.abs(net.minecraft.util.Mth.wrapDegrees(yaw-lastYaw)));
+        lastYaw=yaw;lastRenderIndex=index;
     }
 
     private static void onServer(Minecraft client,java.util.function.Consumer<ServerPlayer> action){

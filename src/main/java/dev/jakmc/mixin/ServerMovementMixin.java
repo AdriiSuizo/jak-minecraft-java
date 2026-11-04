@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class ServerMovementMixin {
  @Shadow public ServerPlayer player;
  @Inject(method="handleMovePlayer",at=@At("HEAD"),cancellable=true)
- private void jakmc$authoritativeMovement(ServerboundMovePlayerPacket packet,CallbackInfo ci){if(JakPlayers.active(player))ci.cancel();}
+ private void jakmc$authoritativeMovement(ServerboundMovePlayerPacket packet,CallbackInfo ci){if(JakPlayers.active(player)||player.getVehicle() instanceof dev.jakmc.entity.JakVehicle)ci.cancel();}
 
  @Inject(method="teleport(Lnet/minecraft/world/entity/PositionMoveRotation;Ljava/util/Set;)V",at=@At("TAIL"))
  private void jakmc$hostTeleport(PositionMoveRotation destination,Set<Relative> relatives,CallbackInfo ci){

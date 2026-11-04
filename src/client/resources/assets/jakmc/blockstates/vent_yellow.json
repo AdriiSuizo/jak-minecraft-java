@@ -1,7 +1,7 @@
 {
   "variants": {
     "": {
-      "model": "jakmc:block/eco_vent"
+      "model": "jakmc:block/eco_vent_nozzle"
     }
   }
 }

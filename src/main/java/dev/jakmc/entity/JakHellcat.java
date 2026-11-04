@@ -181,7 +181,7 @@ public final class JakHellcat extends Entity {
         var test=getBoundingBox().expandTowards(velocity.scale(.05)).inflate(1);
         for(int cx=Mth.floor(test.minX)>>4;cx<=Mth.floor(test.maxX)>>4;cx++){
             for(int cz=Mth.floor(test.minZ)>>4;cz<=Mth.floor(test.maxZ)>>4;cz++){
-                if(!server.hasChunkAt(new BlockPos(cx<<4,blockPosition().getY(),cz<<4)))ready=false;
+                if(!server.isPositionEntityTicking(new BlockPos(cx<<4,blockPosition().getY(),cz<<4)))ready=false;
             }
         }
         controls.clear();

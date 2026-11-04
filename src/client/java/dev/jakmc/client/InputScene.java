@@ -89,7 +89,7 @@ public final class InputScene {
  private static final Set<String> crossingBiomes=new TreeSet<>(),crossingChunks=new HashSet<>();
  private static double crossingLowestClearance;
  private static Vec3 crossingLastPosition;
- private static int crossingStalledTicks,crossingStreak,crossingLongestStall;
+ private static int crossingStalledTicks,crossingStreak,crossingLongestStall,crossingMapTicks,crossingMissingMap;
  private static int crossingCameraFrames,crossingCameraSpikes,crossingBetweenPackets,crossingLargeSteps;
  private static long crossingCameraTime,crossingPoseReceived;
  private static Vec3 crossingCameraPosition,crossingPacketPosition;
@@ -104,9 +104,11 @@ public final class InputScene {
   crossingLastFrame=now;
  }
  public static void startHellcatCrossing(Minecraft c,Vec3 origin){
-  startHellcat(c,true,origin,false);
+  // This fixture measures sustained fast exploration, not the time spent
+  // climbing from an arbitrary fresh world's spawn to cruising altitude.
+  startHellcat(c,true,origin.with(net.minecraft.core.Direction.Axis.Y,Math.max(220,origin.y)),false);
   crossingSample=false;
-  crossingFrameCount=crossingStalledTicks=crossingStreak=crossingLongestStall=0;
+  crossingFrameCount=crossingStalledTicks=crossingStreak=crossingLongestStall=crossingMapTicks=crossingMissingMap=0;
   crossingLastFrame=0;
   crossingLastPosition=null;
   crossingCameraFrames=crossingCameraSpikes=crossingBetweenPackets=crossingLargeSteps=0;
@@ -289,6 +291,7 @@ public final class InputScene {
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,pos.y>=175&&ride>=65&&ride<580);
   if(ride==65){crossingSample=true;crossingLastFrame=0;}
   if(ride>65){
+   crossingMapTicks++;if(!JakMinimap.terrainVisible())crossingMissingMap++;
    crossingLowestClearance=Math.min(crossingLowestClearance,pos.y-floor);
    if(crossingLastPosition!=null&&pos.distanceToSqr(crossingLastPosition)<.0004){
     crossingStalledTicks++;
@@ -316,6 +319,8 @@ public final class InputScene {
    STATES.add("chunks="+crossingChunks.size());
    STATES.add("lowest_clearance="+crossingLowestClearance);
    STATES.add("stationary_ticks="+crossingStalledTicks);
+   STATES.add("map_ticks="+crossingMapTicks);
+   STATES.add("map_missing_ticks="+crossingMissingMap);
    STATES.add("longest_stall_ticks="+crossingLongestStall);
    STATES.add("rendered_camera_frames="+crossingCameraFrames);
    STATES.add("camera_frames_between_packets="+crossingBetweenPackets);
@@ -325,6 +330,7 @@ public final class InputScene {
    STATES.add("camera_spike_samples="+crossingSpikes);
    ACTIONS.addProperty("kept_flight",walk>900&&crossingLongestStall<35);
    ACTIONS.addProperty("multiple_biomes",crossingBiomes.size()>=3);
+   ACTIONS.addProperty("minimap_kept_up",crossingMapTicks>500&&crossingMissingMap==0);
    ACTIONS.addProperty("crossed_chunks",crossingChunks.size()>=50);
    ACTIONS.addProperty("stayed_above_surface",crossingLowestClearance>0);
    ACTIONS.addProperty("continuous_camera",crossingCameraFrames>150&&crossingBetweenPackets>100&&crossingCameraSpikes==0);

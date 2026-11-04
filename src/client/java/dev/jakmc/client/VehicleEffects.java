@@ -42,7 +42,7 @@ final class VehicleEffects {
         var commands=new JsonArray();
         var q=frame.getAsJsonArray("rotation");
         var rotation=new Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat());
-        var origin=car.position();
+        var origin=frame.has("worldPosition")?JakPlayers.vector(frame.getAsJsonArray("worldPosition")):car.position();
         var previous=GRENADE_LAST.getOrDefault(car,Map.of());
         var live=new HashMap<Integer,Vec3>();
         for(var entry:frame.getAsJsonArray("grenades")){

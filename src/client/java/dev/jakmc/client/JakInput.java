@@ -29,7 +29,8 @@ public final class JakInput {
     private static final float DEFAULT_ZOOM=3.84f,FIRST_PERSON_ZOOM=.384f;
     private static float cameraZoom=DEFAULT_ZOOM;
     private enum Trigger { BOARD, FIRE, USE, PLACE, MINE, RESERVED }
-    private static long lastFrame;
+    private static long lastFrame,dropStarted;
+    private static boolean droppedStack;
     private static int controllerId;
     private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower,vehicleUseLock;
     private static Trigger trigger;
@@ -194,15 +195,27 @@ public final class JakInput {
     public static boolean consumeUse(){boolean value=useClicked;useClicked=false;return value;}
     public static boolean consumeAttack(){boolean value=attackClicked;attackClicked=false;return value;}
     private static void ui(Minecraft c){
-        int edges=systemEdges;systemEdges=0;if(!enabled(c)||!c.isWindowActive()&&!MenuScene.backgroundPad(controllerId)&&!InputScene.backgroundPad(controllerId))return;
-        if(c.gui.screen()!=null){if((edges&(dev.jakmc.client.input.SdlGamepad.START|dev.jakmc.client.input.SdlGamepad.BACK|64))!=0)c.gui.screen().onClose();return;}
+        int edges=systemEdges;systemEdges=0;
+        if(!enabled(c)||!c.isWindowActive()&&!MenuScene.backgroundPad(controllerId)&&!InputScene.backgroundPad(controllerId)){
+            dropStarted=0;droppedStack=false;return;
+        }
+        if(c.gui.screen()!=null){dropStarted=0;droppedStack=false;if((edges&(dev.jakmc.client.input.SdlGamepad.START|dev.jakmc.client.input.SdlGamepad.BACK|64))!=0)c.gui.screen().onClose();return;}
         if((edges&dev.jakmc.client.input.SdlGamepad.START)!=0){c.pauseGame(false);return;}
         if((edges&(dev.jakmc.client.input.SdlGamepad.BACK|dev.jakmc.client.input.SdlGamepad.UP))!=0){c.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(c.player));return;}
+        if((uiPad.held()&R3)!=0){dropStarted=0;droppedStack=false;return;}
         var inventory=c.player.getInventory();int slot=inventory.getSelectedSlot();
         if((edges&dev.jakmc.client.input.SdlGamepad.LEFT)!=0)slot=(slot+8)%9;
         if((edges&dev.jakmc.client.input.SdlGamepad.RIGHT)!=0)slot=(slot+1)%9;
         inventory.setSelectedSlot(slot);
-        if((edges&dev.jakmc.client.input.SdlGamepad.DOWN)!=0)c.gameMode.dropItem(c.player,false);
+        boolean down=(uiPad.system()&dev.jakmc.client.input.SdlGamepad.DOWN)!=0&&(uiPad.held()&R3)==0;
+        long now=System.nanoTime();
+        if(down){
+            if(dropStarted==0){dropStarted=now;droppedStack=false;}
+            if(!droppedStack&&now-dropStarted>=400_000_000L){c.gameMode.dropItem(c.player,true);droppedStack=true;}
+        }else if(dropStarted!=0){
+            if(!droppedStack)c.gameMode.dropItem(c.player,false);
+            dropStarted=0;droppedStack=false;
+        }
     }
 
     public static void initialize(){

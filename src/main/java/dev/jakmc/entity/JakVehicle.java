@@ -80,6 +80,63 @@ public final class JakVehicle extends Entity {
     private JakPackets.Input controls;
     private JsonObject currentFrame,previousFrame;
     private int press;
+    // The hull, suspension, rider and camera sample these same timestamped snapshots.
+    private record DisplayFrame(long tick,JsonObject frame){}
+    private final java.util.ArrayDeque<DisplayFrame> displayFrames=new java.util.ArrayDeque<>();
+    private JsonObject displayBefore,displayAfter;
+    private long frameReceived,displayTime;
+    private double displayClock,displayInterval=50_000_000;
+    private float displayFraction=1;
+    private Vec3 displayPosition;
+
+    public void samplePresentation(long now){
+        if(displayFrames.isEmpty())return;
+        var latest=displayFrames.getLast();
+        double dt=Math.max(0,(now-displayTime)/displayInterval);
+        displayTime=now;
+        double target=latest.tick-2+Math.clamp((now-frameReceived)/displayInterval,0,1);
+        double predicted=displayClock+dt;
+        displayClock=Math.min(latest.tick,predicted+Math.clamp((target-predicted)*.1,-.1,.1)*dt);
+        var left=displayFrames.getFirst();
+        var right=left;
+        for(var candidate:displayFrames){
+            right=candidate;
+            if(candidate.tick>=displayClock)break;
+            left=candidate;
+        }
+        displayBefore=left.frame;displayAfter=right.frame;
+        displayFraction=right.tick==left.tick?1:(float)Math.clamp((displayClock-left.tick)/(right.tick-left.tick),0,1);
+        displayPosition=displayVector(displayBefore,"worldPosition",position()).lerp(
+            displayVector(displayAfter,"worldPosition",position()),displayFraction);
+    }
+    private static Vec3 displayVector(JsonObject frame,String key,Vec3 fallback){
+        return frame!=null&&frame.has(key)?JakPlayers.vector(frame.getAsJsonArray(key)):fallback;
+    }
+    public float presentationFraction(){return displayFraction;}
+    public JsonObject presentationBefore(){return displayBefore==null?previousFrame():displayBefore;}
+    public JsonObject presentationAfter(){return displayAfter==null?frame():displayAfter;}
+    public Vec3 presentationPosition(){return displayPosition==null?position():displayPosition;}
+    public org.joml.Quaternionf presentationRotation(){
+        return displayRotation(presentationBefore()).slerp(displayRotation(presentationAfter()),displayFraction);
+    }
+    private static org.joml.Quaternionf displayRotation(JsonObject frame){
+        if(frame==null)return new org.joml.Quaternionf();
+        var q=frame.getAsJsonArray("rotation");
+        return new org.joml.Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat());
+    }
+    private Vec3 displayedSeat(JsonObject frame){
+        Vec3 hull=displayVector(frame,"worldPosition",position());
+        Vec3 point=hull.add(displayVector(frame,"seat",seat));
+        float progress=frame==null?1:frame.get("boardingProgress").getAsFloat();
+        if(frame!=null&&frame.has("boardingFrom")&&progress<1){
+            point=displayVector(frame,"boardingFrom",point).lerp(point,progress*progress*(3-2*progress))
+                .add(0,Math.sin(progress*Math.PI)*.24,0);
+        }
+        return point;
+    }
+    public Vec3 presentationRider(){
+        return displayedSeat(presentationBefore()).lerp(displayedSeat(presentationAfter()),displayFraction);
+    }
     private final WheeledWeapons weapons=new WheeledWeapons(this);
 
     private JakVehicle(EntityType<? extends JakVehicle> type,Level level,Model model) {
@@ -120,6 +177,17 @@ public final class JakVehicle extends Entity {
         if(level().isClientSide()&&FRAME.equals(key)&&!entityData.get(FRAME).isEmpty()){
             previousFrame=currentFrame;
             currentFrame=JsonParser.parseString(entityData.get(FRAME)).getAsJsonObject();
+            long now=System.nanoTime();
+            long tick=currentFrame.has("serverTick")?currentFrame.get("serverTick").getAsLong():tickCount;
+            if(displayFrames.isEmpty()||tick<=displayFrames.getLast().tick){
+                displayFrames.clear();displayClock=tick-2;displayTime=now;displayInterval=50_000_000;
+            }else{
+                double interval=(now-frameReceived)/(double)(tick-displayFrames.getLast().tick);
+                displayInterval+=(Math.clamp(interval,1_000_000,250_000_000)-displayInterval)*.1;
+            }
+            displayFrames.addLast(new DisplayFrame(tick,currentFrame));
+            while(displayFrames.size()>8)displayFrames.removeFirst();
+            frameReceived=now;
             seat=JakPlayers.vector(currentFrame.getAsJsonArray("seat"));
             boardingProgress=currentFrame.get("boardingProgress").getAsFloat();
             boardingFrom=currentFrame.has("boardingFrom")?JakPlayers.vector(currentFrame.getAsJsonArray("boardingFrom")):null;
@@ -161,6 +229,8 @@ public final class JakVehicle extends Entity {
             point=boardingFrom.lerp(point,t*t*(3-2*t)).add(0,Math.sin(t*Math.PI)*.24,0);
         }
         move.accept(passenger,point.x,point.y,point.z);
+        if(passenger instanceof ServerPlayer player&&!player.getLastSectionPos().equals(net.minecraft.core.SectionPos.of(player)))
+            player.level().getChunkSource().move(player);
     }
     @Override public Vec3 getDismountLocationForPassenger(LivingEntity passenger) {
         Vec3 side=Vec3.directionFromRotation(0,getYRot()+90).scale(model.length*.45);
@@ -194,6 +264,12 @@ public final class JakVehicle extends Entity {
         boardingProgress=boardingFrom==null?1:Math.clamp((server.getGameTime()-boardingAt)/11f,0,1);
         if(rider==null&&tickCount>20&&velocity.lengthSqr()<.00001&&tickCount%10!=0
             &&(!model.hover()||currentFrame==null||currentFrame.get("lamps").getAsFloat()<.01f))return;
+        // A FULL collision chunk is not necessarily ready to tick/retain
+        // entities. Do not move the hull into a section that can unload it.
+        var ahead=getBoundingBox().expandTowards(velocity.scale(.05)).inflate(1);
+        for(int cx=(int)Math.floor(ahead.minX)>>4;cx<=((int)Math.floor(ahead.maxX)>>4);cx++)
+            for(int cz=(int)Math.floor(ahead.minZ)>>4;cz<=((int)Math.floor(ahead.maxZ)>>4);cz++)
+                if(!server.isPositionEntityTicking(new BlockPos(cx<<4,blockPosition().getY(),cz<<4)))return;
         try {
             if(handle==0){
                 nativePosition=position();
@@ -247,6 +323,8 @@ public final class JakVehicle extends Entity {
             frame.add("gunEffects",effects);
             frame.add("grenades",shots);
             frame.add("seat",jsonVector(seat));
+            frame.add("worldPosition",jsonVector(nativePosition));
+            frame.addProperty("serverTick",server.getGameTime());
             frame.addProperty("boardingProgress",boardingProgress);
             frame.addProperty("boarding",boardingProgress<1?boardingProgress*.55f:-1);
             if(boardingProgress<1)frame.add("boardingFrom",jsonVector(boardingFrom));

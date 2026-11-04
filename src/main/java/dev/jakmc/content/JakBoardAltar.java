@@ -55,7 +55,7 @@ public final class JakBoardAltar extends JakAuthoredBlock.Fixed implements Entit
         if(!(player instanceof ServerPlayer server)||!level.mayInteract(player,at)
             ||!(level.getBlockEntity(at) instanceof Display display))return InteractionResult.FAIL;
         ItemStack equipped=server.getAttachedOrCreate(JakData.BOARD);
-        if(occupied&&!equipped.isEmpty()||!occupied&&(!equipped.is(JakItems.BOARD)||JakPlayers.onBoard(server)))return InteractionResult.FAIL;
+        if(JakPlayers.onBoard(server)||!occupied&&!equipped.is(JakItems.BOARD))return InteractionResult.FAIL;
 
         ItemStack transfer=occupied?display.board().copy():equipped.copy();
         JakBoardAltar next=occupied?empty:filled;
@@ -66,6 +66,9 @@ public final class JakBoardAltar extends JakAuthoredBlock.Fixed implements Entit
         }
         if(occupied){
             server.setAttached(JakData.BOARD,transfer);
+            if(!equipped.isEmpty()){
+                var old=equipped.copy();if(!server.getInventory().add(old))server.spawnAtLocation(server.level(),old);
+            }
             JakPlayers.requestAltarMount(server);
         }else{
             if(level.getBlockEntity(at) instanceof Display newDisplay){

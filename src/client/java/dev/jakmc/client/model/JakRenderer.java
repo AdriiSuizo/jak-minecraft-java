@@ -107,7 +107,7 @@ public final class JakRenderer {
 
     public static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
                                  net.minecraft.client.renderer.state.level.CameraRenderState camera){
-        var pose=JakPoses.get(state.id);
+        var pose=JakPoses.rendered(state.id);
         var client=Minecraft.getInstance();if(client.level==null)return false;
         var actor=client.level.getEntity(state.id);
         if(actor==null||!actor.getAttachedOrCreate(JakData.ENABLED))return false;
@@ -127,7 +127,7 @@ public final class JakRenderer {
         var ride=pose.raw().get("ride");
         boolean mounted=ride!=null&&ride.isJsonObject();
         stack.pushPose();
-        float elapsed=Math.clamp((System.nanoTime()-pose.received())/1e9f,0,.05f);
+        float elapsed=JakPoses.elapsed(pose);
         var boardFrame=pose.boardAt(elapsed);
         float shownYaw=flight!=null?pose.yaw():pose.yawAt(elapsed);
         if(boardFrame==null)stack.rotateDegrees(Axis.YP,-shownYaw);
@@ -275,7 +275,7 @@ public final class JakRenderer {
             board.submit(board.poseAtTime(clip,age),stack,collector,state.lightCoords);
             stack.popPose();
         }
-        if(!pose.board()&&!mounted&&flight==null&&!climbing){hand(state,true,skeleton,stack,collector);hand(state,false,skeleton,stack,collector);}
+        if(!pose.board()&&!mounted&&flight==null&&!climbing){hand(state,true,skeleton,stack,collector,camera.pos);hand(state,false,skeleton,stack,collector,camera.pos);}
         stack.popPose();return true;
     }
     private record Sleeping(GltfModel.Posed jak,GltfModel.Posed daxter,Matrix4f bed,Matrix4f shoulder,float heading){}
@@ -332,15 +332,17 @@ public final class JakRenderer {
 
     private static void submitCarRider(Entity actor,AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
         net.minecraft.world.phys.Vec3 camera,dev.jakmc.entity.JakVehicle car,float partial){
+        partial=car.presentationFraction();
         load();
         loadPilot();
-        var before=car.previousFrame();
-        var frame=car.frame();
+        var before=car.presentationBefore();
+        var frame=car.presentationAfter();
         var controls=frame.deepCopy();
+        for(String key:new String[]{"lean","throttle","brake"})if(before.has(key)&&frame.has(key))controls.addProperty(key,net.minecraft.util.Mth.lerp(partial,before.get(key).getAsFloat(),frame.get(key).getAsFloat()));
         controls.addProperty("steering",net.minecraft.util.Mth.lerp(partial,before.get("steer").getAsFloat(),frame.get("steer").getAsFloat()));
         float age=frame.get("boarding").getAsFloat();
-        var skeleton=body.jakForm(carPilotPose(body,"jakb",controls,age<0?0:partial/20,car.model),false,0);
-        var passenger=carPilotPose(daxter,"daxter",controls,age<0?0:partial/20,car.model);
+        var skeleton=body.jakForm(carPilotPose(body,"jakb",controls,age<0?0:(partial-1)/20,car.model),false,0);
+        var passenger=carPilotPose(daxter,"daxter",controls,age<0?0:(partial-1)/20,car.model);
         var attitude=JakVehicleRenderer.rotation(before).slerp(JakVehicleRenderer.rotation(frame),partial);
         stack.pushPose();
         stack.mulPose(new Matrix4f().rotation(attitude));
@@ -483,7 +485,7 @@ public final class JakRenderer {
         shield.submitLightEffect(shield.poseAtTime(clip,frameTime),stack,collector,LightFormTexture.Form.SHIELD,fraction);
         stack.popPose();
     }
-    private static void hand(AvatarRenderState state,boolean right,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector){
+    private static void hand(AvatarRenderState state,boolean right,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector,net.minecraft.world.phys.Vec3 camera){
         var held=right?state.rightHandItemState:state.leftHandItemState;
         var item=right?state.rightHandItemStack:state.leftHandItemStack;
         if(item.isEmpty())return;
@@ -494,10 +496,24 @@ public final class JakRenderer {
         stack.mulPose(rigid(joint));
         if(kind>=0){
             String color=new String[]{"red","yellow","blue","dark"}[kind/3];String clip="gun-idle-"+color+(kind%3==0?"":String.valueOf(kind%3+1));float age=0;
-            var source=JakPoses.get(state.id);var g=source.raw().getAsJsonObject("gun");
-            if(g!=null){float elapsed=Math.clamp((System.nanoTime()-source.received())/1e9f,0,.05f),fire=g.get("fireAge").getAsFloat()+elapsed;
+            var source=JakPoses.rendered(state.id);var g=source.raw().getAsJsonObject("gun");
+            if(g!=null){float elapsed=JakPoses.elapsed(source),fire=g.get("fireAge").getAsFloat()+elapsed;
                 if(fire>=0&&fire<.45f){clip=FIRE_GUN[kind];age=fire;}else age=(g.get("time").getAsFloat()+elapsed)%Math.max(.001f,gun.duration(clip));}
-            gun.submit(gun.poseAtTime(clip,age),stack,collector,state.lightCoords);
+            var gunPose=gun.poseAtTime(clip,age);
+            gun.submit(gunPose,stack,collector,state.lightCoords);
+            if(right&&gun.hasJoint("muzzle")){
+                var muzzle=gun.joint(gunPose,"muzzle").getTranslation(new Vector3f());
+                var laser=gun.hasJoint("laser")?gun.joint(gunPose,"laser").getTranslation(new Vector3f()):new Vector3f(muzzle);
+                stack.last().pose().transformPosition(muzzle);stack.last().pose().transformPosition(laser);
+                var worldMuzzle=camera.add(muzzle.x,muzzle.y,muzzle.z);
+                var worldLaser=camera.add(laser.x,laser.y,laser.z);
+                var direction=dev.jakmc.player.JakPlayers.vector(g.getAsJsonArray("direction"));
+                var client=Minecraft.getInstance();var entity=client.level.getEntity(state.id);
+                var end=worldLaser.add(direction.scale(40*.64));
+                var hit=client.level.clip(new net.minecraft.world.level.ClipContext(worldLaser,end,
+                    net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,entity));
+                JakEffects.gunSocket(state.id,worldMuzzle,worldLaser,hit.getLocation());
+            }
         }
         else if(item.is(JakItems.SKULL_GEM)){stack.scale(1/bodyScale,1/bodyScale,1/bodyScale);SkullGemRenderer.held(stack,collector,state.lightCoords);}
         else {

@@ -4,7 +4,7 @@ import java.util.ArrayDeque;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 
-/** Server snapshots sampled by a continuous render clock with a two-tick jitter buffer. */
+/** Server snapshots sampled by a continuous render clock with a bounded packet-jitter interval. */
 final class JakMotion {
     record Frame(Vec3 position,Vec3 offset,Quaternionf rotation) {
         Frame between(Frame next,double fraction){
@@ -52,6 +52,8 @@ final class JakMotion {
         }
         return latest.frame;
     }
+
+    double tick(){return clock;}
 
     void clear(){samples.clear();}
 }

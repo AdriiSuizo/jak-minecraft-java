@@ -112,7 +112,9 @@ final class JakChannels {
             } else if (nextPush != pushTick || !java.util.Objects.equals(program,nextProgram)) {
                 from = last;
                 fromPush = nextPush != pushTick;
-                duration = fromPush ? input.get("pushDuration").getAsFloat() : .1f;
+                // Only the source's push channel may delay an action. A host-side
+                // program switch is not another 100 ms animation transition.
+                duration = fromPush ? input.get("pushDuration").getAsFloat() : 0;
                 programStarted = pose.received();
             }
             session = newSession;

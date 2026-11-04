@@ -267,7 +267,10 @@ final class TrackScene {
             }
             report.addProperty("source_halfpipe_triangles",curved>0);
             report.addProperty("source_rail_contact",metalRail>0);
-            report.addProperty("source_rail_line",new MinecraftCollision.Query(level,p,entry).rails(Vec3.atCenterOf(railAnchor)).size()==1);
+            var queriedRails=new MinecraftCollision.Query(level,p,entry).rails(Vec3.atCenterOf(railAnchor));
+            var ownRail=level.getBlockEntity(railAnchor);
+            report.addProperty("source_rail_line",ownRail instanceof dev.jakmc.content.JakAssemblies.RailAnchor anchor
+                &&anchor.lines().size()==1&&queriedRails.containsAll(anchor.lines()));
             Vec3 center=Vec3.atBottomCenterOf(base).add(4,1.4,2);
             Vec3 eye=center.add(9,6,-10);
             client.execute(()->{

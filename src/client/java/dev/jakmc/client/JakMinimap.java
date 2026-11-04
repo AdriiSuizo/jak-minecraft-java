@@ -36,34 +36,42 @@ public final class JakMinimap {
     private static ClientLevel world;
     private static DynamicTexture texture;
     private static int texX,texZ,scanX,scanZ,index,age;
-    private static boolean ready,scanning,artChecked,hasRing,hasArrow;
+    private static boolean ready,scanning,artChecked,hasRing,hasArrow,terrainVisible;
     private static float presentedYaw;
+    private static double lastX=Double.NaN,lastZ=Double.NaN,scanSpeed;
     static void initialize(){
         ClientTickEvents.END_CLIENT_TICK.register(JakMinimap::tick);
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->client.execute(()->clear(client)));
     }
     private static void clear(Minecraft client){
         if(texture!=null){client.getTextureManager().release(MAP);texture=null;}
-        world=null;ready=scanning=false;
+        world=null;ready=scanning=terrainVisible=false;lastX=lastZ=Double.NaN;scanSpeed=0;
     }
     private static void tick(Minecraft client){
         if(client.level!=world){clear(client);world=client.level;}
         var player=client.player;
         if(world==null||!world.dimension().equals(Level.OVERWORLD)||player==null||!player.getAttachedOrCreate(JakData.ENABLED)||client.isPaused())return;
         int x=player.getBlockX(),z=player.getBlockZ();
+        double distance=Double.isNaN(lastX)?0:Math.hypot(player.getX()-lastX,player.getZ()-lastZ);
+        lastX=player.getX();lastZ=player.getZ();
+        // A high-speed craft can cross the old cache before a fixed 19-tick
+        // scan finishes. Bound the work, but finish within its crop margin.
+        scanSpeed=Math.max(Math.min(distance,16),scanSpeed*.85);
+        int budget=Mth.clamp((int)Math.ceil(scanSpeed*SIDE*SIDE/12),SCAN_BUDGET,4096);
+        int refreshDistance=scanSpeed>1?16:32;
         if(texture==null){
             texture=new DynamicTexture("Jak terrain minimap",SIDE,SIDE,true);
             client.getTextureManager().register(MAP,texture);
         }
         int half=SIDE*SAMPLE/2;
         if(scanning&&(Math.abs(x-scanX-half)>72||Math.abs(z-scanZ-half)>72))scanning=false;
-        if(!scanning&&(!ready||Math.abs(x-texX-half)>32||Math.abs(z-texZ-half)>32||++age>=120)){
+        if(!scanning&&(!ready||Math.abs(x-texX-half)>refreshDistance||Math.abs(z-texZ-half)>refreshDistance||++age>=120)){
             scanX=(x&~15)-half;scanZ=(z&~15)-half;
             index=0;scanning=true;
         }
         if(!scanning)return;
         var pixels=texture.getPixels();
-        int end=Math.min(SIDE*SIDE,index+SCAN_BUDGET);
+        int end=Math.min(SIDE*SIDE,index+budget);
         for(;index<end;index++){
             int col=index%SIDE,row=index/SIDE;
             pixels.setPixel(col,row,sample(scanX+col*SAMPLE,scanZ+row*SAMPLE));
@@ -94,14 +102,17 @@ public final class JakMinimap {
         return color.calculateARGBColor(shade);
     }
     public static void draw(GuiGraphicsExtractor graphics,DeltaTracker delta){
+        terrainVisible=false;
         var client=Minecraft.getInstance();
         var player=client.player;
-        if(!ready||world!=client.level||player==null||client.gui.screen()!=null||!player.getAttachedOrCreate(JakData.ENABLED))return;
+        if(world==null||!world.dimension().equals(Level.OVERWORLD)||world!=client.level||player==null||client.gui.screen()!=null||!player.getAttachedOrCreate(JakData.ENABLED))return;
         float partial=delta.getGameTimeDeltaPartialTick(false);
         var at=JakPoses.presented();
+        if(player.getVehicle() instanceof dev.jakmc.entity.JakVehicle car)at=car.presentationRider();
         if(at==null)at=player.getPosition(partial);
         double centerX=(at.x-texX)/SAMPLE,centerZ=(at.z-texZ)/SAMPLE;
-        if(centerX<CROP*.5||centerX>SIDE-CROP*.5||centerZ<CROP*.5||centerZ>SIDE-CROP*.5)return;
+        boolean visible=ready&&centerX>=CROP*.5&&centerX<=SIDE-CROP*.5&&centerZ>=CROP*.5&&centerZ<=SIDE-CROP*.5;
+        terrainVisible=visible;
         int r=(int)Math.round(centerX*255/SIDE),g=(int)Math.round(centerZ*255/SIDE),b=Math.round(CROP*.5f*255/SIDE);
         float u=r*SIDE/255f-CROP*.5f,v=g*SIDE/255f-CROP*.5f;
         float yaw=client.gameRenderer.mainCamera().yRot();
@@ -110,7 +121,7 @@ public final class JakMinimap {
         graphics.nextStratum();
         var pose=graphics.pose();
         pose.pushMatrix().translate(mid,mid).rotate((float)Math.toRadians(180-yaw));
-        graphics.blit(ROUND,MAP,-WIDTH/2,-WIDTH/2,u,v,WIDTH,WIDTH,CROP,CROP,SIDE,SIDE,0xff000000|r<<16|g<<8|b);
+        if(visible)graphics.blit(ROUND,MAP,-WIDTH/2,-WIDTH/2,u,v,WIDTH,WIDTH,CROP,CROP,SIDE,SIDE,0xff000000|r<<16|g<<8|b);
         pose.popMatrix();
         if(!artChecked)loadArt(client);
         if(hasRing)graphics.blit(RenderPipelines.GUI_TEXTURED,RING,MARGIN,MARGIN,0,0,WIDTH,WIDTH,128,128,128,128);
@@ -146,6 +157,7 @@ public final class JakMinimap {
         }
     }
     static boolean ready(){return ready;}
+    static boolean terrainVisible(){return terrainVisible;}
     static float presentedYaw(){return presentedYaw;}
     private JakMinimap(){}
 }

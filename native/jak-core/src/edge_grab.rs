@@ -87,7 +87,10 @@ impl Jak {
         // High enough over the ground below him to hang from.
         let reach = self.edge_grab_min_height + meters(0.3);
         if let Some(floor) = Self::probe(world, feet + Vec3::Y * meters(0.2), Vec3::new(0.0, -reach, 0.0), meters(0.2)) {
-            let floor_y = feet.y + meters(0.2) - reach * floor.u;
+            // A swept sphere stops with its centre above the floor. The actual
+            // floor is its contact point; using the centre rejects exact-height
+            // Minecraft ledges by the probe's own radius.
+            let floor_y = floor.intersect.y;
             if top_y - floor_y < self.edge_grab_min_height {
                 return None;
             }
@@ -253,6 +256,32 @@ impl Jak {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Blocks(Vec<crate::collide::Tri>);
+    impl CollideWorld for Blocks {
+        fn fill(&mut self,_min:Vec3,_max:Vec3,out:&mut Vec<crate::collide::Tri>){out.extend_from_slice(&self.0);}
+    }
+    fn minecraft_ledge(height:f32)->Blocks{
+        use crate::collide::{Tri,Pat,PatMode};
+        let block=6400.;let mut triangles=Vec::new();
+        let mut quad=|v:[Vec3;4],mode|{
+            let pat=Pat{mode,..Default::default()};
+            triangles.push(Tri{v:[v[0],v[1],v[2]],pat});triangles.push(Tri{v:[v[0],v[2],v[3]],pat});
+        };
+        quad([Vec3::new(-4.,0.,-4.),Vec3::new(-4.,0.,4.),Vec3::new(4.,0.,4.),Vec3::new(4.,0.,-4.)].map(|v|v*block),PatMode::Ground);
+        quad([Vec3::new(-3.,0.,0.4),Vec3::new(-3.,height,0.4),Vec3::new(3.,height,0.4),Vec3::new(3.,0.,0.4)].map(|v|v*block),PatMode::Wall);
+        quad([Vec3::new(-3.,height,0.4),Vec3::new(-3.,height,4.),Vec3::new(3.,height,4.),Vec3::new(3.,height,0.4)].map(|v|v*block),PatMode::Ground);
+        Blocks(triangles)
+    }
+    #[test]
+    fn two_block_ledge_measures_actual_floor_not_probe_sphere_center(){
+        for (height,expected) in [(2.,true),(1.5,false)] {
+            let mut world=minecraft_ledge(height);
+            let jak=Jak::new(Vec3::new(0.,height*6400.-HANG,0.),0.);
+            let mut jak=jak;jak.edge_grab_min_height=2.*6400.;
+            assert_eq!(jak.find_ledge(&mut world).is_some(),expected,"ledge height {height}");
+        }
+    }
 
     /// A block's top edge along the axes: the block fills x 0..1 m, its top
     /// at 1 m, its face at x = 1 m looking +x. However the pose holds his

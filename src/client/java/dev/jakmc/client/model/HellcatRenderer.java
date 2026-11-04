@@ -85,7 +85,7 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
             orient.since=now;
         }
         orient.sample(now,state.attitude);
-        var pose=JakPoses.get(craft.pilotId());
+        var pose=JakPoses.rendered(craft.pilotId());
         if(pose!=null&&client.player!=null&&craft.pilotId()==client.player.getId()
             &&pose.raw().get("hellcat") instanceof com.google.gson.JsonObject channel
             &&channel.get("entity").getAsInt()==craft.getId()){

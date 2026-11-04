@@ -987,8 +987,10 @@ impl Jak {
         // A ceiling blocks the upper body, but cannot support its weight.
         // abs(surface_angle) above also admits a flat downward normal;
         // the edge probe can similarly clear `wall` for a ground material.
-        // Keep the real swept contact while excluding both from support.
-        if self.control.surface_angle < 0.0 {
+        // Keep the real swept contact while excluding both from support. The lower
+        // sphere still uses the source ledge/step probe; an upper-body wall
+        // contact must never become a floor underneath the feet.
+        if self.control.surface_angle < 0.0 || (sphere != 0 && hit.pat.mode == PatMode::Wall && self.control.poly_angle.abs() < 0.01) {
             wall = true;
             rf |= reaction::WALL;
         }

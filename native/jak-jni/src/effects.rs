@@ -91,7 +91,7 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  if let Some(haven)=HAVEN.get(){textures.extend(haven.textures());}
  if let Some(vents)=JAK1_VENTS.get(){textures.extend(vents.textures());}
  // Arc Wielder's lightning-new appearances also reference the original page.
- for name in ["level-default-sprite/pal-lightning","level-default-sprite/lightning-tile","level-default-sprite/glow-soft"] {if !textures.iter().any(|s|s==name){textures.push(name.into());}}
+ for name in ["level-default-sprite/pal-lightning","level-default-sprite/lightning-tile","level-default-sprite/glow-soft","level-default-sprite/gun-yellow-beam","level-default-sprite/gun-blue-beam"] {if !textures.iter().any(|s|s==name){textures.push(name.into());}}
  textures.sort();textures.dedup();TEXTURES.set(textures).map_err(|_|"texture configuration raced")?;
  LIBRARY.set(Arc::new(library)).map_err(|_|"particle configuration raced")?;Ok(())
 }
@@ -199,7 +199,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxDraw(mut env:JNIEnv,_:JClass,id:jlong,dt:f32,view:JByteBuffer,sprites:JByteBuffer,bolts:JByteBuffer)->jlong{
  let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||->Result<jlong,String>{
   let bytes=|b:&JByteBuffer|->Result<(*mut u8,usize),String>{Ok((env.get_direct_buffer_address(b).map_err(|e|e.to_string())?,env.get_direct_buffer_capacity(b).map_err(|e|e.to_string())?))};
-  let(v,n)=bytes(&view)?;if !matches!(n,44|56)||!dt.is_finite(){return Err("Invalid particle view".into());}
+  let(v,n)=bytes(&view)?;if !matches!(n,44|56|92)||!dt.is_finite(){return Err("Invalid particle view".into());}
   let view=unsafe{std::slice::from_raw_parts(v,n)};
   let(a,n)=bytes(&sprites)?;let(b,m)=bytes(&bolts)?;if n%44!=0||m%44!=0{return Err("Invalid particle draw buffers".into());}
   let out=unsafe{std::slice::from_raw_parts_mut(a,n)};let bolt_out=unsafe{std::slice::from_raw_parts_mut(b,m)};
@@ -230,9 +230,12 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
    // Effects keep aging after the authoritative producer disconnects/stops.
    if !stepped{f.particles.step(1./60.);f.weapons.age(1./60.);}
   }
-  if view.len()==56 {
+  if view.len()>=56 {
    let board=vec(view,44)*BLOCK;
    if board.is_finite(){f.particles.follow_board_joint(board);}
+  }
+  if view.len()>=92 {
+   let muzzle=vec(view,56)*BLOCK;if muzzle.is_finite(){f.weapons.follow_muzzle(muzzle);}
   }
   let mut count=0;
   let eye=vec(view,0)*BLOCK;let forward=vec(view,12).normalize_or(Vec3::NEG_Z);let up=vec(view,24).normalize_or(Vec3::Y);let right=forward.cross(up).normalize_or(Vec3::X);
@@ -258,6 +261,22 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
    for i in 0..4{write_vertex(out,&mut count,corners[i]/BLOCK,rgba,uv[i],tex,blend)?;}
   }
   if f.decor.is_some(){return Ok(count as jlong);}
+  for (name,quad) in f.weapons.beam_quads(eye){
+   if(count+4)*44>out.len(){break;}
+   let Some(tex)=texture(&format!("level-default-sprite/{name}"))else{continue;};
+   for v in quad{write_vertex(out,&mut count,v.pos/BLOCK,v.rgba,v.st,tex,2)?;}
+  }
+  // Original gun-part 207: red lasersmoke, 0.075 m wide, 40 m maximum.
+  if view.len()>=92 {
+   let from=vec(view,68)*BLOCK;let end=vec(view,80)*BLOCK;
+   if from.is_finite()&&end.is_finite(){
+    let dir=end-from;let side=dir.cross(eye-from).normalize_or_zero()*jak_core::METER*0.0375;
+    if let Some(tex)=texture("level-default-sprite/lasersmoke-00") {
+     let corners=[from-side,from+side,end+side,end-side];let uv=[[0.,1.],[1.,1.],[1.,0.],[0.,0.]];
+     if(count+4)*44<=out.len(){for i in 0..4{write_vertex(out,&mut count,corners[i]/BLOCK,[1.,0.,0.,0.08],uv[i],tex,2)?;}}
+    }
+   }
+  }
   let tex=texture("level-default-sprite/glow-soft").ok_or("Missing gravity ring texture")?;
   for quad in f.weapons.ring_quads(){if(count+4)*44>out.len(){break;}for v in quad{write_vertex(out,&mut count,v.pos/BLOCK,[0.,0.,0.,v.rgba[3]/255.],v.st,tex,0)?;}}
   let mut vertices=0;
@@ -296,6 +315,9 @@ fn fit_projector(sprite:&mut Sprite,scale:f32,basis:Mat3){
   let right=basis*if local.x<0.{-local}else{local};
   sprite.stretch=Some(right);
   sprite.flat=Some(right.cross(Vec3::Y));
+  // The source flips UVs as its animated basis rolls over. Our upright basis
+  // already resolves that roll; retaining those flips turns the emblem upside down.
+  sprite.corner&=!48;
  }else{
   sprite.stretch=sprite.stretch.map(|axis|basis*axis);
   sprite.flat=sprite.flat.map(|axis|basis*axis);
@@ -321,13 +343,14 @@ mod tests {
    rgba:[128.;4],
    texture:"jak2:ctywide-sprite/ticker-a".into(),
    blend:jak_core::particles::Blend::Normal,
-   corner:0,
+   corner:48,
    stretch:Some(Vec3::NEG_X),
    flat:None,
    screen_aligned:false,
   };
   fit_projector(&mut glyph,Decor::Projector.scale(),yaw);
   assert!((glyph.pos.y/BLOCK-0.12).abs()<1e-5);
+  assert_eq!(glyph.corner&48,0,"upright glyph must not retain the source rolling UV flip");
   assert!(glyph.stretch.unwrap().dot(yaw*Vec3::X)>0.999);
   assert!(glyph.flat.unwrap().cross(glyph.stretch.unwrap()).dot(Vec3::Y)>0.999);
   let p=glyph.pos/BLOCK;

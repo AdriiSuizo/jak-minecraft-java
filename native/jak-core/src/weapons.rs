@@ -162,7 +162,7 @@ impl GunKind {
 
 /// A beam for the host to draw: a line from `tail` to `head`, `width` in
 /// meters.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Beam {
     pub head: Vec3,
     pub tail: Vec3,

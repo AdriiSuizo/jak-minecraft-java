@@ -29,12 +29,13 @@ public final class WeaponScene {
     p.level().setBlock(base.offset(x,-1,z),net.minecraft.world.level.block.Blocks.SMOOTH_STONE.defaultBlockState(),3);
     for(int y=0;y<=8;y++)p.level().setBlock(base.offset(x,y,z),net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
    }
+   for(int x:new int[]{-2,2})for(int z:new int[]{-2,2})p.level().setBlock(base.offset(x,-1,z),net.minecraft.world.level.block.Blocks.SEA_LANTERN.defaultBlockState(),3);
    for(int x=-4;x<=4;x++)for(int y=0;y<=5;y++)p.level().setBlock(base.offset(x,y,12),net.minecraft.world.level.block.Blocks.STONE_BRICKS.defaultBlockState(),3);
    p.setPos(origin);p.setYRot(0);p.setXRot(0);p.setGameMode(net.minecraft.world.level.GameType.CREATIVE);p.setAttached(JakData.ENABLED,true);p.setAttached(JakData.BOARD,new ItemStack(JakItems.BOARD));JakPlayers.controlForProbe(p,true);
   });
  }
  public static void startRings(Minecraft c){start(c);gun=10;end=11;output=c.gameDirectory.toPath().resolve("jakmc/evidence/rings");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}}
- public static Vec3 cameraPosition(){return running?origin.add(8,6,-8):null;}
+ public static Vec3 cameraPosition(){return running?origin.add(4.6,2.6,-4.6):null;}
  private static void tick(Minecraft c){
   if(!running)return;if(c.player==null||c.getSingleplayerServer()==null){running=false;c.stop();return;}
   if(++deadline>1400){finish(c,"deadline");return;}
@@ -42,7 +43,7 @@ public final class WeaponScene {
   int t=++tick;var uuid=c.player.getUUID();int current=gun;
   if(t==0){row=new JsonObject();row.addProperty("mode",JakItems.GUNS.get(gun).toString());row.addProperty("effect_vertices",0);row.addProperty("lightning_vertices",0);row.addProperty("dark_ring_vertices",0);row.addProperty("model_draws",0);row.addProperty("interpolated_models",0);soundStart=JakSounds.played;
    c.gui.hud.getChat().clearMessages(false);
-   c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.setYRot(0);p.setXRot(0);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(current)));JakPlayers.probeInput(p,0,0,0);}});
+   c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){JakPlayers.resetForProbe(p);p.setYRot(0);p.setXRot(0);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(current)));JakPlayers.probeInput(p,0,0,0);}});
   }
   if(t>=0){peak("effect_vertices",JakEffects.drawnVertices);peak("lightning_vertices",JakEffects.drawnLightningVertices);peak("dark_ring_vertices",JakEffects.drawnDarkVertices);peak("model_draws",JakShotRenderer.drawnModels);peak("interpolated_models",JakShotRenderer.interpolatedModels);}
   if(t==14)c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null)JakPlayers.probeInput(p,64,64,0);});

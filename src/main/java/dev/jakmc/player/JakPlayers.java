@@ -22,6 +22,10 @@ public final class JakPlayers {
     public static void controlForProbe(ServerPlayer player,boolean controlled){if(controlled){CONTROLLED.add(player.getUUID());probeInput(player,0,0,0);}else{CONTROLLED.remove(player.getUUID());PROBE_INPUT.remove(player.getUUID());}}
     public static void probeInput(ServerPlayer p,int held,int pressed,float forward){PROBE_INPUT.put(p.getUUID(),new JakPackets.Input(0,held,pressed,0,forward,0,0,p.getYRot(),p.getXRot(),0,0));}
     private static final Map<UUID,Session> LIVE=new HashMap<>();
+    public static void resetForProbe(ServerPlayer player){
+        if(!CONTROLLED.contains(player.getUUID()))throw new IllegalStateException("Only a controlled development fixture can reset its native session");
+        var old=LIVE.remove(player.getUUID());if(old!=null)old.close();
+    }
     private static final int BOARD_BUTTON=1<<7;
     private static final net.minecraft.resources.Identifier VANILLA_SPRINT=
         net.minecraft.resources.Identifier.withDefaultNamespace("sprinting");

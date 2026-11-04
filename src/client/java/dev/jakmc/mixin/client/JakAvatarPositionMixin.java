@@ -14,7 +14,7 @@ abstract class JakAvatarPositionMixin {
     @Inject(method="extractRenderState",at=@At("TAIL"))
     private void jakmc$present(Entity entity,EntityRenderState state,float partial,CallbackInfo ci){
         if(entity!=Minecraft.getInstance().player)return;
-        var position=JakPoses.presented();
+        var position=entity.getVehicle() instanceof dev.jakmc.entity.JakVehicle car?car.presentationRider():JakPoses.presented();
         if(position!=null){
             state.x=position.x;
             state.y=position.y;

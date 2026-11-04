@@ -537,7 +537,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    "lift":j.control.draw_offset_y/BLOCK,"ladderWeight":j.ladder_pose_weight()});
   let transition=json!({"stateAge":state_age,"pushTick":j.push.tick,
     "pushAge":(j.time-j.push.tick) as f32/300.,"pushDuration":j.push.ticks as f32/300.});
-  let gun=json!({"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
+  let gun=json!({"direction":j.gun.fire_dir.to_array(),"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
   let wings=j.lightjak.wings.filter(|w|w.shown).map(|w|{
    let rate=before_wings.filter(|before|before.anim==w.chan.anim&&w.chan.frame>=before.frame)
        .map_or(0.,|before|((w.chan.frame-before.frame)/(steps as f32/60.)).min(240.));

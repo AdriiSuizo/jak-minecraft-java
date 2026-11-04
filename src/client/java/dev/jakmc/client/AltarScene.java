@@ -33,6 +33,7 @@ final class AltarScene {
     private static JsonObject checks;
     private static int ticks,opened,closed;
     private static boolean deployed;
+    private static net.minecraft.client.CameraType perspective;
     private static Runnable take,press,release,returnBoard,openGate,cleanup;
 
     static InputScene.CameraView camera(){return view;}
@@ -44,7 +45,7 @@ final class AltarScene {
             var pose=JakPoses.get(client.player.getId());
             if(ticks>=32&&pose!=null&&pose.board())deployed=true;
             var server=client.getSingleplayerServer();
-            if(ticks==26)
+            if(ticks==40)
                 Screenshot.grab(client.gameDirectory,"jak-altar.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
             if(ticks==32)server.execute(take);
             if(ticks==74)server.execute(press);
@@ -54,7 +55,7 @@ final class AltarScene {
             if(ticks==106)Screenshot.grab(client.gameDirectory,"jak-gate-closed.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
             if(ticks==108)server.execute(openGate);
             if(ticks==120)Screenshot.grab(client.gameDirectory,"jak-gate-open.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
-            if(ticks<125||!checks.has("returned_to_altar")||!checks.has("gate_raised"))return;
+            if(ticks<155||!checks.has("returned_to_altar")||!checks.has("gate_raised"))return;
             checks.addProperty("native_board_deployed",deployed);
             checks.addProperty("original_board_open",BoardAltarRenderer.openingFrames>opened);
             checks.addProperty("original_board_close",BoardAltarRenderer.closingFrames>closed);
@@ -69,6 +70,7 @@ final class AltarScene {
             }catch(IOException e){throw new UncheckedIOException(e);}
             checks=null;
             view=null;
+            client.options.setCameraType(perspective);
             server.execute(cleanup);
             client.stop();
         });
@@ -78,6 +80,9 @@ final class AltarScene {
         var server=client.getSingleplayerServer();
         if(server==null||client.player==null)throw new IllegalStateException("Open the development world");
         ticks=0;
+        perspective=client.options.getCameraType();
+        client.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_BACK);
+        client.gui.hud.getChat().clearMessages(false);
         opened=BoardAltarRenderer.openingFrames;
         closed=BoardAltarRenderer.closingFrames;
         deployed=false;
@@ -88,6 +93,9 @@ final class AltarScene {
             var level=p.level();
             var before=p.position();
             var mode=p.gameMode.getGameModeForPlayer();
+            var inventory=new java.util.ArrayList<ItemStack>();
+            for(int i=0;i<p.getInventory().getContainerSize();i++)inventory.add(p.getInventory().getItem(i).copy());
+            p.getInventory().clearContent();
             var hand=p.getMainHandItem().copy();
             var offhand=p.getOffhandItem().copy();
             var board=p.getAttachedOrCreate(JakData.BOARD).copy();
@@ -100,7 +108,7 @@ final class AltarScene {
             var pos=floor.east(2).above();
             var snapshot=new LinkedHashMap<BlockPos,BlockState>();
             var tile=JakBlocks.BLOCKS.get("palacio_suelo_metal");
-            for(int x=-3;x<=4;x++)for(int z=-3;z<=3;z++){
+            for(int x=-3;x<=10;x++)for(int z=-3;z<=8;z++){
                 var at=floor.offset(x,0,z);
                 snapshot.put(at,level.getBlockState(at));
                 level.setBlockAndUpdate(at,tile.defaultBlockState());
@@ -153,12 +161,46 @@ final class AltarScene {
                     report.addProperty("gate_redstone",redstoneOpened&&redstoneClosed);
                 });
             };
-            report.addProperty("refuses_second_board",!interact(p,pos)&&level.getBlockState(pos).is(filled));
-            p.setAttached(JakData.BOARD,ItemStack.EMPTY);
+            var probeStart=floor.east(7).above();
+            var doorway=probeStart.south(3);
+            var door=JakBlocks.BLOCKS.get("haven_puerta_alta");
+            if(door==null)door=Blocks.OAK_DOOR;
+            for(int x=-1;x<=1;x++)for(int h=0;h<6;h++){
+                var cell=doorway.offset(x,h,0);snapshot.put(cell,level.getBlockState(cell));
+                level.setBlockAndUpdate(cell,Blocks.STONE.defaultBlockState());
+            }
+            var lower=door.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,Direction.SOUTH)
+                .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF,net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER);
+            var upper=lower.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF,net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER);
+            level.setBlockAndUpdate(doorway,lower);level.setBlockAndUpdate(doorway.above(),upper);
+            double closedZ=walkProbe(p,Vec3.atBottomCenterOf(probeStart),false);
+            level.setBlockAndUpdate(doorway,lower.setValue(BlockStateProperties.OPEN,true));
+            level.setBlockAndUpdate(doorway.above(),upper.setValue(BlockStateProperties.OPEN,true));
+            double openZ=walkProbe(p,Vec3.atBottomCenterOf(probeStart),false);
+            report.addProperty("native_closed_door_blocks",closedZ<3.1);
+            report.addProperty("native_open_door_passes",openZ>4);
+            // No floor at this height: pressing the vertical wall must not ground Jak.
+            level.setBlockAndUpdate(doorway,Blocks.STONE.defaultBlockState());
+            level.setBlockAndUpdate(doorway.above(),Blocks.STONE.defaultBlockState());
+            double fall=walkProbe(p,Vec3.atBottomCenterOf(probeStart).add(0,3,0),true);
+            report.addProperty("vertical_wall_cannot_support_feet",fall<-2.8);
+            dev.jakmc.JakMod.LOG.info("Native door audit closedZ={}, openZ={}, wallFallY={}",closedZ,openZ,fall);
+            for(int x=-1;x<=1;x++)for(int h=2;h<6;h++)level.setBlockAndUpdate(doorway.offset(x,h,0),Blocks.AIR.defaultBlockState());
+            var ledge=ledgeProbe(p,Vec3.atBottomCenterOf(probeStart));
+            report.addProperty("two_block_ledge_caught",ledge[0]);
+            report.addProperty("two_block_ledge_climbed",ledge[1]);
+            int ownedBefore=p.getInventory().countItem(JakItems.BOARD);
             take=()->{
+                int justBefore=p.getInventory().countItem(JakItems.BOARD);
+                boolean hadBoard=p.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD);
                 boolean used=interact(p,pos);
+                dev.jakmc.JakMod.LOG.info("Altar transfer audit: inventory {} -> {}, attached before={}, captured={}",justBefore,p.getInventory().countItem(JakItems.BOARD),hadBoard,ownedBefore);
                 boolean took=used&&level.getBlockState(pos).is(empty)&&p.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD);
-                client.execute(()->report.addProperty("equipped_directly",took));
+                boolean preserved=hadBoard&&p.getInventory().countItem(JakItems.BOARD)==justBefore+1;
+                client.execute(()->{
+                    report.addProperty("equipped_directly",took);
+                    report.addProperty("existing_board_preserved",preserved);
+                });
             };
             press=()->JakPlayers.probeInput(p,BOARD_BUTTON,BOARD_BUTTON,0);
             release=()->JakPlayers.probeInput(p,0,0,0);
@@ -177,7 +219,7 @@ final class AltarScene {
                 JakPlayers.controlForProbe(p,false);
                 p.setAttached(JakData.ENABLED,enabled);
                 p.setAttached(JakData.BOARD,board);
-                p.setItemInHand(InteractionHand.MAIN_HAND,hand);
+                for(int i=0;i<inventory.size();i++)p.getInventory().setItem(i,inventory.get(i));
                 p.setGameMode(mode);
                 p.teleportTo(before.x,before.y,before.z);
             };
@@ -191,6 +233,45 @@ final class AltarScene {
                 checks=report;
             });
         });
+    }
+
+    private static boolean[] ledgeProbe(ServerPlayer player,Vec3 origin){
+        long handle=dev.jakmc.nativebridge.NativeJak.create(0);boolean caught=false,climbed=false;int grabbed=-1;
+        try{
+            dev.jakmc.nativebridge.NativeJak.bindWorld(handle,new dev.jakmc.nativebridge.MinecraftCollision.Query(player.level(),player,origin));
+            var input=dev.jakmc.nativebridge.NativeJak.buffer(64);
+            input.putFloat(44,1).putInt(48,32).putInt(60,-1);
+            var empty=dev.jakmc.nativebridge.NativeJak.buffer(0);
+            // Start falling beside the real two-block lip, with the hands just
+            // above it. This tests collision/ledge transfer without depending
+            // on an arbitrary running-jump button schedule.
+            dev.jakmc.nativebridge.NativeJak.relocate(handle,0,1.35f,2.18f,0,-.5f,0);
+            var states=new java.util.TreeSet<String>();
+            for(int i=0;i<120;i++){
+                boolean jump=grabbed>=0&&i==grabbed+8;
+                input.putInt(0,jump?1:0).putInt(4,jump?1:0).putFloat(12,i>=10?1:0);
+                var pose=com.google.gson.JsonParser.parseString(dev.jakmc.nativebridge.NativeJak.step(handle,input,empty,empty,3)).getAsJsonObject();
+                String state=pose.get("state").getAsString();states.add(state);
+                if(state.equals("edge-grab")){caught=true;if(grabbed<0)grabbed=i;}
+                var pos=pose.getAsJsonArray("pos");
+                if(caught&&pos.get(1).getAsDouble()>1.99&&pos.get(2).getAsDouble()>3.25)climbed=true;
+            }
+            dev.jakmc.JakMod.LOG.info("Native ledge audit caught={}, climbed={}, states={}",caught,climbed,states);
+            return new boolean[]{caught,climbed};
+        }finally{dev.jakmc.nativebridge.NativeJak.destroy(handle);}
+    }
+
+    private static double walkProbe(ServerPlayer player,Vec3 origin,boolean height){
+        long handle=dev.jakmc.nativebridge.NativeJak.create(0);
+        try{
+            dev.jakmc.nativebridge.NativeJak.bindWorld(handle,new dev.jakmc.nativebridge.MinecraftCollision.Query(player.level(),player,origin));
+            var input=dev.jakmc.nativebridge.NativeJak.buffer(64);
+            input.putFloat(12,1).putFloat(44,1).putInt(48,32).putInt(60,-1);
+            var empty=dev.jakmc.nativebridge.NativeJak.buffer(0);JsonObject result=null;
+            for(int i=0;i<65;i++)result=com.google.gson.JsonParser.parseString(
+                dev.jakmc.nativebridge.NativeJak.step(handle,input,empty,empty,3)).getAsJsonObject();
+            return result.getAsJsonArray("pos").get(height?1:2).getAsDouble();
+        }finally{dev.jakmc.nativebridge.NativeJak.destroy(handle);}
     }
 
     private static boolean passage(net.minecraft.server.level.ServerLevel level,BlockPos base){

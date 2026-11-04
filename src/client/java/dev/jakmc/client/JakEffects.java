@@ -33,12 +33,12 @@ public final class JakEffects {
  private static final Map<Integer,Identifier> TEXTURES=new HashMap<>();
  private static final Set<Integer> MISSING=new HashSet<>();
  private static String[] names;
- private static final ByteBuffer VIEW=NativeJak.buffer(56),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
+ private static final ByteBuffer VIEW=NativeJak.buffer(92),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
  public static long gemCollectBursts,spydroidBursts;
  public static int drawnVertices,drawnLightningVertices,drawnDarkVertices,drawnBarrelVertices,drawnProjectorVertices,drawnBurstVertices,drawnVentVertices,drawnSandVertices;
  private static final class Owner implements AutoCloseable {
-  final long handle;final Vec3 origin;long received=System.nanoTime(),lastDraw;
-  Vec3 boardSocket;
+  final long handle;final Vec3 origin;long received=System.nanoTime(),lastDraw,session=Long.MIN_VALUE;
+  Vec3 boardSocket,gunSocket,laserSocket,laserEnd;
   int collector=-1;long pickupAt=Long.MIN_VALUE;boolean pickupStart;
   Owner(Vec3 origin,long handle){this.origin=origin;this.handle=handle;}
   public void close(){NativeJak.fxDestroy(handle);}
@@ -70,6 +70,10 @@ public final class JakEffects {
   ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->clear());
  }
  // Entity submits precede COLLECT_SUBMITS. Consume the same frame's visible joint once.
+ public static void gunSocket(int entity,Vec3 muzzle,Vec3 laser,Vec3 end){
+  var owner=OWNERS.get(entity);if(owner==null)return;
+  owner.gunSocket=muzzle.subtract(owner.origin);owner.laserSocket=laser.subtract(owner.origin);owner.laserEnd=end.subtract(owner.origin);
+ }
  public static void boardSocket(int entity,Vec3 position){
   var owner=OWNERS.get(entity);
   if(owner!=null)owner.boardSocket=position.subtract(owner.origin);
@@ -77,8 +81,9 @@ public final class JakEffects {
  public static void receive(int entity,Vec3 origin,JsonObject packet){
   if(!packet.has("effects"))return;
   var fx=OWNERS.get(entity);
-  if(fx!=null&&fx.origin.distanceToSqr(origin)>4096*4096){fx.close();OWNERS.remove(entity);fx=null;}
-  if(fx==null){fx=new Owner(origin,NativeJak.fxCreate());OWNERS.put(entity,fx);}
+  long session=packet.has("session")?packet.get("session").getAsLong():fx==null?Long.MIN_VALUE:fx.session;
+  if(fx!=null&&(fx.origin.distanceToSqr(origin)>4096*4096||fx.session!=session)){fx.close();OWNERS.remove(entity);fx=null;}
+  if(fx==null){fx=new Owner(origin,NativeJak.fxCreate());fx.session=session;OWNERS.put(entity,fx);}
   Vec3 delta=origin.subtract(fx.origin);NativeJak.fxPush(fx.handle,packet.get("effects").toString(),(float)delta.x,(float)delta.y,(float)delta.z);
   fx.received=System.nanoTime();
  }
@@ -251,6 +256,9 @@ public final class JakEffects {
       .putFloat(board==null?Float.NaN:(float)board.y)
       .putFloat(board==null?Float.NaN:(float)board.z);
   fx.boardSocket=null;
+  for(var socket:new Vec3[]{fx.gunSocket,fx.laserSocket,fx.laserEnd})
+   VIEW.putFloat(socket==null?Float.NaN:(float)socket.x).putFloat(socket==null?Float.NaN:(float)socket.y).putFloat(socket==null?Float.NaN:(float)socket.z);
+  fx.gunSocket=fx.laserSocket=fx.laserEnd=null;
   float dt=client.isPaused()?0:fx.lastDraw==0?1/60f:Math.clamp((now-fx.lastDraw)/1e9f,0,.1f);fx.lastDraw=now;
   long counts=NativeJak.fxDraw(fx.handle,dt,VIEW,SPRITES,BOLTS);
   drawnLightningVertices+=(int)(counts>>>32);

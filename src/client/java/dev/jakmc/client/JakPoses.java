@@ -50,15 +50,15 @@ public final class JakPoses {
     public record Pose(Vec3 position,float yaw,String clip,float frame,boolean board,boolean dark,boolean light,
                        JsonObject raw,long received,BoardPose boardPose,BoardPose boardFrom,RootPose rootPose,RootPose rootFrom,float yawFrom) {
         public float yawAt(float elapsed){
-            return yawFrom+Mth.wrapDegrees(yaw-yawFrom)*Math.clamp(elapsed*20,0,1);
+            return yawFrom+Mth.wrapDegrees(yaw-yawFrom)*Math.clamp(1+elapsed*20,0,1);
         }
 
         public RootPose rootAt(float elapsed){
-            return rootPose.interpolate(rootFrom,Math.clamp(elapsed*20,0,1));
+            return rootPose.interpolate(rootFrom,Math.clamp(1+elapsed*20,0,1));
         }
 
         public BoardPose boardAt(float elapsed) {
-            return boardPose==null?null:boardPose.interpolate(boardFrom,Math.clamp(elapsed*20,0,1));
+            return boardPose==null?null:boardPose.interpolate(boardFrom,Math.clamp(1+elapsed*20,0,1));
         }
     }
     // Follow server snapshots on a render clock shared by the local avatar and camera.
@@ -66,6 +66,9 @@ public final class JakPoses {
     private static final JakMotion MOTION=new JakMotion();
     private static JakMotion.Frame motionFrame;
     private static Vec3 presented;
+    private static Pose presentedPose;
+    private static float presentedElapsed;
+    private static final NavigableMap<Long,Pose> HISTORY=new TreeMap<>();
     private static long fallbackTick;
     public static void beginFrame(Minecraft client){
         InputScene.crossingFrame();
@@ -74,7 +77,16 @@ public final class JakPoses {
         motionFrame=pose!=null&&dev.jakmc.player.JakPlayers.active(player)&&!player.isSleeping()
             ?MOTION.sample(System.nanoTime()):null;
         presented=motionFrame==null?null:motionFrame.position();
+        presentedPose=null;presentedElapsed=0;
+        if(motionFrame!=null){
+            var sample=HISTORY.ceilingEntry((long)Math.ceil(MOTION.tick()));
+            if(sample==null)sample=HISTORY.lastEntry();
+            if(sample!=null){presentedPose=sample.getValue();presentedElapsed=(float)Math.clamp((MOTION.tick()-sample.getKey())*.05,-.1,0);}
+        }
+        if(player!=null&&player.getVehicle() instanceof dev.jakmc.entity.JakVehicle car)car.samplePresentation(System.nanoTime());
     }
+    public static Pose rendered(int id){return presentedPose!=null&&Minecraft.getInstance().player!=null&&id==Minecraft.getInstance().player.getId()?presentedPose:get(id);}
+    public static float elapsed(Pose pose){return pose==presentedPose?presentedElapsed:Math.clamp((System.nanoTime()-pose.received())/1e9f-.05f,-.05f,.05f);}
     public static Vec3 presented(){return presented;}
     public static Quaternionf flightRotation(){return motionFrame==null||motionFrame.rotation()==null?null:new Quaternionf(motionFrame.rotation());}
     public static Vec3 flightOffset(){return motionFrame==null?Vec3.ZERO:motionFrame.offset();}
@@ -105,6 +117,8 @@ public final class JakPoses {
                 rotation=new Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat());
             }
             long tick=json.has("serverTick")?json.get("serverTick").getAsLong():++fallbackTick;
+            if(!continuous)HISTORY.clear();
+            HISTORY.put(tick,pose);while(HISTORY.size()>8)HISTORY.pollFirstEntry();
             MOTION.accept(tick,new JakMotion.Frame(position,offset,rotation),now,!continuous);
         }
         Vec3 origin=new Vec3(p.originX(),p.originY(),p.originZ());
@@ -129,5 +143,5 @@ public final class JakPoses {
     }
     public static Pose get(int id){return POSES.get(id);}
     public static Map<Integer,Pose> all(){return java.util.Collections.unmodifiableMap(POSES);}
-    public static void clear(){POSES.clear();presented=null;motionFrame=null;MOTION.clear();fallbackTick=0;dev.jakmc.client.model.JakShotRenderer.clear();}
+    public static void clear(){POSES.clear();HISTORY.clear();presentedPose=null;presented=null;motionFrame=null;MOTION.clear();fallbackTick=0;dev.jakmc.client.model.JakShotRenderer.clear();}
 }

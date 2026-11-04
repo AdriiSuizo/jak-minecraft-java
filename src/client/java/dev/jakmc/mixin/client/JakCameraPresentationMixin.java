@@ -14,6 +14,7 @@ abstract class JakCameraPresentationMixin {
     @Inject(method="bobView",at=@At("HEAD"),cancellable=true)
     private void jakmc$noVanillaWalkBob(CameraRenderState state,PoseStack stack,CallbackInfo ci){
         var client=Minecraft.getInstance();
-        if(client.getCameraEntity()==client.player&&JakPoses.presented()!=null)ci.cancel();
+        if(client.getCameraEntity()==client.player&&(JakPoses.presented()!=null
+            ||client.player!=null&&client.player.getVehicle() instanceof dev.jakmc.entity.JakVehicle))ci.cancel();
     }
 }

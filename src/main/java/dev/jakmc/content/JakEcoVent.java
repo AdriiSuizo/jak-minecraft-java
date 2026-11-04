@@ -64,7 +64,7 @@ public final class JakEcoVent extends Block implements EntityBlock {
         TOUCHED=BooleanProperty.create("touched");
     private static final VoxelShape TOP=Shapes.or(Block.box(.4,0,.4,15.6,1.1,15.6),
         Block.box(2,1.1,2,14,2.1,14),Block.box(3.25,2.1,3.25,12.75,3.25,12.75));
-    private static final VoxelShape NOZZLE=Block.box(5,0,5,11,1.5,11);
+    private static final VoxelShape NOZZLE=Shapes.or(Block.box(4,0,4,12,1,12),Block.box(5,1,5,11,1.5,11));
     private final Color color;
     private JakEcoVent(Color color,Properties properties){
         super(properties);this.color=color;
@@ -91,7 +91,7 @@ public final class JakEcoVent extends Block implements EntityBlock {
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> states){states.add(OPEN,BREAKING,TOUCHED);}
     @Override protected VoxelShape getShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){return color.model()?TOP:NOZZLE;}
     @Override protected VoxelShape getCollisionShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){
-        return color.model()?TOP:Shapes.empty();
+        return color.model()?TOP:NOZZLE;
     }
     @Override protected boolean canSurvive(BlockState state,LevelReader level,BlockPos at){
         var floor=at.below();
@@ -209,8 +209,16 @@ public final class JakEcoVent extends Block implements EntityBlock {
                 return false;
             }
             var player=(ServerPlayer)actor;
-            if(stock==0)return false;
-            if(accepted.contains(actor.getUUID())||!regular)return false;
+            if(type==Color.DARK||type==Color.LIGHT){
+                int resource=type==Color.DARK?0:1;
+                float room=100-dev.jakmc.player.JakResources.totals(player)[resource];
+                if(room<=0)return false;
+                // A renewable vent charges while occupied, as the source's light vent does.
+                var amount=Math.min(room,first?(type==Color.DARK?20f:64f):4f);
+                dev.jakmc.player.JakResources.grant(player,resource,amount);
+                return first;
+            }
+            if(!regular||stock==0||accepted.contains(actor.getUUID()))return false;
             Item item=type==Color.LIGHT?JakItems.LIGHT_ECO:type==Color.DARK?JakItems.DARK_ECO:JakItems.AMMUNITION.get(type.ordinal());
             int count=Math.min(5,(int)stock);
             var stack=new ItemStack(item,count);

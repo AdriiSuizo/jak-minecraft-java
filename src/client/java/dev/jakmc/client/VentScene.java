@@ -106,7 +106,7 @@ final class VentScene {
             stand(p,5);
         });
         if(frame==88)onServer(client,p->{
-            checks.addProperty("light_meter_charged",p.getAttachedOrCreate(JakData.LIGHT_ECO)>=60);
+            checks.addProperty("light_meter_fills_without_leaving",p.getAttachedOrCreate(JakData.LIGHT_ECO)>=99.9f);
             var level=p.level();var at=vents[5];
             var hit=new BlockHitResult(Vec3.atCenterOf(at),Direction.UP,at,false);
             level.getBlockState(at).useWithoutItem(level,p,hit);

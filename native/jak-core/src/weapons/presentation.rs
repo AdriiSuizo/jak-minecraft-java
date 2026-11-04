@@ -1,11 +1,11 @@
 //! Compact authoritative weapon presentation; original bolt and gravity-ring code.
-//! Only rope knots/ring clocks cross the network. The client builds geometry locally.
+//! Rope knots, ring clocks and shot ribbons cross the network; geometry is built locally.
 use super::*;
 use serde::{Serialize,Deserialize};
 use crate::lightning_bolt::{Bolt,Strip};
 
 #[derive(Clone,Debug,Default,Serialize,Deserialize)]
-pub struct Visuals {pub time:i64,pub arc:Option<ArcVisual>,pub gravity:Vec<GravityVisual>}
+pub struct Visuals {pub time:i64,pub arc:Option<ArcVisual>,pub gravity:Vec<GravityVisual>,#[serde(default)]pub beams:Vec<Beam>}
 #[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct ArcVisual {pub created:i64,pub state_time:i64,pub active:bool,pub points:Vec<Vec3>}
 #[derive(Clone,Debug,Serialize,Deserialize)]
@@ -14,14 +14,15 @@ impl Visuals {
  pub fn translate(&mut self,offset:Vec3){
   if let Some(a)=&mut self.arc {for p in &mut a.points{*p+=offset;}}
   for g in &mut self.gravity{g.center+=offset;}
+   for b in &mut self.beams{b.head+=offset;b.tail+=offset;}
  }
  pub fn validate(&self)->Result<(),String>{
-  if self.gravity.len()>64||self.arc.as_ref().is_some_and(|a|a.points.len()>12||a.points.iter().any(|p|!p.is_finite()))||self.gravity.iter().any(|g|!g.center.is_finite()||!g.age.is_finite()||g.age<0.) {return Err("Invalid weapon visual snapshot".into());}Ok(())
+  if self.beams.len()>4096||self.beams.iter().any(|b|!b.head.is_finite()||!b.tail.is_finite()||!b.width.is_finite()||b.width<0.||b.rgba.iter().any(|v|!v.is_finite()))||self.gravity.len()>64||self.arc.as_ref().is_some_and(|a|a.points.len()>12||a.points.iter().any(|p|!p.is_finite()))||self.gravity.iter().any(|g|!g.center.is_finite()||!g.age.is_finite()||g.age<0.) {return Err("Invalid weapon visual snapshot".into());}Ok(())
  }
 }
 impl Jak {
  pub fn weapon_visuals(&self)->Visuals {Visuals{
-  time:self.time,
+  time:self.time,beams:self.gun_beams(),
   arc:self.weapons.arc.as_ref().map(|a|ArcVisual{created:a.created,state_time:a.state_time,active:a.active,points:a.pts.clone()}),
   gravity:self.weapons.effects.iter().filter_map(|e|match e{Effect::Gravity{center,start,..}=>Some(GravityVisual{center:*center,age:(self.time-start)as f32/TICKS_PER_SECOND as f32}),_=>None}).collect(),
  }}
@@ -125,6 +126,37 @@ impl Presentation {
    }
   }}out
  }
+ // Match the visible gun without moving the target or collision knots.
+ pub fn follow_muzzle(&mut self,muzzle:Vec3){
+  if !muzzle.is_finite(){return;}
+  if let Some(arc)=&self.visuals.arc {
+   let mut points=arc.points.clone();
+   if let Some(first)=points.first_mut(){*first=muzzle;configure_arc(&mut self.bolts,&points);}
+  }
+ }
+ /// The existing Rust host's shot ribbons (render/src/extract.rs,
+ /// push_jak_beams): colored halo, original yellow/blue core, head glow.
+ pub fn beam_quads(&self,eye:Vec3)->Vec<(&'static str,[crate::lightning_bolt::StripVertex;4])>{
+  use crate::lightning_bolt::StripVertex;
+  let mut out=Vec::with_capacity(self.visuals.beams.len()*3);
+  let mut quad=|a:Vec3,b:Vec3,half:f32,rgba:[f32;4],texture|{
+   let side=(b-a).cross(eye-(a+b)*0.5).normalize_or_zero()*half;
+   if side==Vec3::ZERO{return;}
+   let corners=[a-side,a+side,b+side,b-side];
+   let uv=[[0.,0.],[1.,0.],[1.,1.],[0.,1.]];
+   out.push((texture,std::array::from_fn(|i|StripVertex{pos:corners[i],rgba,st:uv[i]})));
+  };
+  for beam in &self.visuals.beams {
+   if beam.head.distance(beam.tail)<0.01{continue;}
+   let [r,g,b,a]=beam.rgba;let width=meters(0.09)*beam.width.max(0.3);
+   quad(beam.tail,beam.head,width*2.6,[r,g,b,0.55*a],"glow-soft");
+   quad(beam.tail,beam.head,width*1.1,[0.7+0.3*r,0.7+0.3*g,0.7+0.3*b,a],
+    if b>r+0.2{"gun-blue-beam"}else{"gun-yellow-beam"});
+   let dir=(beam.head-beam.tail).normalize_or(Vec3::X);
+   quad(beam.head-dir*width*3.,beam.head+dir*width*3.,width*3.,[r,g,b,0.8*a],"glow-soft");
+  }
+  out
+ }
  pub fn strips(&mut self,up:Vec3)->Vec<Strip>{
   let now=self.visuals.time;let prev=self.last_draw.min(now);self.last_draw=now;
   self.bolts.iter_mut().flat_map(|b|b.draw(now,prev,up)).collect()
@@ -145,8 +177,22 @@ impl Presentation {
    jak.time+=FRAME_TICKS;
   }
  }
+ #[test]fn rendered_muzzle_tracks_without_dragging_arc_targets(){
+  let points=vec![Vec3::ZERO,Vec3::Z*meters(6.),Vec3::Z*meters(12.)];
+  let mut replay=Presentation::default();
+  replay.sync(Visuals{time:30,arc:Some(ArcVisual{created:0,state_time:0,active:true,points:points.clone()}),gravity:Vec::new(),beams:Vec::new()}).unwrap();
+  let muzzle=Vec3::new(meters(2.),meters(1.4),meters(0.5));
+  replay.follow_muzzle(muzzle);
+  for bolt in &replay.bolts {
+   assert_eq!(bolt.span_pts_start[0],muzzle);
+   assert_eq!(bolt.span_pts_start[1],points[1]);
+   assert_eq!(bolt.span_pts_start[2],points[2]);
+  }
+  assert_eq!(replay.visuals.arc.as_ref().unwrap().points,points);
+  assert!(replay.strips(Vec3::Y).iter().flat_map(|s|&s.verts).all(|v|v.pos.is_finite()));
+ }
  #[test]fn validates_and_rebases_compact_visuals(){
-  let mut v=Visuals{time:0,arc:None,gravity:vec![GravityVisual{center:Vec3::ZERO,age:1.}]};v.translate(Vec3::X*6400.);assert_eq!(v.gravity[0].center.x,6400.);
+  let mut v=Visuals{time:0,arc:None,beams:Vec::new(),gravity:vec![GravityVisual{center:Vec3::ZERO,age:1.}]};v.translate(Vec3::X*6400.);assert_eq!(v.gravity[0].center.x,6400.);
   let mut p=Presentation::default();p.sync(v).unwrap();assert!(!p.sprites().is_empty());p.age(8.);assert!(p.sprites().is_empty());
  }
 }
