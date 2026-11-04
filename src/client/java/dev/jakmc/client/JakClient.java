@@ -33,6 +33,7 @@ public final class JakClient implements ClientModInitializer {
   TrackScene.initialize();
   CarScene.initialize();
   CityScene.initialize();
+  SitesScene.initialize();
   VehicleEffects.initialize();
   dev.jakmc.client.model.GltfItemRenderer.initialize();
   dev.jakmc.client.model.PropModels.initialize();

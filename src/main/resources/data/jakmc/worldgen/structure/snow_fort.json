@@ -1,0 +1,8 @@
+{
+  "type": "jakmc:city",
+  "city": "snow_fort",
+  "biomes": "#jakmc:has_snow_fort",
+  "step": "surface_structures",
+  "spawn_overrides": {},
+  "terrain_adaptation": "none"
+}

@@ -15,6 +15,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.storage.loot.LootTable;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntitySpawnReason;
@@ -39,10 +43,15 @@ import net.minecraft.world.phys.Vec3;
 /** Native discoverable city starts with chunk-local placement and seed-stable orientation. */
 public final class JakCityStructure extends Structure {
     private enum Site {
-        HAVEN("haven"), SPARGUS("spargus");
+        HAVEN("haven","haven",0), SPARGUS("spargus","spargus",0),
+        SWAMP_HUT("swamp_hut","jak1",4), SNOW_FORT("snow_fort","jak1",8);
         final String id;
+        final ResourceKey<LootTable> loot;
+        final int reach;
         private CityBlueprint blueprint;
-        Site(String id){this.id=id;}
+        Site(String id,String loot,int reach){
+            this.id=id;this.loot=ResourceKey.create(Registries.LOOT_TABLE,JakData.id("chests/"+loot));this.reach=reach;
+        }
         synchronized CityBlueprint plan(){
             if(blueprint==null)blueprint=CityBlueprint.read(id);
             return blueprint;
@@ -73,29 +82,49 @@ public final class JakCityStructure extends Structure {
         int x=context.chunkPos().getMinBlockX(),z=context.chunkPos().getMinBlockZ();
         int y=height(context,x,z);
         int sea=context.chunkGenerator().getSeaLevel();
-        if(y<=sea||!valid(context,x,y,z))return Optional.empty();
-        int[] elevations=new int[49];
-        int index=0;
-        int submerged=0;
-        for(int dz=-84;dz<=84;dz+=28)for(int dx=-84;dx<=84;dx+=28){
-            int at=height(context,x+dx,z+dz);
-            elevations[index++]=at;
-            if(at<=sea)submerged++;
-        }
-        if(submerged>4)return Optional.empty();
-        Arrays.sort(elevations);
-        int median=elevations[24];
-        if(elevations[43]-elevations[5]>26||Math.abs(y-median)>15)return Optional.empty();
-        int base=Math.max(sea+3,median);
-        if(site==Site.SPARGUS){
-            for(int dx=-56;dx<=56;dx+=56)for(int dz=-56;dz<=56;dz+=56)
-                if(!valid(context,x+dx,base,z+dz))return Optional.empty();
+        if(!valid(context,x,y,z))return Optional.empty();
+        int base;
+        if(site.reach>0){
+            base=compactBase(context,x,z,y);
+            if(base==Integer.MIN_VALUE)return Optional.empty();
+        }else{
+            if(y<=sea)return Optional.empty();
+            int[] elevations=new int[49];
+            int index=0,submerged=0;
+            for(int dz=-84;dz<=84;dz+=28)for(int dx=-84;dx<=84;dx+=28){
+                int at=height(context,x+dx,z+dz);
+                elevations[index++]=at;
+                if(at<=sea)submerged++;
+            }
+            if(submerged>4)return Optional.empty();
+            Arrays.sort(elevations);
+            int median=elevations[24];
+            if(elevations[43]-elevations[5]>26||Math.abs(y-median)>15)return Optional.empty();
+            base=Math.max(sea+3,median);
+            if(site==Site.SPARGUS){
+                for(int dx=-56;dx<=56;dx+=56)for(int dz=-56;dz<=56;dz+=56)
+                    if(!valid(context,x+dx,base,z+dz))return Optional.empty();
+            }
         }
         var plan=site.plan();
         if(base+plan.maxY>=context.heightAccessor().getMaxY()-4)return Optional.empty();
         var origin=new BlockPos(x,base,z);
         int turns=context.random().nextInt(4);
         return Optional.of(new GenerationStub(origin,builder->builder.addPiece(new CityPiece(site,origin,turns))));
+    }
+
+    private int compactBase(GenerationContext context,int x,int z,int ground){
+        int lo=Integer.MAX_VALUE,hi=Integer.MIN_VALUE,reach=site.reach;
+        for(int dz=-reach;dz<=reach;dz+=reach)for(int dx=-reach;dx<=reach;dx+=reach){
+            int surface=context.chunkGenerator().getBaseHeight(x+dx,z+dz,Heightmap.Types.WORLD_SURFACE_WG,
+                context.heightAccessor(),context.randomState());
+            if(!valid(context,x+dx,surface,z+dz))return Integer.MIN_VALUE;
+            lo=Math.min(lo,surface);hi=Math.max(hi,surface);
+        }
+        boolean swamp=site==Site.SWAMP_HUT;
+        if(hi-lo>(swamp?3:5))return Integer.MIN_VALUE;
+        if(swamp)return hi;
+        return ground>context.chunkGenerator().getSeaLevel()&&hi-ground<=5?ground:Integer.MIN_VALUE;
     }
 
     private static boolean valid(GenerationContext context,int x,int y,int z){
@@ -146,10 +175,15 @@ public final class JakCityStructure extends Structure {
             if(cells.size()==0)return;
             var foundations=new int[256];
             Arrays.fill(foundations,Integer.MAX_VALUE);
-            var fill=site==Site.SPARGUS?Blocks.SANDSTONE.defaultBlockState():Blocks.STONE.defaultBlockState();
+            var fill=switch(site){
+                case SPARGUS -> Blocks.SANDSTONE.defaultBlockState();
+                case SWAMP_HUT -> dev.jakmc.content.JakBlocks.BLOCKS.get("swamp_hut_log").defaultBlockState();
+                case SNOW_FORT -> dev.jakmc.content.JakBlocks.BLOCKS.get("snow_rock").defaultBlockState();
+                default -> Blocks.STONE.defaultBlockState();
+            };
             for(int i=0;i<cells.size();i++){
                 var local=cells.pos(i);
-                if(cells.states()[i].isAir()||local.getY()>3)continue;
+                if(cells.states()[i].isAir()||local.getY()>(site==Site.SWAMP_HUT?0:3))continue;
                 var pos=CityBlueprint.rotate(local,turns).offset(origin);
                 int column=(pos.getX()&15)|((pos.getZ()&15)<<4);
                 foundations[column]=Math.min(foundations[column],pos.getY());
@@ -173,8 +207,10 @@ public final class JakCityStructure extends Structure {
                 var pos=CityBlueprint.rotate(cells.pos(i),turns).offset(origin);
                 if(!chunkBounds.isInside(pos))continue;
                 var state=rotated.computeIfAbsent(cells.states()[i],base->CityBlueprint.rotate(base,turns));
-                if(level.getBlockState(pos)!=state)
-                    level.setBlock(pos,state,Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE);
+                if(level.getBlockState(pos)!=state&&level.setBlock(pos,state,Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE)
+                    &&state.is(Blocks.CHEST)&&level.getBlockEntity(pos) instanceof ChestBlockEntity chest){
+                    chest.setLootTable(site.loot,lootSeed(level.getSeed(),pos));
+                }
             }
             for(int index=0;index<foundations.length;index++){
                 int top=foundations[index];
@@ -187,6 +223,7 @@ public final class JakCityStructure extends Structure {
                     level.setBlock(at,fill,Block.UPDATE_KNOWN_SHAPE);
                 }
             }
+            if(site.reach>0)return;
             spawnResident(level,chunk,random,cells);
             if(site==Site.HAVEN){
                 for(var patrol:plan.patrols)spawnGuard(level,chunkBounds,patrol);
@@ -205,6 +242,19 @@ public final class JakCityStructure extends Structure {
                 car.snapTo(spot.x,spot.y,spot.z,CityBlueprint.rotate(garage.facing(),turns).toYRot(),0);
                 level.addFreshEntity(car);
             }
+        }
+
+        private static long lootSeed(long seed,BlockPos at){
+            long value=seed^0x9e3779b97f4a7c15L^0x632be59bd9b4e019L;
+            value=lootCoordinate(value,at.getX());
+            value=lootCoordinate(value,at.getY());
+            value=lootCoordinate(value,at.getZ());
+            return value==0?1:value;
+        }
+
+        private static long lootCoordinate(long seed,int coordinate){
+            long value=(seed^Integer.toUnsignedLong(coordinate))*0xff51afd7ed558ccdL;
+            return value^(value>>>33);
         }
 
         private void spawnLeaper(WorldGenLevel level,BoundingBox chunk,BlockPos start,BlockPos end){

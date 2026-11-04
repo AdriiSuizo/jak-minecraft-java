@@ -1,0 +1,55 @@
+{
+  "type": "minecraft:chest",
+  "pools": [
+    {
+      "rolls": {
+        "type": "minecraft:uniform",
+        "min": 3,
+        "max": 6
+      },
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:green_eco",
+          "weight": 40,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 4,
+                "max": 16
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_blue",
+          "weight": 6
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_yellow",
+          "weight": 6
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_red",
+          "weight": 6
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:vent_green",
+          "weight": 6
+        },
+        {
+          "type": "minecraft:item",
+          "name": "jakmc:flut_egg",
+          "weight": 5
+        }
+      ]
+    }
+  ],
+  "random_sequence": "jakmc:chests/jak1"
+}

@@ -228,3 +228,9 @@ Final Gradle build: `.local/citizens-final-build2.log` (28s), `.local/citizens-b
 
 - The original spydroid attack commits to its heading at takeoff, moves along the ground at the authored 12 metres per second for the jump clip, and finishes with the original landing clip. Minecraft performs the swept movement and block collision. The attack contacts its target once and applies the original damage and shove. Destruction uses the original CITYKGF cue and group-kg-small-explosion replayed from a tracking packet.
 - `.local/evidence/spydroid-20261104-010658`: both original clips, 2.315 blocks traveled in the sampled lunge, two damage to a survival player, one explosion packet and a peak of 600 effect vertices. Explosion image reviewed, normal save and shutdown. Attack distance is still gated by the retained Rust chase rules.
+
+## 2026-11-04 normal-world small structures and loot
+
+- Reused the source Snowy Mountain fort and Boggy Swamp hut plans. Both resolve with zero compatibility substitutions and spawn through the host's native locate and biome tags. The hut keeps its raised deck and extends only its low support cells beneath the water. The fort checks the natural height spread before levelling its own yard.
+- Haven, Spargus, the hut and the fort assign position-seeded native loot tables to actual chests. The tables keep the source game-specific items, weights and quantity ranges. Minecraft owns the final roll, placement among chest slots, save and interaction. Previously generated containers keep their contents.
+- `.local/evidence/sites-20261104-011513`: a fresh normal world found all four structures, with respectively 1, 1, 89 and 20 chests correctly tagged. Opened one per location using native chest loot and verified the appropriate era. Generation count is from that seed. This take checks placement and loot data, not an exterior camera review.

@@ -276,6 +276,14 @@ def copy_models():
         (destination/'models/block'/name).unlink(missing_ok=True)
     print(f"Retained {len(deferred)} oversized models in the source export for grid conversion")
 
+def import_blueprints(names):
+    catalog=DEST/'data/jakmc/catalog'
+    catalog.mkdir(parents=True,exist_ok=True)
+    for name in names:
+        data=json.loads((SOURCE/f'{name}.json').read_text(encoding='utf-8'))
+        (catalog/f'{name}.jbp').write_bytes(packed_blueprint(data))
+        print(name,len(data['blocks']),'cells',len(data['props']),'whole props')
+
 def main():
     if not (SOURCE/'objects/104.json').is_file():raise RuntimeError('Source export is incomplete; run tools/content-exporter first')
     DEST.mkdir(parents=True,exist_ok=True)
@@ -288,14 +296,16 @@ def main():
     material_resources(definitions+decorations(catalog))
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)
     seal_track_meshes(catalog)
-    for name in ['haven','spargus','palace']:
-        data=json.loads((SOURCE/f'{name}.json').read_text(encoding='utf-8'))
-        (catalog/f'{name}.jbp').write_bytes(packed_blueprint(data))
-        print(name,len(data['blocks']),'cells',len(data['props']),'whole props')
+    import_blueprints(('haven','spargus','palace','swamp_hut','snow_fort'))
     receipts=[]
     for path in sorted(DEST.rglob('*')):
         if path.is_file():receipts.append(dict(path=str(path.relative_to(DEST)).replace('\\','/'),sha256=hashlib.sha256(path.read_bytes()).hexdigest(),size=path.stat().st_size))
     (ROOT/'.local/content-resource-receipt.json').write_text(json.dumps(receipts,indent=2),encoding='utf-8')
     print('Imported',len(receipts),'private resource files. Source geometry remains a build-time export, not a runtime dependency.')
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    import sys
+    if sys.argv[1:]==['--sites-only']:
+        import_blueprints(('swamp_hut','snow_fort'))
+    else:
+        main()

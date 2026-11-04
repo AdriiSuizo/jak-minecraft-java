@@ -57,7 +57,19 @@ fn save_track(root:&Path){
    "group":if id==107{"rail"}else{"track"},"size":size,"soft":false,"cells":cells,"rails":rails}).to_string()).unwrap();
  }
 }
+fn save_sites(root:&Path){
+ use minecraft_terrain::jak_kit::{SWAMP_HUTS,SNOW_FORTS,View};
+ let height=|_,_|64;
+ let inside=|_,_|true;
+ let view=View{ground:&height,surface:&height,inside:&inside};
+ for (name,site) in [("swamp_hut",&SWAMP_HUTS),("snow_fort",&SNOW_FORTS)]{
+  let blocks=(site.build)(8048,(0,0),(0,0),&view).expect("original climate site plan");
+  save(root,name,blocks,Vec::new());
+ }
+}
 fn main(){let args:Vec<_>=std::env::args().collect();let root=Path::new(&args[1]);std::fs::create_dir_all(root).unwrap();
+ save_sites(root);
+ if args.get(2).is_some_and(|s|s=="--sites-only"){return;}
  if args.get(2).is_some_and(|s|s=="--track-only"){save_track(root);return;}
  save_wall_roots(root);
  if args.get(2).is_some_and(|s|s=="--wall-roots-only"){return;}
