@@ -15,10 +15,18 @@ public final class SdlGamepad implements AutoCloseable {
  private record Device(long handle,String name){}
  private final Map<Integer,Device> pads=new LinkedHashMap<>();private final Map<Integer,Integer> heldLast=new HashMap<>();
  private boolean initialized;private int active;private long nextScan;
- public State poll(){
+ public State poll(int preferred){
   if(!initialized){if(!SDLInit.SDL_InitSubSystem(SDLInit.SDL_INIT_GAMEPAD))throw new IllegalStateException("SDL gamepad: "+SDLError.SDL_GetError());initialized=true;}
   long now=System.nanoTime();if(now>=nextScan){refresh();nextScan=now+1_000_000_000L;}
-  SDL_UpdateGamepads();State chosen=State.EMPTY;int candidate=active;
+  SDL_UpdateGamepads();
+  if(preferred!=0){
+   var device=pads.get(preferred);
+   if(device==null||!SDL_GamepadConnected(device.handle))return State.EMPTY;
+   var state=read(preferred,device,heldLast.getOrDefault(preferred,0));
+   heldLast.put(preferred,state.held|(state.system<<16));
+   return state;
+  }
+  State chosen=State.EMPTY;int candidate=active;
   var it=pads.entrySet().iterator();while(it.hasNext()){
    var e=it.next();if(!SDL_GamepadConnected(e.getValue().handle)){SDL_CloseGamepad(e.getValue().handle);heldLast.remove(e.getKey());it.remove();nextScan=0;continue;}
    int prior=heldLast.getOrDefault(e.getKey(),0);State s=read(e.getKey(),e.getValue(),prior);int combined=s.held|(s.system<<16);heldLast.put(s.id,combined);

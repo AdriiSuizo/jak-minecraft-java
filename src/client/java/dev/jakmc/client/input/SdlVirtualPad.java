@@ -4,6 +4,7 @@ import org.lwjgl.system.MemoryStack;
 /** Process-local SDL replay device for bounded development checks, never OS key injection. */
 public final class SdlVirtualPad implements AutoCloseable {
  public final int id;private final long joystick;
+ private final String background;
  public SdlVirtualPad(){
   if(!SDLInit.SDL_InitSubSystem(SDLInit.SDL_INIT_GAMEPAD))throw new IllegalStateException(SDLError.SDL_GetError());
   try(var stack=MemoryStack.stackPush()){
@@ -12,9 +13,16 @@ public final class SdlVirtualPad implements AutoCloseable {
    id=SDLJoystick.SDL_AttachVirtualJoystick(desc);if(id==0)throw new IllegalStateException(SDLError.SDL_GetError());
   }
   joystick=SDLJoystick.SDL_OpenJoystick(id);if(joystick==0)throw new IllegalStateException(SDLError.SDL_GetError());
+  background=SDLHints.SDL_GetHint(SDLHints.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS);
+  SDLHints.SDL_SetHint(SDLHints.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");
   axis(4,-1);axis(5,-1);
  }
  public void axis(int index,float raw){if(!SDLJoystick.SDL_SetJoystickVirtualAxis(joystick,index,(short)Math.round(Math.clamp(raw,-1,1)*(raw<0?32768:32767))))throw new IllegalStateException(SDLError.SDL_GetError());}
  public void button(int index,boolean held){if(!SDLJoystick.SDL_SetJoystickVirtualButton(joystick,index,held))throw new IllegalStateException(SDLError.SDL_GetError());}
- public void close(){SDLJoystick.SDL_CloseJoystick(joystick);SDLJoystick.SDL_DetachVirtualJoystick(id);SDLInit.SDL_QuitSubSystem(SDLInit.SDL_INIT_GAMEPAD);}
+ public void close(){
+  SDLJoystick.SDL_CloseJoystick(joystick);SDLJoystick.SDL_DetachVirtualJoystick(id);
+  if(background==null)SDLHints.SDL_ResetHint(SDLHints.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS);
+  else SDLHints.SDL_SetHint(SDLHints.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,background);
+  SDLInit.SDL_QuitSubSystem(SDLInit.SDL_INIT_GAMEPAD);
+ }
 }

@@ -22,7 +22,7 @@ final class ForwardEyes {
     private static final Vector3f FORWARD=new Vector3f(0,0,1);
 
     static Pair build(Path textures,String name,List<Mesh> meshes)throws IOException{
-        boolean daxter=name.equals("daxter");
+        boolean daxter=name.startsWith("daxter");
         String irisPath=daxter?"common/autoeye-iris.png":"arenacst-pris/jakb-eye.png";
         String lidPath=daxter?"arenacst-pris/daxter-eyelid.png":"arenacst-pris/jakb-eyelid.png";
         try(var iris=read(textures.resolve(irisPath));

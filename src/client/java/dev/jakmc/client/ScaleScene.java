@@ -14,7 +14,7 @@ import net.minecraft.world.level.block.Blocks;
 public final class ScaleScene {
     private static boolean waiting;
     private static int frames;
-    private static long lastRenderSerial;
+    private static long lastRenderSerial,lastCinematicSerial;
     private static Path output;
     private static InputScene.CameraView view;
     static InputScene.CameraView camera(){return view;}
@@ -39,17 +39,18 @@ public final class ScaleScene {
             }
             // Underside is exactly two blocks above Jak's feet.
             for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++)p.level().setBlock(new BlockPos(x+dx,y+2,z+dz),Blocks.SMOOTH_STONE.defaultBlockState(),3);
-            p.setPos(x+.5,y,z+.5);p.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+            p.teleportTo(x+.5,y,z+.5);p.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
             p.setAttached(JakData.ENABLED,true);JakPlayers.controlForProbe(p,true);
         });
         client.gui.setScreen(null);client.options.setCameraType(CameraType.THIRD_PERSON_FRONT);client.player.setXRot(0);
-        frames=0;view=null;lastRenderSerial=JakRenderer.renderSerial;waiting=true;
+        frames=0;view=null;lastRenderSerial=JakRenderer.renderSerial;lastCinematicSerial=JakRenderer.cinematicRenderSerial;waiting=true;
     }
     public static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(ScaleScene::tick);}
     private static void tick(Minecraft client){
         if(!waiting)return;
         if(client.player==null){waiting=false;return;}
         ++frames;
+        if(frames==26)client.gui.hud.getChat().clearMessages(false);
         if(frames<30)return;
         var pose=JakPoses.get(client.player.getId());
         if(frames==32&&pose!=null){
@@ -74,6 +75,7 @@ public final class ScaleScene {
         }
         if(frames!=30)return;
         boolean drawn=JakRenderer.lastEntityId==client.player.getId()&&JakRenderer.renderSerial>lastRenderSerial;
+        boolean cinematic=JakRenderer.cinematicRenderSerial>lastCinematicSerial;
         var result=new JsonObject();result.addProperty("actor_id",client.player.getId());result.addProperty("actor_drawn",drawn);
         result.addProperty("camera",client.options.getCameraType().name());
         result.addProperty("clip",pose==null?null:pose.clip());result.addProperty("ears_standing_blocks",JakRenderer.standingHeight);
@@ -82,7 +84,8 @@ public final class ScaleScene {
         boolean roofPresent=client.level.getBlockState(roof).is(Blocks.SMOOTH_STONE);
         double clearance=ceiling-JakRenderer.currentTop;
         result.addProperty("actual_animated_top",JakRenderer.currentTop);result.addProperty("ceiling_blocks",ceiling);result.addProperty("roof_present",roofPresent);result.addProperty("clearance",clearance);
-        boolean pass=drawn&&pose!=null&&pose.clip().contains("stance")&&roofPresent&&clearance>=0&&clearance<=.12&&client.options.getCameraType()==CameraType.THIRD_PERSON_FRONT;
+        result.addProperty("cinematic_models_drawn",cinematic);
+        boolean pass=drawn&&cinematic&&pose!=null&&pose.clip().contains("stance")&&roofPresent&&clearance>=0&&clearance<=.12&&client.options.getCameraType()==CameraType.THIRD_PERSON_FRONT;
         result.addProperty("mechanical_acceptance",pass);result.addProperty("visual_review","required");
         try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
         Screenshot.grab(client.gameDirectory,"scale-two-block-ceiling.png",client.gameRenderer.mainRenderTarget(),1,

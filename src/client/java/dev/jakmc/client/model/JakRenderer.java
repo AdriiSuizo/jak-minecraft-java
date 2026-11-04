@@ -23,13 +23,18 @@ public final class JakRenderer {
     private static final String[] FIRE_BODY={"jakb-gun-red-fire","jakb-gun-red-fire-2","jakb-gun-red-fire","jakb-gun-yellow-fire","jakb-gun-yellow-fire","jakb-gun-yellow-fire-3","jakb-gun-blue-fire-single","jakb-gun-blue-fire-2","jakb-gun-blue-fire-single","jakb-gun-dark-fire","jakb-gun-dark-fire","jakb-gun-dark-fire"};
     private static final String[] FIRE_GUN={"gun-gun-red-fire","gun-gun-red-fire-2","gun-gun-red-fire-3","gun-gun-yellow-fire","gun-gun-yellow-fire-2","gun-gun-yellow-fire-3","gun-gun-blue-fire-single","gun-gun-blue-fire-2","gun-gun-blue-fire-3-single","gun-gun-dark-fire","gun-gun-dark-fire-2","gun-gun-dark-fire-3"};
     private static GltfModel body,daxter,board,gun,wings,shield;
+    private static GltfModel cinematicBody,cinematicDaxter,cinematicDark;
     private static final Map<Entity,JakChannels.Transition> transitions=new WeakHashMap<>();
+    private static final Map<Entity,JakCloth> clothes=new WeakHashMap<>();
     private static float bodyScale;
     private static float floorOffset;
     private static boolean ridingLoaded,pilotLoaded,iceLoaded;
     private static GltfModel jak1Rig;
     private static GltfModel.Posed jak1Rest,jakRest;
     public static long renderSerial,sleepRenderSerial;
+    public static long clothRenderSerial;
+    public static float clothScarfReach;
+    public static long cinematicRenderSerial;
     public static int lastEntityId=-1;
     public static float standingHeight;
     public static float currentTop=Float.NaN;
@@ -45,6 +50,10 @@ public final class JakRenderer {
             shield=new GltfModel(root.resolve("jakb-shield-shield-lod0.glb"),"light_shield");
             shield.attachmentAnimationsFrom(clips,"jakb-shield-");
             daxter=new GltfModel(root.resolve("daxter-lod0.glb"),"daxter");
+            var levels=root.getParent();
+            cinematicBody=cinematic(levels.resolve("arenacst/jakc-highres-lod0.glb"),"jak_cinematic",body);
+            cinematicDaxter=cinematic(levels.resolve("arenacst/daxter-highres-lod0.glb"),"daxter_cinematic",daxter);
+            cinematicDark=cinematic(levels.resolve("mhctycst/darkjak-highres-lod0.glb"),"jak_dark_cinematic",body);
             var ladderArt=JsonParser.parseString(NativeJak.ladderAnimations()).getAsJsonObject();
             body.originalAnimations(ladderArt,"jakb-ladder-");
             daxter.originalAnimations(ladderArt,"daxter-ladder-");
@@ -53,8 +62,8 @@ public final class JakRenderer {
             var standing=body.pose("jakb-stance-loop",0);
             jakRest=standing;
             Vector3f anchor=body.joint(standing,"LshoulderPad").getTranslation(new Vector3f());
-            var bodyBounds=body.bounds(standing,new Matrix4f());
-            var daxterBounds=daxter.bounds(daxter.pose("daxter-stance-loop",0),new Matrix4f().translation(anchor).scale(1/1.4f));
+            var bodyBounds=cinematicBody.bounds(standing,new Matrix4f());
+            var daxterBounds=cinematicDaxter.bounds(daxter.pose("daxter-stance-loop",0),new Matrix4f().translation(anchor).scale(1/1.4f));
             float together=Math.max(bodyBounds[1].y,daxterBounds[1].y)-Math.min(bodyBounds[0].y,daxterBounds[0].y);
             floorOffset=-Math.min(bodyBounds[0].y,daxterBounds[0].y);
             // User scale reference: two air cells, ceiling in the third row.
@@ -63,8 +72,30 @@ public final class JakRenderer {
             JakMod.LOG.info("Jak + Daxter original height {} m; Minecraft scale {}; standing ears at 1.94 blocks",together,bodyScale);
             boardModel();
             gun=new GltfModel(root.resolve("gun-lod0.glb"),"gun");
+            JakCloth.load();
             JakMod.LOG.info("Original Jak, Daxter, board and Morph Gun models loaded into Minecraft renderer");
         }catch(IOException e){throw new IllegalStateException("Cannot load original Jak models",e);}
+    }
+
+    private static GltfModel cinematic(java.nio.file.Path file,String name,GltfModel rig)throws IOException{
+        if(!java.nio.file.Files.isRegularFile(file)){
+            JakMod.LOG.warn("Original cinematic export missing: {}",file.getFileName());
+            return rig;
+        }
+        var mesh=new GltfModel(file,name);
+        mesh.wearOn(rig);
+        JakMod.LOG.info("Cinematic {}: {} triangles bound to the gameplay skeleton",file.getFileName(),mesh.triangles());
+        return mesh;
+    }
+
+    private static GltfModel bodyMesh(Entity actor,AvatarRenderState state,boolean dark){
+        // Use the lighter original mesh for distant remote players whose facial details cannot be seen.
+        if(actor!=Minecraft.getInstance().player&&state.distanceToCameraSq>16*16)return body;
+        return dark?cinematicDark:cinematicBody;
+    }
+
+    private static GltfModel daxterMesh(Entity actor,AvatarRenderState state){
+        return actor==Minecraft.getInstance().player||state.distanceToCameraSq<=16*16?cinematicDaxter:daxter;
     }
     static GltfModel boardModel(){
         if(board==null){
@@ -81,12 +112,12 @@ public final class JakRenderer {
         var actor=client.level.getEntity(state.id);
         if(actor==null||!actor.getAttachedOrCreate(JakData.ENABLED))return false;
         if(actor.getVehicle() instanceof dev.jakmc.entity.JakVehicle car&&car.frame()!=null){
-            submitCarRider(state,stack,collector,car,client.getDeltaTracker().getGameTimeDeltaPartialTick(false));
+            submitCarRider(actor,state,stack,collector,camera.pos,car,client.getDeltaTracker().getGameTimeDeltaPartialTick(false));
             return true;
         }
         if(state.bedOrientation!=null&&actor instanceof net.minecraft.world.entity.LivingEntity living&&living.isSleeping()){
             load();
-            submitSleeping(state,stack,collector);
+            submitSleeping(actor,state,stack,collector,camera.pos);
             return true;
         }
         if(pose==null)return false;
@@ -198,7 +229,11 @@ public final class JakRenderer {
         float twist=aiming&&!climbing?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(shownYaw-lookYaw)),-1.6f,1.6f):0;
         skeleton=body.jakForm(skeleton,pose.dark(),twist);
         boolean luminous=pose.raw().has("lightInterp")&&pose.raw().get("lightInterp").getAsFloat()>0;
-        body.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,false);
+        var visibleBody=bodyMesh(actor,state,pose.dark());
+        var visibleDaxter=daxterMesh(actor,state);
+        visibleBody.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,false);
+        if(visibleBody!=body&&visibleDaxter!=daxter&&actor==client.player)cinematicRenderSerial++;
+        submitCloth(actor,state,skeleton,stack,collector,camera.pos,pose.raw().get("session").getAsLong());
         var wingState=pose.raw().get("wings");
         if(wingState!=null&&wingState.isJsonObject()){
             var wing=wingState.getAsJsonObject();
@@ -218,11 +253,11 @@ public final class JakRenderer {
         stack.mulPose(daxAnchor);
         stack.scale(1/1.4f,1/1.4f,1/1.4f);
         if(ScaleScene.active()){
-            var b=body.bounds(skeleton,new Matrix4f());
-            var d=daxter.bounds(daxPose,new Matrix4f(daxAnchor).scale(1/1.4f));
+            var b=visibleBody.bounds(skeleton,new Matrix4f());
+            var d=visibleDaxter.bounds(daxPose,new Matrix4f(daxAnchor).scale(1/1.4f));
             currentTop=(Math.max(b[1].y,d[1].y)+floorOffset)*bodyScale;
         }
-        daxter.submitEyes(daxPose,stack,collector,state.lightCoords,false);stack.popPose();
+        visibleDaxter.submitEyes(daxPose,stack,collector,state.lightCoords,false);stack.popPose();
         if(boardJoint!=null||!actor.getAttachedOrCreate(JakData.BOARD).isEmpty()){
             boolean folding=boardFrame!=null&&boardFrame.closing();
             String clip=boardJoint==null||folding?"board-close":"board-open";
@@ -244,7 +279,22 @@ public final class JakRenderer {
     private record Sleeping(GltfModel.Posed jak,GltfModel.Posed daxter,Matrix4f bed,Matrix4f shoulder,float heading){}
     private static Sleeping sleeping;
 
-    private static void submitSleeping(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector){
+    private static void submitCloth(Entity actor,AvatarRenderState state,GltfModel.Posed skeleton,PoseStack stack,
+                                    SubmitNodeCollector collector,net.minecraft.world.phys.Vec3 camera,long key){
+        if(state.isInvisible){
+            clothes.remove(actor);
+            return;
+        }
+        var cloth=clothes.computeIfAbsent(actor,_ ->new JakCloth());
+        int count=cloth.submit(body,skeleton,stack,collector,state.lightCoords,camera,bodyScale,key);
+        if(actor==Minecraft.getInstance().player&&count==3){
+            clothRenderSerial++;
+            clothScarfReach=cloth.scarfReach();
+        }
+    }
+
+    private static void submitSleeping(Entity actor,AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
+                                       net.minecraft.world.phys.Vec3 camera){
         if(sleeping==null){
             var jak=body.poseAtTime("jakb-deatha",Float.MAX_VALUE);
             var sidekick=daxter.poseAtTime("daxter-deatha",Float.MAX_VALUE);
@@ -254,7 +304,7 @@ public final class JakRenderer {
             var axis=head.sub(feet).normalize();
             var horizontal=new Vector3f(axis.x,0,axis.z).normalize();
             var rotation=new Matrix4f().rotation(new Quaternionf().rotationTo(axis,horizontal));
-            var bounds=body.bounds(jak,rotation);
+            var bounds=cinematicBody.bounds(jak,rotation);
             var center=new Vector3f(bounds[0]).add(bounds[1]).mul(.5f);
             var bed=new Matrix4f().translation(-center.x,-bounds[0].y,-center.z).mul(rotation);
             var shoulder=new Matrix4f().translation(body.joint(jak,"LshoulderPad").getTranslation(new Vector3f())).scale(1/1.4f);
@@ -268,17 +318,18 @@ public final class JakRenderer {
         stack.rotate(Axis.YP,heading-sleeping.heading);
         stack.scale(bodyScale,bodyScale,bodyScale);
         stack.mulPose(sleeping.bed);
-        body.submitJakBody(sleeping.jak,stack,collector,state.lightCoords,false,false,true);
+        bodyMesh(actor,state,false).submitJakBody(sleeping.jak,stack,collector,state.lightCoords,false,false,true);
+        submitCloth(actor,state,sleeping.jak,stack,collector,camera,-1);
         stack.mulPose(sleeping.shoulder);
-        daxter.submitEyes(sleeping.daxter,stack,collector,state.lightCoords,true);
+        daxterMesh(actor,state).submitEyes(sleeping.daxter,stack,collector,state.lightCoords,true);
         stack.popPose();
         renderSerial++;
         sleepRenderSerial++;
         lastEntityId=state.id;
     }
 
-    private static void submitCarRider(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
-        dev.jakmc.entity.JakVehicle car,float partial){
+    private static void submitCarRider(Entity actor,AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
+        net.minecraft.world.phys.Vec3 camera,dev.jakmc.entity.JakVehicle car,float partial){
         load();
         loadPilot();
         var before=car.previousFrame();
@@ -293,11 +344,12 @@ public final class JakRenderer {
         stack.mulPose(new Matrix4f().rotation(attitude));
         stack.scale(bodyScale,bodyScale,bodyScale);
         stack.translate(0,floorOffset,0);
-        body.submitJakBody(skeleton,stack,collector,state.lightCoords,false,false,false);
+        bodyMesh(actor,state,false).submitJakBody(skeleton,stack,collector,state.lightCoords,false,false,false);
+        submitCloth(actor,state,skeleton,stack,collector,camera,-2L-car.getId());
         Vector3f shoulder=body.joint(skeleton,"LshoulderPad").getTranslation(new Vector3f());
         stack.translate(shoulder.x,shoulder.y,shoulder.z);
         stack.scale(1/1.4f,1/1.4f,1/1.4f);
-        daxter.submit(passenger,stack,collector,state.lightCoords);
+        daxterMesh(actor,state).submitEyes(passenger,stack,collector,state.lightCoords,false);
         stack.popPose();
         renderSerial++;
         lastEntityId=state.id;

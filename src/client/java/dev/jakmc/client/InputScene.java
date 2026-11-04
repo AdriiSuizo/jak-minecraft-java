@@ -17,6 +17,10 @@ import java.util.*;
 public final class InputScene {
  private static boolean running,interactions,powers,leaper,hellcat,darkMotion;private static final JsonObject ACTIONS=new JsonObject();private static final Set<CameraType> VIEWS=new HashSet<>();private static int tick;private static SdlVirtualPad pad;private static Path output;
  private static long deviceDeadline;private static Vec3 start,ecoCenter;private static double peak,walk;private static float yawStart,yawAfter;
+ private static long clothStart;
+ private static float clothMin,clothMax;
+ private static volatile boolean stageReady;
+ private static float recordedStick;
  private static final Set<String> STATES=new TreeSet<>();private static final Set<UUID> ITEMS=new HashSet<>();
  public record CameraView(Vec3 position,float yaw,float pitch){}
  private static CameraView view;
@@ -49,8 +53,11 @@ public final class InputScene {
   output=c.gameDirectory.toPath().resolve("jakmc/evidence/input");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
   interactions=powers=leaper=hellcat=darkMotion=false;ACTIONS.entrySet().clear();VIEWS.clear();
   start=seed.add(7,0,0);tick=0;peak=0;walk=0;STATES.clear();ITEMS.clear();view=null;ecoCenter=null;
+  clothStart=dev.jakmc.client.model.JakRenderer.clothRenderSerial;
+  clothMin=Float.POSITIVE_INFINITY;clothMax=0;
+  stageReady=false;recordedStick=0;
   c.gui.setScreen(null);c.options.setCameraType(CameraType.THIRD_PERSON_BACK);c.player.setYRot(0);c.player.setXRot(10);yawStart=0;yawAfter=0;
-  pad=new SdlVirtualPad();deviceDeadline=System.nanoTime()+5_000_000_000L;running=true;var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{
+  pad=new SdlVirtualPad();deviceDeadline=System.nanoTime()+15_000_000_000L;running=true;var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{
    var server=c.getSingleplayerServer();var p=server.getPlayerList().getPlayer(uuid);if(p==null)return;
    server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"time set noon");server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),"weather clear");
    var base=net.minecraft.core.BlockPos.containing(start);
@@ -67,9 +74,9 @@ public final class InputScene {
     for(int y=0;y<=7;y++)p.level().setBlock(base.offset(x,y,z),net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
    }
    JakPlayers.controlForProbe(p,false);
-   if(p.position().distanceToSqr(start)>16*16)p.teleportTo(start.x,start.y,start.z);
-   else p.setPos(start);
+   p.teleportTo(start.x,start.y,start.z);
    p.level().getChunkSource().move(p);p.setYRot(0);p.setXRot(10);p.setGameMode(net.minecraft.world.level.GameType.CREATIVE);p.setAttached(JakData.ENABLED,true);p.setAttached(JakData.BOARD,new ItemStack(JakItems.BOARD));p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,ItemStack.EMPTY);
+   stageReady=true;
   });
  }
  public static void startInteractions(Minecraft c){start(c);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
@@ -508,7 +515,8 @@ public final class InputScene {
  private static UUID aimTarget,freezeTarget;
  private static volatile int slowStart,slowEnd,resumeStart,resumeEnd;
  private static boolean freezeSeen,pauseOnLostFocus;
- static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||running&&(powers||leaper||hellcat||darkMotion)&&pad!=null&&pad.id==id;}
+ static int replayPad(){return running&&pad!=null?pad.id:0;}
+ static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||id!=0&&replayPad()==id;}
  private static int darkScreenshot,shieldScreenshot,wingsScreenshot,betweenPackets,flightJump;
  private static Vec3 lastCamera;
  private static long cameraSnapshot;
@@ -731,18 +739,30 @@ public final class InputScene {
   if(!running)return;if(c.player==null||c.getSingleplayerServer()==null){finish(c,"lost world");return;}
   // Hot-plug enumeration is asynchronous. Replay must wait for the normal backend
   // to open the device at rest, as SDL calibrates virtual triggers on open.
-  if(!JakInput.controllerReady(pad.id)){if(System.nanoTime()>deviceDeadline)finish(c,"SDL replay device not opened");return;}
+  if(!stageReady||!JakInput.controllerReady(pad.id)){if(System.nanoTime()>deviceDeadline)finish(c,"Replay setup or SDL device did not become ready");return;}
   if(powers){powerActions(c);return;}
   if(darkMotion){darkMotionActions(c);return;}
   if(hellcat){hellcatActions(c);return;}
   if(leaper){leaperActions(c);return;}
   if(interactions){actions(c);return;}
   int t=++tick;
+  recordedStick=Math.max(recordedStick,JakInput.controller().activity());
   var pose=JakPoses.get(c.player.getId());if(pose!=null){if(pose.raw().has("state"))STATES.add(pose.raw().get("state").getAsString());peak=Math.max(peak,c.player.getY()-start.y);}
+  if(t>=18&&t<95&&dev.jakmc.client.model.JakRenderer.clothRenderSerial>clothStart){
+   float reach=dev.jakmc.client.model.JakRenderer.clothScarfReach;
+   clothMin=Math.min(clothMin,reach);clothMax=Math.max(clothMax,reach);
+  }
+  if(t>=28&&t<=36||t>=81&&t<=89){
+   var at=c.player.position();
+   double yaw=Math.toRadians(c.player.getYRot());
+   look(at.add(Math.sin(yaw)*2.2+Math.cos(yaw)*1.3,1.65,-Math.cos(yaw)*2.2+Math.sin(yaw)*1.3),
+        at.add(0,1,0));
+  }
+  if(t==37||t==90)view=null;
   if(t==12){c.player.setYRot(0);c.player.setXRot(10);yawStart=c.player.getYRot();c.gui.hud.getChat().clearMessages(false);}
   pad.axis(1,t>=20&&t<45||t>=135&&t<155||t>=240&&t<260?-.9f:0);
   pad.axis(2,t>=50&&t<65?.6f:0);
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,t==80||t==84);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,t==80||t==84||t==142);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,t>=135&&t<155);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,t==180);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,t==200);
@@ -767,7 +787,9 @@ public final class InputScene {
   if(t>=415&&t<475){look(c.player.position().add(2,2.2,-2.8),c.player.position().add(0,1.1,0));if(t==435||t==465)capture(c,"input-eco-hand-"+t+".png");}
   if(t==480){view=null;c.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(c.player));}
   if(t==495)capture(c,"input-eco-gui.png");
-  if(t>=505)finish(c,ACTIONS.has("minimap_reads_displayed_camera")&&ACTIONS.get("minimap_reads_displayed_camera").getAsBoolean()?"complete":"Minimap yaw differs from camera");
+  if(t>=505)finish(c,!ACTIONS.has("minimap_reads_displayed_camera")||!ACTIONS.get("minimap_reads_displayed_camera").getAsBoolean()
+      ?"Minimap yaw differs from camera":!STATES.containsAll(Set.of("double-jump","roll-flip","attack","board-stance"))
+      ?"Native Jak action did not run":clothMax-clothMin>.01f?"complete":"Cloth solver did not bend the scarf");
  }
  private static void look(Vec3 at,Vec3 target){Vec3 d=target.subtract(at);view=new CameraView(at,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),(float)Math.toDegrees(Math.atan2(-d.y,d.horizontalDistance())));}
  private static void capture(Minecraft c,String file){Screenshot.grab(c.gameDirectory,file,c.gameRenderer.mainRenderTarget(),1,m->{});}
@@ -775,6 +797,9 @@ public final class InputScene {
   if(powers||leaper||hellcat||darkMotion)c.options.pauseOnLostFocus=pauseOnLostFocus;
   running=false;view=null;if(pad!=null){pad.close();pad=null;}var result=new JsonObject();result.addProperty("reason",reason);result.addProperty("walk_blocks",walk);result.addProperty("jump_peak_blocks",peak);result.addProperty("camera_yaw_delta",yawAfter-yawStart);result.addProperty("states",String.join(",",STATES));result.addProperty("visual_review","required");if(ACTIONS.has("minimap_reads_displayed_camera"))result.addProperty("minimap_reads_displayed_camera",ACTIONS.get("minimap_reads_displayed_camera").getAsBoolean());if(powers){result.add("actions",ACTIONS.deepCopy());result.addProperty("moving_frames_between_pose_packets",betweenPackets);}if(interactions||leaper||hellcat||darkMotion){result.add("actions",ACTIONS.deepCopy());if(ACTIONS.entrySet().stream().anyMatch(e->!e.getValue().getAsBoolean()))result.addProperty("reason",reason.equals("complete")?"interaction assertion failed":reason);}
   result.addProperty("jak_actions_reached",STATES.containsAll(Set.of("double-jump","roll","attack","board-stance")));
+  result.addProperty("cloth_draws",dev.jakmc.client.model.JakRenderer.clothRenderSerial-clothStart);
+  result.addProperty("scarf_reach_span",Float.isFinite(clothMin)?clothMax-clothMin:0);
+  result.addProperty("controller_activity",recordedStick);
   try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
   if(c.getSingleplayerServer()!=null){var server=c.getSingleplayerServer();server.execute(()->{for(UUID id:ITEMS){var item=server.overworld().getEntity(id);if(item!=null)item.discard();}});}c.stop();
  }

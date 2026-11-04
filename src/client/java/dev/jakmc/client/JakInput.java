@@ -93,7 +93,7 @@ public final class JakInput {
             trigger=null;
             return;
         }
-        var next=GAMEPAD.poll();
+        var next=GAMEPAD.poll(InputScene.replayPad());
         uiPad=next;
         if(next.id()!=controllerId){
             cancelPower|=controllerId!=0;

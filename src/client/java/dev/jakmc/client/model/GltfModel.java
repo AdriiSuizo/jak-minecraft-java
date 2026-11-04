@@ -22,11 +22,14 @@ public final class GltfModel {
     // GOAL Rig::globals strips parent scale; the board explicitly inherits it.
     private final boolean inheritScale;
     private final boolean compensateScale;
+    private final boolean cinematic;
+    private static final ThreadLocal<float[]> CAMERA_VERTICES=ThreadLocal.withInitial(()->new float[0]);
     private dev.jakmc.nativebridge.ModelSegments segments;
     private final Map<Identifier,Identifier> darkTextures=new HashMap<>(),lightTextures=new HashMap<>();
     private boolean jakBody;
     private final ForwardEyes.Pair eyes;
     private final Map<Identifier,byte[]> pendingTextures=new LinkedHashMap<>();
+    private final Map<Identifier,Integer> textureCoverage=new HashMap<>();
     private final JsonObject json;
     private final ByteBuffer bin;
     private final Node[] nodes;
@@ -43,6 +46,7 @@ public final class GltfModel {
     public long skinnedVertices;
     private float[] defaultMorphs=new float[0];
     private record Node(Vector3f t,Quaternionf r,Vector3f s,int parent,String name){}
+    private record TextureBinding(int texture,int coverage){}
     private static Identifier gemAtlas;
     private static Identifier gemAtlas(){if(gemAtlas!=null)return gemAtlas;try{int[] pixels=SkullGemTexture.bake(dev.jakmc.RuntimeConfig.assets.resolve("textures/level-default-tfrag"));var image=new NativeImage(64,64*60,false);for(int y=0;y<64*60;y++)for(int x=0;x<64;x++)image.setPixel(x,y,pixels[y*64+x]);gemAtlas=JakData.id("local/skull_gem_animated");Minecraft.getInstance().getTextureManager().register(gemAtlas,new DynamicTexture(()->"Original skull gem layers",image));return gemAtlas;}catch(IOException e){throw new UncheckedIOException(e);}}
     public static float materialSeconds(){var c=Minecraft.getInstance();return c.level==null?0:(c.level.getGameTime()+c.getDeltaTracker().getGameTimeDeltaPartialTick(false))/20f;}
@@ -59,6 +63,8 @@ public final class GltfModel {
     }
     public GltfModel(Path file,String key,boolean compensateScale)throws IOException {
         this.compensateScale=compensateScale;
+        cinematic=key.endsWith("_cinematic");
+        boolean jakTextures=key.equals("jak")||key.equals("jak_cinematic")||key.equals("jak_dark_cinematic");
         inheritScale=file.getFileName().toString().startsWith("board-")||file.getFileName().toString().equals("gun-lod0.glb");
         byte[] bytes=Files.readAllBytes(file);ByteBuffer data=ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         if(data.getInt()!=0x46546c67||data.getInt()!=2||data.getInt()!=bytes.length)throw new IOException("Invalid GLB "+file);
@@ -81,7 +87,7 @@ public final class GltfModel {
             float[] matrices=accessor(skin.get("inverseBindMatrices").getAsInt());inverseBind=new Matrix4f[joints.length];
             for(int i=0;i<joints.length;i++)inverseBind[i]=new Matrix4f().set(Arrays.copyOfRange(matrices,i*16,i*16+16));
         } else {joints=new int[]{0};inverseBind=new Matrix4f[]{new Matrix4f()};}
-        var textures=new HashMap<Integer,Identifier>();
+        var textures=new HashMap<TextureBinding,Identifier>();
         if(json.has("meshes"))for(var mesh:json.getAsJsonArray("meshes"))for(var primitive:mesh.getAsJsonObject().getAsJsonArray("primitives")){
             if(mesh.getAsJsonObject().has("weights"))defaultMorphs=array(mesh.getAsJsonObject().getAsJsonArray("weights"));
             var p=primitive.getAsJsonObject();if(p.has("mode")&&p.get("mode").getAsInt()!=4)throw new IOException("Unsupported non-triangle primitive");
@@ -99,21 +105,27 @@ public final class GltfModel {
             float[] factor=pbr.has("baseColorFactor")?array(pbr.getAsJsonArray("baseColorFactor")):new float[]{1,1,1,1};
             color=color.clone();for(int i=0;i<color.length;i++)color[i]*=factor[i%4];
             int texture=pbr.getAsJsonObject("baseColorTexture").get("index").getAsInt();
-            Identifier id=textures.get(texture);
+            String mode=material.has("alphaMode")?material.get("alphaMode").getAsString():"OPAQUE";
+            int coverage=!cinematic||mode.equals("BLEND")?-1:mode.equals("MASK")
+                ?Math.round(255*(material.has("alphaCutoff")?material.get("alphaCutoff").getAsFloat():.5f)):0;
+            var binding=new TextureBinding(texture,coverage);
+            Identifier id=textures.get(binding);
             if(id==null){
                 int source=json.getAsJsonArray("textures").get(texture).getAsJsonObject().get("source").getAsInt();
                 var image=json.getAsJsonArray("images").get(source).getAsJsonObject();byte[] png;
                 if(image.has("uri")){String uri=image.get("uri").getAsString();if(!uri.startsWith("data:"))throw new IOException("External texture requires asset resolver: "+uri);png=Base64.getDecoder().decode(uri.substring(uri.indexOf(',')+1));}
                 else {var view=json.getAsJsonArray("bufferViews").get(image.get("bufferView").getAsInt()).getAsJsonObject();int off=intOr(view,"byteOffset",0);png=new byte[view.get("byteLength").getAsInt()];bin.get(off,png);}
-                id=JakData.id("local/"+key+"/"+source);final String label=id.toString();
-                pendingTextures.put(id,png);textures.put(texture,id);
-                if(key.equals("jak")){
+                id=JakData.id("local/"+key+"/"+source+(cinematic?"/a"+(coverage+1):""));
+                pendingTextures.put(id,png);textures.put(binding,id);
+                if(coverage>=0)textureCoverage.put(id,coverage);
+                if(jakTextures){
                     jakBody=true;
                     String name=material.has("name")?material.get("name").getAsString().replaceFirst("-envmap$",""):"";
                     var dark=file.getParent().getParent().getParent().resolve("textures/level-default-pris/"+name+"-dark.png");
                     if(Files.isRegularFile(dark)){
                         var variant=JakData.id(id.getPath()+"/dark");
                         pendingTextures.put(variant,Files.readAllBytes(dark));
+                        if(coverage>=0)textureCoverage.put(variant,coverage);
                         darkTextures.put(id,variant);
                     }
                     lightTextures.put(id,JakData.id(id.getPath()+"/light"));
@@ -132,7 +144,7 @@ public final class GltfModel {
             if(compactBones!=null)for(int vertex=0;vertex<used.length;vertex++)for(int k=0;k<4;k++)if(weight[used[vertex]*4+k]>0&&(compactBones[vertex*4+k]<0||compactBones[vertex*4+k]>=joints.length))throw new IOException("Indexed vertex uses missing skin joint in "+file);
             surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("name")?material.get("name").getAsString():"",material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals));
         }
-        if(key.equals("jak")||key.equals("daxter")){
+        if(jakTextures||key.equals("daxter")||key.equals("daxter_cinematic")){
             Path eyeTextures=file.getParent().getParent().getParent().resolve("textures");
             eyes=ForwardEyes.build(eyeTextures,key,surfaces.stream().map(
                 surface->new ForwardEyes.Mesh(surface.positions,surface.uv,surface.indices,surface.material)).toList());
@@ -152,6 +164,33 @@ public final class GltfModel {
             if(segments==null)throw new IOException("Original segment table did not match GLB: "+originalName);
         }
     }
+
+    /** Matches jak_model.rs::onto_skeleton. This mesh will be drawn with the target pose. */
+    void wearOn(GltfModel target){
+        var targetBones=new HashMap<String,Integer>();
+        for(int i=0;i<target.joints.length;i++)targetBones.put(target.nodes[target.joints[i]].name,i);
+        int[] onto=new int[joints.length];
+        for(int i=0;i<joints.length;i++){
+            for(int node=joints[i];node>=0;node=nodes[node].parent){
+                Integer match=targetBones.get(nodes[node].name);
+                if(match!=null){onto[i]=match;break;}
+            }
+        }
+        for(var surface:surfaces)if(surface.joints!=null){
+            for(int i=0;i<surface.joints.length;i++){
+                if(surface.weights[i]==0)continue;
+                surface.joints[i]=onto[surface.joints[i]];
+                for(int before=i&~3;before<i;before++){
+                    if(surface.weights[before]==0||surface.joints[before]!=surface.joints[i])continue;
+                    surface.weights[before]+=surface.weights[i];
+                    surface.weights[i]=0;
+                    break;
+                }
+            }
+        }
+    }
+
+    int triangles(){return surfaces.stream().mapToInt(s->s.indices.length/3).sum();}
     public void loadSegments(Path art,String lod)throws IOException{segments=dev.jakmc.nativebridge.ModelSegments.read(art,lod,surfaces.stream().mapToInt(s->s.indices.length/3).toArray());if(segments==null)throw new IOException("Source segment table mismatch: "+lod);}
     void vehicleDamageStages(int[] stages)throws IOException{
         if(stages.length!=surfaces.size())throw new IOException("HellCat stage data and mesh do not match");
@@ -491,6 +530,14 @@ public final class GltfModel {
                 var id=entry.getKey();
                 try{
                     var texture=NativeImage.read(new ByteArrayInputStream(entry.getValue()));
+                    Integer coverage=textureCoverage.get(id);
+                    if(coverage!=null){
+                        // OpenGOAL merc: opaque envmap alpha measures reflection strength.
+                        // It only controls visibility on materials marked MASK or BLEND.
+                        try(var raw=texture){
+                            texture=raw.mappedCopy(pixel->(pixel&0x00ffffff)|((pixel>>>24)>=coverage?0xff000000:0));
+                        }
+                    }
                     if(jakBody&&lightTextures.containsKey(id)){
                         var white=texture.mappedCopy(pixel->pixel|0x00ffffff);
                         var lightId=lightTextures.get(id);
@@ -525,9 +572,16 @@ public final class GltfModel {
             var renderType=effect!=null?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?RenderTypes.entityTranslucentEmissive(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
                 Vector3f v=new Vector3f(),normal=new Vector3f();
+                float[] cameraVertices=cinematic?cameraVertices(pose,skinned,v,normal):null;
                 for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
-                    int i=surface.indices[triangle+corner];pose.pose().transformPosition(skinned[i*6],skinned[i*6+1],skinned[i*6+2],v);
-                    pose.transformNormal(skinned[i*6+3],skinned[i*6+4],skinned[i*6+5],normal);
+                    int i=surface.indices[triangle+corner],at=i*6;
+                    if(cameraVertices!=null){
+                        v.set(cameraVertices,at);
+                        normal.set(cameraVertices,at+3);
+                    }else{
+                        pose.pose().transformPosition(skinned[at],skinned[at+1],skinned[at+2],v);
+                        pose.transformNormal(skinned[at+3],skinned[at+4],skinned[at+5],normal);
+                    }
                     int color=Math.clamp(Math.round(surface.colors[i*4+3]*alpha*255),0,255)<<24;for(int c=0;c<3;c++)color|=Math.clamp((int)(surface.colors[i*4+c]*((tint>>>(16-c*8))&255)),0,255)<<(16-c*8);
                     if(rim!=null){
                         float illumination=0;
@@ -555,6 +609,18 @@ public final class GltfModel {
                 }
             });
         }
+    }
+    private static float[] cameraVertices(PoseStack.Pose pose,float[] skinned,Vector3f vertex,Vector3f normal){
+        var buffer=CAMERA_VERTICES.get();
+        if(buffer.length<skinned.length){
+            buffer=new float[skinned.length];
+            CAMERA_VERTICES.set(buffer);
+        }
+        for(int at=0;at<skinned.length;at+=6){
+            pose.pose().transformPosition(skinned[at],skinned[at+1],skinned[at+2],vertex).get(buffer,at);
+            pose.transformNormal(skinned[at+3],skinned[at+4],skinned[at+5],normal).get(buffer,at+3);
+        }
+        return buffer;
     }
     private float[] skin(Surface surface,Posed posed){
         int count=surface.positions.length/3;skinnedVertices+=count;float[] skinned=new float[count*6];
