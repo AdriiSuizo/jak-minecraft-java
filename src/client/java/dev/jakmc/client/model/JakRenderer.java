@@ -218,19 +218,7 @@ public final class JakRenderer {
         boolean gunOut=gunState!=null&&gunState.get("out").getAsBoolean();
         boolean shieldUp=pose.raw().has("shield")&&pose.raw().get("shield").getAsBoolean();
         if(!climbing&&!pose.board()&&!mounted&&gunKind>=0&&gunOut&&!shieldUp&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
-            String upper=switch(gunKind/3){case 0->"jakb-gun-stance";case 1->"jakb-gun-stance-yellow";case 2->"jakb-gun-stance-blue";default->"jakb-gun-stance-dark";};
-            float age=0;var g=pose.raw().getAsJsonObject("gun");
-            if(g!=null&&g.get("out").getAsBoolean()){
-                float fire=g.get("fireAge").getAsFloat()+elapsed,draw=g.get("drawAge").getAsFloat()+elapsed;
-                String take="jakb-gun-"+new String[]{"red","yellow","blue","dark"}[gunKind/3]+"-takeout";
-                if(draw>=0&&draw<body.duration(take)){upper=take;age=draw;}
-                else if(fire>=0&&fire<.45f){upper=FIRE_BODY[gunKind];age=fire;}
-                else if(pose.clip().contains("walk")){
-                    boolean run=g.get("runMix").getAsFloat()>.5f;upper=gunKind/3==2?(run?"jakb-gun-run-blue":"jakb-gun-walk-blue"):(run?"jakb-gun-front-run":"jakb-gun-front-walk");
-                    age=frame/Math.max(1,frames-1)*body.duration(upper);
-                }else age=(g.get("time").getAsFloat()+elapsed)%Math.max(.001f,body.duration(upper));
-            }
-            skeleton=body.overlayUpper(skeleton,upper,age);
+            skeleton=overlayGun(skeleton,pose,gunKind,frame,frames,elapsed);
         }
         boolean aiming=pose.raw().has("aim")&&pose.raw().get("aim").getAsBoolean();
         float lookYaw=pose.raw().has("lookYaw")?pose.raw().get("lookYaw").getAsFloat():pose.yaw();
@@ -496,6 +484,44 @@ public final class JakRenderer {
         shield.submitLightEffect(shield.poseAtTime(clip,frameTime),stack,collector,LightFormTexture.Form.SHIELD,fraction);
         stack.popPose();
     }
+    private static GltfModel.Posed overlayGun(GltfModel.Posed skeleton,JakPoses.Pose pose,int kind,float frame,int frames,float elapsed){
+            String upper=switch(kind/3){case 0->"jakb-gun-stance";case 1->"jakb-gun-stance-yellow";case 2->"jakb-gun-stance-blue";default->"jakb-gun-stance-dark";};
+            float age=0;var g=pose.raw().getAsJsonObject("gun");
+            if(g!=null&&g.get("out").getAsBoolean()){
+                float fire=g.get("fireAge").getAsFloat()+elapsed,draw=g.get("drawAge").getAsFloat()+elapsed;
+                String take="jakb-gun-"+new String[]{"red","yellow","blue","dark"}[kind/3]+"-takeout";
+                if(draw>=0&&draw<body.duration(take)){upper=take;age=draw;}
+                else if(fire>=0&&fire<.45f){upper=FIRE_BODY[kind];age=fire;}
+                else if(pose.clip().contains("walk")){
+                    boolean run=g.get("runMix").getAsFloat()>.5f;upper=kind/3==2?(run?"jakb-gun-run-blue":"jakb-gun-walk-blue"):(run?"jakb-gun-front-run":"jakb-gun-front-walk");
+                    age=frame/Math.max(1,frames-1)*body.duration(upper);
+                }else age=(g.get("time").getAsFloat()+elapsed)%Math.max(.001f,body.duration(upper));
+            }
+            return body.overlayUpper(skeleton,upper,age);
+    }
+    private static GltfModel.Posed gunPose(JakPoses.Pose source,int kind,float elapsed){
+        String color=new String[]{"red","yellow","blue","dark"}[kind/3];
+        String clip="gun-idle-"+color+(kind%3==0?"":String.valueOf(kind%3+1));float age=0;
+        var g=source.raw().getAsJsonObject("gun");
+        if(g!=null){float fire=g.get("fireAge").getAsFloat()+elapsed;
+            if(fire>=0&&fire<.45f){clip=FIRE_GUN[kind];age=fire;}else age=(g.get("time").getAsFloat()+elapsed)%Math.max(.001f,gun.duration(clip));}
+        return gun.poseAtTime(clip,age);
+    }
+    /** Compare independently sampled server bones with the actual client model API. */
+    public static double weaponSocketError(JakPoses.Pose pose,int kind){
+        load();var g=pose.raw().getAsJsonObject("gun");
+        var skeleton=JakChannels.sample(body,false,pose,null,pose.frame());
+        if(g.get("out").getAsBoolean()&&!pose.dark()&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump")))
+            skeleton=overlayGun(skeleton,pose,kind,pose.frame(),body.frames(pose.clip()),0);
+        float twist=pose.raw().get("aim").getAsBoolean()?Math.clamp((float)Math.toRadians(net.minecraft.util.Mth.wrapDegrees(pose.yaw()-pose.raw().get("lookYaw").getAsFloat())),-1.6f,1.6f):0;
+        skeleton=body.jakForm(skeleton,pose.dark(),twist);
+        var socket=gun.joint(gunPose(pose,kind,0),"muzzle").getTranslation(new Vector3f());
+        rigid(body.joint(skeleton,"gun")).transformPosition(socket);socket.add(0,floorOffset,0).mul(bodyScale);
+        var expected=g.getAsJsonArray("rigMuzzle");
+        if(Math.abs(g.get("rigScale").getAsFloat()-bodyScale)>1e-5||Math.abs(g.get("rigFloor").getAsFloat()-floorOffset)>1e-5)
+            throw new IllegalStateException("Server/client cinematic calibration differs");
+        return socket.distance(new Vector3f(expected.get(0).getAsFloat(),expected.get(1).getAsFloat(),expected.get(2).getAsFloat()));
+    }
     private static void hand(AvatarRenderState state,boolean right,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector,net.minecraft.world.phys.Vec3 camera){
         var held=right?state.rightHandItemState:state.leftHandItemState;
         var item=right?state.rightHandItemStack:state.leftHandItemStack;
@@ -506,11 +532,9 @@ public final class JakRenderer {
         if(item.is(JakItems.SKULL_GEM)){var palm=joint.getTranslation(new Vector3f()).add(body.joint(skeleton,right?"rmidA":"lmidA").getTranslation(new Vector3f())).mul(.5f);joint=new Matrix4f(joint).setTranslation(palm);}
         stack.mulPose(rigid(joint));
         if(kind>=0){
-            String color=new String[]{"red","yellow","blue","dark"}[kind/3];String clip="gun-idle-"+color+(kind%3==0?"":String.valueOf(kind%3+1));float age=0;
-            var source=JakPoses.rendered(state.id);var g=source.raw().getAsJsonObject("gun");
-            if(g!=null){float elapsed=JakPoses.elapsed(source),fire=g.get("fireAge").getAsFloat()+elapsed;
-                if(fire>=0&&fire<.45f){clip=FIRE_GUN[kind];age=fire;}else age=(g.get("time").getAsFloat()+elapsed)%Math.max(.001f,gun.duration(clip));}
-            var gunPose=gun.poseAtTime(clip,age);
+            var source=JakPoses.rendered(state.id);
+            var g=source.raw().getAsJsonObject("gun");
+            var gunPose=gunPose(source,kind,JakPoses.elapsed(source));
             gun.submit(gunPose,stack,collector,state.lightCoords);
             if(right&&!JakGuiContext.active()&&gun.hasJoint("muzzle")){
                 var muzzle=gun.joint(gunPose,"muzzle").getTranslation(new Vector3f());

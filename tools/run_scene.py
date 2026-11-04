@@ -87,7 +87,7 @@ def run():
         shutil.copyfile(result,evidence/'result.json')
         if scene in ('equipment','economy','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','natural_cities','zoomers') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
         if scene not in ('sites','new_sites','natural_cities'):
-            if scene in ('dark_motion','surface','player_sleep','yakow') and (not image.exists() or image.stat().st_mtime_ns<capture_after):
+            if scene in ('weapons','rings','dark_motion','surface','player_sleep','yakow') and (not image.exists() or image.stat().st_mtime_ns<capture_after):
                 raise RuntimeError(f'{scene} completed without a fresh screenshot')
             shutil.copyfile(image,evidence/'screen.png')
         if scene=='surface':
@@ -134,12 +134,14 @@ def run():
                 if shot.exists() and shot.stat().st_mtime_ns>=capture_after:
                     shutil.copyfile(shot,evidence/name)
         if scene in ('gems','gems_visual'):
-            for capture in (ROOT/'run/screenshots').glob('gems-*.png'):shutil.copyfile(capture,evidence/capture.name)
+            for capture in (ROOT/'run/screenshots').glob('gems-*.png'):
+                if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         if scene in ('input','input_actions'):
             for capture in (ROOT/'run/screenshots').glob('input-*.png'):
                 if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         if scene in ('weapons','rings'):
-            for capture in (ROOT/'run/screenshots').glob('weapon-*.png'):shutil.copyfile(capture,evidence/capture.name)
+            for capture in (ROOT/'run/screenshots').glob('weapon-*.png'):
+                if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         if scene=='effects':
             shutil.copyfile(ROOT/'run/screenshots/port-board-zap.png',evidence/'board.png')
             shutil.copyfile(ROOT/'run/screenshots/port-wave.png',evidence/'wave.png')
@@ -147,7 +149,8 @@ def run():
             for capture in (ROOT/'run/screenshots').glob('enemy-*.png'):
                 if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         if scene=='citizens':
-            for capture in (ROOT/'run/screenshots').glob('citizens-*.png'):shutil.copyfile(capture,evidence/capture.name)
+            for capture in (ROOT/'run/screenshots').glob('citizens-*.png'):
+                if capture.stat().st_mtime_ns>=capture_after:shutil.copyfile(capture,evidence/capture.name)
         outcome=json.loads(result.read_text(encoding='utf-8'))
         print(json.dumps({'evidence':str(evidence),'result':outcome},indent=2),flush=True)
     except Exception as failure:

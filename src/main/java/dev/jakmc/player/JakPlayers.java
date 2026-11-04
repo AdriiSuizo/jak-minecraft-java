@@ -18,8 +18,13 @@ import net.minecraft.world.phys.*;
 /** Minecraft server owns movement, survival damage, inventory and actor lifetime. */
 public final class JakPlayers {
     private static final Set<UUID> CONTROLLED=new HashSet<>();
+    private static final Set<UUID> HOST_CONTROLLED=new HashSet<>();
     private static final Map<UUID,JakPackets.Input> PROBE_INPUT=new HashMap<>();
-    public static void controlForProbe(ServerPlayer player,boolean controlled){if(controlled){CONTROLLED.add(player.getUUID());probeInput(player,0,0,0);}else{CONTROLLED.remove(player.getUUID());PROBE_INPUT.remove(player.getUUID());}}
+    public static void controlForProbe(ServerPlayer player,boolean controlled){if(controlled){CONTROLLED.add(player.getUUID());probeInput(player,0,0,0);}else{CONTROLLED.remove(player.getUUID());HOST_CONTROLLED.remove(player.getUUID());PROBE_INPUT.remove(player.getUUID());}}
+    public static void hostControlsForProbe(ServerPlayer player){
+        if(!CONTROLLED.contains(player.getUUID()))throw new IllegalStateException("Only a controlled development fixture can select its input route");
+        HOST_CONTROLLED.add(player.getUUID());
+    }
     public static void probeInput(ServerPlayer p,int held,int pressed,float forward){PROBE_INPUT.put(p.getUUID(),new JakPackets.Input(0,held,pressed,0,forward,0,0,p.getYRot(),p.getXRot(),0,0));}
     private static final Map<UUID,Session> LIVE=new HashMap<>();
     public static void resetForProbe(ServerPlayer player){
@@ -216,7 +221,7 @@ public final class JakPlayers {
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE))flags|=4;
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.SLOW_FALLING))flags|=8;
         flags|=floor(p)<<8;
-        if(!controlled){
+        if(!controlled||HOST_CONTROLLED.contains(p.getUUID())){
             flags|=1<<13; // Physical controls are routed by this host.
             if((input.held()&JakPackets.FIRST_PERSON)!=0)flags|=1<<14;
             if(!fresh||(input.held()&JakPackets.CANCEL_POWER)!=0)flags|=1<<15;

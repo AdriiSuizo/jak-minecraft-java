@@ -11,6 +11,8 @@ use jni::objects::JString;
 use std::sync::Arc;
 mod art_group;
 mod body_joints;
+mod posed_gun;
+static POSED_GUN: OnceLock<posed_gun::PosedGun> = OnceLock::new();
 static BODY_JOINTS: OnceLock<body_joints::BodyJoints> = OnceLock::new();
 mod audio;
 mod jak_steps;
@@ -25,6 +27,13 @@ static ANIMS:OnceLock<Arc<jak_core::anim::Anims>>=OnceLock::new();
 pub const ABI_VERSION: u32 = 3;
 /// One Minecraft block = 1.5625 original meters. Actor stands 1.8 blocks tall.
 pub const BLOCK: f32 = 6400.;
+// Match the visible upper-body aim rotation in the server-owned pose.
+fn gun_twist(j:&Jak,aim:bool,look_yaw:f32)->f32 {
+ if !aim||j.state.is_board()||j.state.is_flut(){return 0.;}
+ let body=jak_core::math::to_radians(j.control.y_angle());
+ let delta=(-body-look_yaw+std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)-std::f32::consts::PI;
+ delta.clamp(-1.6,1.6)
+}
 /// NPC resources use the same authored artist-frame events as the player.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_animationMetadata(mut env:JNIEnv,_:JClass,root:JString,model:JString,jak1:jni::sys::jboolean)->jstring {
@@ -248,6 +257,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
    anims=anims.with_effects(name,effects);
   }
   if anims.timed<150{return Err(format!("Only {} authored Jak animation timings; incomplete source export",anims.timed));}
+  let gun_pose=posed_gun::PosedGun::load(&root,&authored)?;
+  POSED_GUN.set(gun_pose).map_err(|_|"posed gun configuration raced")?;
   let joints=body_joints::BodyJoints::load(&root,&mut authored)?;
   BODY_JOINTS.set(joints).map_err(|_|"body joint configuration raced")?;
   let timed=anims.timed;ANIMS.set(Arc::new(anims)).map_err(|_|"animation configuration raced")?;Ok(timed as jint)
@@ -411,7 +422,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
           } else {
               let forward = s.jak.orientation() * Vec3::Z;
               let flat = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
-              let muzzle = s.jak.trans() + Vec3::Y * jak_core::gun::MUZZLE_UP + flat * jak_core::gun::MUZZLE_AHEAD;
+              let muzzle = POSED_GUN.get().map_or_else(||s.jak.trans() + Vec3::Y * jak_core::gun::MUZZLE_UP + flat * jak_core::gun::MUZZLE_AHEAD,|rig|s.jak.trans()+s.jak.control.quat*rig.muzzle(&s.jak,0.));
               s.jak.gun.aim = s.actors.boxes.iter().map(|(_, lo, hi)| (*lo + *hi) * 0.5)
                   .filter(|center| {
                       let delta = *center - muzzle;
@@ -431,6 +442,9 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   for _ in 0..steps{
    if let Some(body)=BODY_JOINTS.get(){
        body.sample(&mut s.jak,&mut s.joint_rotations);
+       if let Some(gun)=POSED_GUN.get(){
+           s.jak.gun.muzzle_local=s.jak.gun.equipped.flatten().map(|_|gun.muzzle(&s.jak,gun_twist(&s.jak,manual_aim,yaw)));
+       }
    }
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
    if s.jak.state.is_board() {
@@ -537,7 +551,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    "lift":j.control.draw_offset_y/BLOCK,"ladderWeight":j.ladder_pose_weight()});
   let transition=json!({"stateAge":state_age,"pushTick":j.push.tick,
     "pushAge":(j.time-j.push.tick) as f32/300.,"pushDuration":j.push.ticks as f32/300.});
-  let gun=json!({"direction":j.gun.fire_dir.to_array(),"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
+  let gun=json!({"rigMuzzle":POSED_GUN.get().map(|rig|(rig.muzzle(j,gun_twist(j,manual_aim,yaw))/BLOCK).to_array()),"rigScale":POSED_GUN.get().map(|rig|rig.scale),"rigFloor":POSED_GUN.get().map(|rig|rig.floor),"direction":j.gun.fire_dir.to_array(),"kind":j.gun.kind as u8,"out":j.gun.out,"fireAge":if j.gun.fire_time>0{(j.time-j.gun.fire_time)as f32/300.}else{999.},"drawAge":(j.time-j.gun.get_on_time)as f32/300.,"time":j.time as f32/300.,"spin":j.gun.spin,"runMix":j.chan.mix.map_or(0.,|m|m.run)});
   let wings=j.lightjak.wings.filter(|w|w.shown).map(|w|{
    let rate=before_wings.filter(|before|before.anim==w.chan.anim&&w.chan.frame>=before.frame)
        .map_or(0.,|before|((w.chan.frame-before.frame)/(steps as f32/60.)).min(240.));
