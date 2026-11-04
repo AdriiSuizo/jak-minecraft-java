@@ -38,13 +38,15 @@ final class SitesScene {
     private static java.util.UUID owner;
     static void initialize(){ClientTickEvents.END_CLIENT_TICK.register(SitesScene::tick);}
     static void start(Minecraft client){start(client,false);}
-    static void start(Minecraft client,boolean recent){
+    static void startCities(Minecraft client){start(client,false,true);}
+    static void start(Minecraft client,boolean recent){start(client,recent,false);}
+    private static void start(Minecraft client,boolean recent,boolean citiesOnly){
         var server=client.getSingleplayerServer();
         owner=client.player.getUUID();
         pause=client.options.pauseOnLostFocus;client.options.pauseOnLostFocus=false;
-        result.entrySet().clear();index=ticks=0;active=false;
+        result.entrySet().clear();index=citiesOnly?2:0;ticks=0;active=false;
         sites=recent?NEW_SITES:ORIGINAL_SITES;
-        scene=recent?"new_sites":"sites";
+        scene=citiesOnly?"natural_cities":recent?"new_sites":"sites";
         server.execute(()->{
             var p=server.getPlayerList().getPlayer(owner);
             if(p==null)return;
@@ -163,6 +165,7 @@ final class SitesScene {
             }
         }
         var info=new JsonObject();
+        info.addProperty("biome",level.getBiome(bounds.getCenter()).unwrapKey().orElseThrow().identifier().toString());
         info.addProperty("found",true);info.addProperty("x",bounds.getCenter().getX());info.addProperty("z",bounds.getCenter().getZ());
         info.addProperty("chests",chests);info.addProperty("lootTables",assigned);info.addProperty("generatedItems",items);
         info.addProperty("matchesEra",sourceLoot&&(crater?items==100:items>0));

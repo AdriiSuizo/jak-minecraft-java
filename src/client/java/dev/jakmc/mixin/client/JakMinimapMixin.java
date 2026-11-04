@@ -15,6 +15,6 @@ abstract class JakMinimapMixin {
     @Shadow public abstract boolean isHidden();
     @Inject(method="extractRenderState",at=@At("TAIL"))
     private void jakmc$map(GuiGraphicsExtractor graphics,DeltaTracker delta,CallbackInfo ci){
-        if(!isHidden())JakMinimap.draw(graphics,delta);
+        if(!isHidden()){JakMinimap.draw(graphics,delta);dev.jakmc.client.JakHud.draw(graphics);}
     }
 }

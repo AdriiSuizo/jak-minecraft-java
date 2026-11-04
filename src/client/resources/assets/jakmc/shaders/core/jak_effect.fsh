@@ -23,6 +23,17 @@ void main(){
  #else
  color.a*=visibility;
  #endif
+ #ifdef JAK_GUI
+ // Item render targets are transparent; PS2 additive alpha=1 creates black squares there.
+ vec3 emission=tex.rgb*vertexColor.rgb*2.0;
+ #if JAK_BLEND == 3
+ emission*=vertexColor.a*2.0;
+ #else
+ emission*=clamp(tex.a*vertexColor.a*4.0,0.0,1.0);
+ #endif
+ float coverage=clamp(max(emission.r,max(emission.g,emission.b)),0.0,1.0);
+ color=vec4(emission/max(coverage,0.001),coverage);
+ #endif
  if(color.a<0.001)discard;
  #ifdef OIT_ALPHA_ONLY
  executeAlphaOnlyPhase(gl_FragCoord.z,clamp(color.a,0.0,0.99));

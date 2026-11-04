@@ -28,3 +28,6 @@ Revisión del 4 de noviembre de 2026. Este inventario sigue el código del mashu
 En el mashup de trabajo, `git log --oneline ab43b8a..HEAD` enumera los commits propios de esa rama. `git -c core.safecrlf=false diff --ignore-space-at-eol --name-status ab43b8a` incluye el contenido versionado del árbol local. `git ls-files --others --exclude-standard -- crates third_party tools docs` enumera el material que queda fuera del diff. Para la comparación del núcleo se cotejan las rutas relativas y su contenido entre `crates/jak_mode/src` y `native/jak-core/src`. Para saber si una función está operativa, hay que seguir también la entrada y la salida del anfitrión Java.
 
 Los puntos de entrada y los resultados de ejecución del port están en [CURRENT-PORT-HANDOFF.md](CURRENT-PORT-HANDOFF.md) y [MODLOG.md](../MODLOG.md).
+
+
+2026-11-04: eco y munición ahora se consumen de objetos reales, incluidos contenedores nativos anidados y adaptadores Fabric extraíbles. Círculo de eco original, cuatro recetas y modelos/colores de munición, comercios nativos y turbotabla con durabilidad/Irrompibilidad/Reparación integrados. Detalle y límites en INVENTORY-ECONOMY.md. La comprobación natural confirma Villa Refugio en bosque y Spargus en desierto; no sustituye el cotejo de todos los barrios, módulos y eras pendientes.

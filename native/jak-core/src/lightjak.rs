@@ -13,7 +13,7 @@ pub const SWOOP_INC: f32 = 1.0;
 pub const ECO_MAX: f32 = 100.0;
 /// Adrii 22/10: light and dark eco last ten times as long. Every cost and
 /// threshold of Jak 3's (`*FACT-bank*`, `target-lightjak.gc`,
-/// `target-darkjak.gc`) times this; Light Jak's flight costs nothing.
+/// `target-darkjak.gc`) times this; the Minecraft host also meters flight.
 pub const ECO_COST: f32 = 0.1;
 const SWOOP_GRAVITY: f32 = 163840.0;
 const SWOOP_GRAVITY_MAX: f32 = 245760.0;
@@ -455,12 +455,12 @@ impl Jak {
     }
 
     /// Able to change into Light Jak for `power` now: with some light eco,
-    /// but for the flight, which is free (Adrii 22/10).
-    fn want_to_lightjak_for(&self, power: LightPower) -> bool {
+    /// supplied by the host inventory, including flight.
+    fn want_to_lightjak_for(&self, _power: LightPower) -> bool {
         !self.state.is_board()
             && !self.powers_blocked
             && self.time_elapsed(self.lightjak.start_time, seconds(0.05))
-            && (0.0 < self.lightjak.eco || power == LightPower::Flight)
+            && 0.0 < self.lightjak.eco
             && self.lightjak.latch_out_time == 0
     }
 
@@ -507,6 +507,11 @@ impl Jak {
     /// the eco runs out, and the wings.
     pub(crate) fn lightjak_process(&mut self) {
         let dt = crate::FRAME_TICKS as f32 / crate::TICKS_PER_SECOND as f32;
+        // The Minecraft port supplies eco from actual carried items, including flight.
+        if self.lightjak.on && self.lightjak.power == LightPower::Flight {
+            self.lightjak.eco = (self.lightjak.eco - ECO_COST * dt).max(0.0);
+            if self.lightjak.eco == 0.0 { self.lightjak_end_mode(true); }
+        }
         let light = &mut self.lightjak;
         light.shield = light.on
             // Original shield process listens to Circle independently of flight.
@@ -532,7 +537,7 @@ impl Jak {
                     | State::LightJakSwoop { .. }
                     | State::LightJakSwoopFalling
             );
-            // Flying is free (Adrii 22/10): no eco never takes the wings off.
+            // Flight depletion is handled above, including while airborne.
             let flying = self.lightjak.power == LightPower::Flight;
             if self.lightjak.eco < ECO_COST && !changing && !flying && self.attack.danger.is_none() {
                 if matches!(self.state, State::Stance | State::HitGround { .. }) {
@@ -576,7 +581,7 @@ impl Jak {
                 self.spawn_wings(WingsStart::Open);
                 let l = &mut self.lightjak;
                 if first {
-                    // (Jak 3 takes `SWOOP_INC` a flight; Adrii 22/10: free.)
+                    // The host charges continuous flight above instead of charging twice here.
                     if let Some(w) = &mut l.wings {
                         w.open();
                     }
@@ -1350,6 +1355,24 @@ impl Jak {
 #[cfg(test)]
 mod time_tests {
     use super::*;
+
+    #[test]
+    fn inventory_fuel_is_required_for_flight_too() {
+        let mut jak=Jak::new(crate::glam::Vec3::ZERO,0.0);
+        jak.lightjak.eco=0.0;
+        assert!(!jak.want_to_lightjak_for(LightPower::Flight));
+        jak.lightjak.eco=2.0;
+        assert!(jak.want_to_lightjak_for(LightPower::Flight));
+    }
+
+    #[test]
+    fn exhausted_flight_ends_even_while_airborne() {
+        let mut jak=Jak::new(crate::glam::Vec3::ZERO,0.0);
+        jak.lightjak.on=true;jak.lightjak.power=LightPower::Flight;jak.lightjak.eco=0.00001;
+        jak.lightjak_process();
+        assert_eq!(jak.lightjak.eco,0.0);
+        assert!(!jak.lightjak.on);
+    }
 
     #[test]
     fn the_freeze_slows_the_world_to_a_twentieth_and_back() {

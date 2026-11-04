@@ -119,5 +119,7 @@
   "block.jakmc.vent_dark": "Dark Eco Vent",
   "block.jakmc.vent_light": "Light Eco Vent",
   "entity.jakmc.yakow": "Yakow",
-  "item.jakmc.yakow_spawn_egg": "Yakow Spawn Egg"
+  "item.jakmc.yakow_spawn_egg": "Yakow Spawn Egg",
+  "tooltip.jakmc.fuel_remaining": "Charge remaining: %s",
+  "tooltip.jakmc.fuel_partial": "Partly used; crafting and trades need a full unit."
 }

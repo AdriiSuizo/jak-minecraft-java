@@ -1,11 +1,30 @@
 {
   "model": {
-    "type": "minecraft:special",
-    "base": "jakmc:item/morph_ammo",
-    "model": {
-      "type": "jakmc:gltf",
-      "file": "gun-ammo-red-lod0.glb",
-      "scale": 0.7
+    "type": "minecraft:select",
+    "property": "minecraft:display_context",
+    "cases": [
+      {
+        "when": "gui",
+        "model": {
+          "type": "minecraft:special",
+          "base": "jakmc:item/morph_ammo",
+          "model": {
+            "type": "jakmc:gltf",
+            "file": "gun-ammo-red-lod0.glb",
+            "scale": 0.7,
+            "fit_gui": true
+          }
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:special",
+      "base": "jakmc:item/morph_ammo",
+      "model": {
+        "type": "jakmc:gltf",
+        "file": "gun-ammo-red-lod0.glb",
+        "scale": 0.7
+      }
     }
   }
 }

@@ -4,6 +4,7 @@
   "compatibilityLevel": "JAVA_25",
   "mixins": [
     "PlayerTravelMixin",
+    "BoardMendingMixin",
     "ServerMovementMixin",
     "JakPickupMixin",
     "GemPhysicsMixin",
@@ -12,7 +13,8 @@
     "CitizenEggMixin",
     "JakShieldMixin",
     "JakWorldClockMixin",
-    "JakFreezeTickMixin"
+    "JakFreezeTickMixin",
+    "CitizenTradesMixin"
   ],
   "injectors": {
     "defaultRequire": 1

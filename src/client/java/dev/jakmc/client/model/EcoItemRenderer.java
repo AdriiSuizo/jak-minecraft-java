@@ -16,7 +16,7 @@ import java.util.function.Consumer;
 
 /** Eco has no static mesh: its body is the game's original particle group. */
 public final class EcoItemRenderer implements SpecialModelRenderer<Void> {
- private static final State[] STATES=new State[2];
+ private static final State[] STATES=new State[4];
  private final boolean light,gui;
  private static final class State {
   final long handle=NativeJak.fxCreate();long last;
@@ -32,9 +32,9 @@ public final class EcoItemRenderer implements SpecialModelRenderer<Void> {
  @Override public Void extractArgument(ItemStack item){return null;}
  @Override public void getExtents(Consumer<Vector3fc> out){for(float x:new float[]{.25f,.75f})for(float y:new float[]{.1f,.8f})for(float z:new float[]{.25f,.75f})out.accept(new Vector3f(x,y,z));}
  @Override public void submit(Void argument,PoseStack stack,SubmitNodeCollector collector,int lightCoords,int overlay,boolean foil,int outline){
-  int index=light?1:0;State state=STATES[index];if(state==null)STATES[index]=state=new State(light);
+  int index=(light?1:0)+(gui?2:0);State state=STATES[index];if(state==null)STATES[index]=state=new State(light);
   long now=System.nanoTime();float dt=state.last==0?1/30f:Math.clamp((now-state.last)/1e9f,0,.1f);state.last=now;
-  stack.pushPose();stack.translate(.5f,.4f,.5f);float scale=light?.25f:.5f;stack.scale(scale,scale,scale);
+  stack.pushPose();stack.translate(.5f,.4f,.5f);float scale=gui?(light?2f:1.25f):light?.25f:.5f;stack.scale(scale,scale,scale);
   var c=net.minecraft.client.Minecraft.getInstance();var inverse=new org.joml.Matrix4f(stack.last().pose()).invert();
   Vector3f eye,forward,up;
   if(gui){eye=new Vector3f(0,0,4);forward=new Vector3f(0,0,-1);up=new Vector3f(0,1,0);}
@@ -46,7 +46,7 @@ public final class EcoItemRenderer implements SpecialModelRenderer<Void> {
   }
   state.view.clear();state.view.putFloat(eye.x).putFloat(eye.y).putFloat(eye.z).putFloat(forward.x).putFloat(forward.y).putFloat(forward.z).putFloat(up.x).putFloat(up.y).putFloat(up.z).putFloat(gui?45:c.options.fov().get().floatValue()).putFloat(gui?64:c.getWindow().getHeight());
   long count=NativeJak.fxDraw(state.handle,c.isPaused()?0:dt,state.view,state.vertices,state.bolts);
-  JakEffects.submitGeometry(state.vertices,(int)count,state.bolts,(int)(count>>>32),stack,collector);stack.popPose();
+  JakEffects.submitGeometry(state.vertices,(int)count,state.bolts,(int)(count>>>32),stack,collector,gui);stack.popPose();
  }
  public record Unbaked(boolean light,boolean gui) implements SpecialModelRenderer.Unbaked<Void> {
   public static final MapCodec<Unbaked> CODEC=RecordCodecBuilder.mapCodec(i->i.group(Codec.BOOL.fieldOf("light").forGetter(Unbaked::light),Codec.BOOL.optionalFieldOf("gui",false).forGetter(Unbaked::gui)).apply(i,Unbaked::new));

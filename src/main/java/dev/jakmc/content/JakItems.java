@@ -15,7 +15,7 @@ import net.minecraft.world.level.Level;
 
 public final class JakItems {
     public static final Map<String,Item> ITEMS=new LinkedHashMap<>();
-    public static final Item BOARD=register("jet_board", p->new Item(p.stacksTo(1)) {
+    public static final Item BOARD=register("jet_board", p->new Item(p.durability(1800).enchantable(15)) {
         @Override public InteractionResult use(Level level,Player player,InteractionHand hand) {
             if (!level.isClientSide()) {
                 ItemStack old=player.getAttachedOrCreate(JakData.BOARD);
@@ -39,37 +39,24 @@ public final class JakItems {
             return InteractionResult.SUCCESS;
         }
     });
-    public static final Item DARK_ECO=eco("dark_eco",false);
-    public static final Item LIGHT_ECO=eco("light_eco",true);
-    public static final List<Item> AMMUNITION=List.of(ammo("red",0,50),ammo("yellow",1,100),ammo("blue",2,100),ammo("dark",3,20));
-    private static Item ammo(String color,int index,int capacity){
-        return register(color+"_ammo",p->new Item(p){
-            @Override public InteractionResult use(Level level,Player player,InteractionHand hand){
-                var type=JakData.AMMO.get(index);
-                float stored=player.getAttachedOrCreate(type);
-                int amount=Math.min(player.getItemInHand(hand).getCount(),Math.max(0,capacity-(int)Math.ceil(stored)));
-                if(amount==0)return InteractionResult.PASS;
-                if(!level.isClientSide()){
-                    player.setAttached(type,Math.min(capacity,stored+amount));
-                    if(!player.hasInfiniteMaterials())player.getItemInHand(hand).shrink(amount);
-                }
-                return InteractionResult.SUCCESS;
-            }
-        });
-    }
+    public static final Item DARK_ECO=eco("dark_eco");
+    public static final Item LIGHT_ECO=eco("light_eco");
+    public static final List<Item> AMMUNITION=List.of(ammo("red"),ammo("yellow"),ammo("blue"),ammo("dark"));
+    private static Item ammo(String color){return register(color+"_ammo",FuelItem::new);}
     public static final List<Item> GUNS=new ArrayList<>();
-    private static Item eco(String name,boolean light){return register(name,p->new Item(p){
-        @Override public InteractionResult use(Level level,Player player,InteractionHand hand){
-            if(!level.isClientSide()){
-                var type=light?JakData.LIGHT_ECO:JakData.DARK_ECO;
-                float amount=player.getAttachedOrCreate(type);
-                if(amount>=100)return InteractionResult.PASS;
-                player.setAttached(type,Math.min(100,amount+(light?2:4)));
-                if(!player.hasInfiniteMaterials())player.getItemInHand(hand).shrink(1);
-            }
-            return InteractionResult.SUCCESS;
+    private static Item eco(String name){return register(name,FuelItem::new);}
+    private static final class FuelItem extends Item {
+        FuelItem(Properties properties){super(properties);}
+        @Override public void appendHoverText(ItemStack stack,Item.TooltipContext context,net.minecraft.world.item.component.TooltipDisplay display,java.util.function.Consumer<Component> out,TooltipFlag flag){
+            var data=stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
+            if(data==null)return;
+            int spent=data.copyTag().getIntOr("JakResourceSpent",0);if(spent<=0)return;
+            int full=(this==DARK_ECO?4:this==LIGHT_ECO?2:1)*100000;
+            String percent=String.format(Locale.ROOT,"%.1f%%",Math.max(0,(full-spent)*100.0/full));
+            out.accept(Component.translatable("tooltip.jakmc.fuel_remaining",percent).withStyle(net.minecraft.ChatFormatting.AQUA));
+            out.accept(Component.translatable("tooltip.jakmc.fuel_partial").withStyle(net.minecraft.ChatFormatting.GRAY));
         }
-    });}
+    }
     static Item register(String name,Function<Item.Properties,Item> factory){
         var key=ResourceKey.create(Registries.ITEM,JakData.id(name));
         Item item=Registry.register(BuiltInRegistries.ITEM,key,factory.apply(new Item.Properties().setId(key)));

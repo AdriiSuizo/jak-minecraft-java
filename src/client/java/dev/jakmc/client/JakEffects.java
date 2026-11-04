@@ -130,11 +130,12 @@ public final class JakEffects {
   }catch(IOException e){throw new UncheckedIOException("Cannot read original particle texture "+file,e);}
  }
  private static void manifest(){if(names==null){var manifest=JsonParser.parseString(NativeJak.fxManifest()).getAsJsonObject();names=new String[manifest.getAsJsonArray("textures").size()];for(int i=0;i<names.length;i++)names[i]=manifest.getAsJsonArray("textures").get(i).getAsString();JakMod.LOG.info("Original sparticles: {} parts, {} groups, {} textures",manifest.get("parts"),manifest.get("groups"),names.length);}}
- public static int submitGeometry(ByteBuffer vertices,int count,ByteBuffer lightning,int boltCount,com.mojang.blaze3d.vertex.PoseStack stack,net.minecraft.client.renderer.SubmitNodeCollector collector){
+ public static int submitGeometry(ByteBuffer vertices,int count,ByteBuffer lightning,int boltCount,com.mojang.blaze3d.vertex.PoseStack stack,net.minecraft.client.renderer.SubmitNodeCollector collector){return submitGeometry(vertices,count,lightning,boltCount,stack,collector,false);}
+ public static int submitGeometry(ByteBuffer vertices,int count,ByteBuffer lightning,int boltCount,com.mojang.blaze3d.vertex.PoseStack stack,net.minecraft.client.renderer.SubmitNodeCollector collector,boolean gui){
   manifest();Map<Integer,Batch> batches=new LinkedHashMap<>();collect(vertices,count,batches);collect(lightning,boltCount,batches);int drawn=0;
   for(var group:batches.entrySet()){
    Identifier id=texture(group.getKey()>>>2);if(id==null)continue;int blend=group.getKey()&3;Batch batch=group.getValue();float[] data=Arrays.copyOf(batch.data,batch.used);drawn+=batch.used/9;
-   collector.submitCustomGeometry(stack,JakEffectTypes.get(id,blend),(pose,consumer)->{
+   collector.submitCustomGeometry(stack,gui?JakEffectTypes.getGui(id,blend):JakEffectTypes.get(id,blend),(pose,consumer)->{
     Vector3f v=new Vector3f();for(int i=0;i<data.length;i+=9){pose.pose().transformPosition(data[i],data[i+1],data[i+2],v);consumer.addVertex(v.x,v.y,v.z,pack(data[i+3],data[i+4],data[i+5],data[i+6]),data[i+7],data[i+8],OverlayTexture.NO_OVERLAY,0x00f000f0,0,1,0);}
    });
   }return drawn;

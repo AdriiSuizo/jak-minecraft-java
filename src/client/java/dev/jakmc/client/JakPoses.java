@@ -116,6 +116,7 @@ public final class JakPoses {
             InputScene.observeHellcatEvent("fire");
         }
         PortScene.observe(p.entityId(),json);
+        EconomyScene.observe(p.entityId(),json);
         if(client.player!=null&&client.player.getId()==p.entityId()){
             client.player.setPos(position);client.player.setDeltaMovement(Vec3.ZERO);
             client.player.setOnGround((json.get("status").getAsInt()&2)!=0);

@@ -343,6 +343,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   s.actors.boxes.clear();
   for a in a.chunks_exact(32){let lo=vec(a,8)*BLOCK;let hi=vec(a,20)*BLOCK;if !lo.is_finite()||!hi.is_finite()||!lo.cmple(hi).all(){return Err("invalid actor bounds".into());}s.actors.boxes.push((u64::from_le_bytes(a[0..8].try_into().unwrap()),lo,hi));}
   let flags=read_u(b,48);
+  if s.jak.board_carried && flags&1==0 { s.jak.remove_carried_board(); }
   s.jak.board_carried=flags&1!=0;s.jak.powers_blocked=flags&2!=0;
   s.jak.fire_resistant=flags&4!=0;s.jak.slow_falling=flags&8!=0;
   s.jak.water=if flags&16!=0 {Some(read_f(b,40)*BLOCK)}else{None};

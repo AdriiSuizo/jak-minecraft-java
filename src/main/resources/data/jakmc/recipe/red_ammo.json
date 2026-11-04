@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    {
+      "fabric:type": "fabric:components",
+      "base": "jakmc:light_eco",
+      "components": {
+        "minecraft:max_stack_size": 64
+      }
+    },
+    "minecraft:redstone"
+  ],
+  "result": {
+    "id": "jakmc:red_ammo",
+    "count": 16
+  }
+}

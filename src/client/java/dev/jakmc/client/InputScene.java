@@ -26,6 +26,7 @@ public final class InputScene {
  private static CameraView view;
  public static CameraView camera(){
   if(view!=null)return view;
+  if(EconomyScene.camera()!=null)return EconomyScene.camera();
   if(ScaleScene.camera()!=null)return ScaleScene.camera();
   if(SitesScene.camera()!=null)return SitesScene.camera();
   if(CityScene.camera()!=null)return CityScene.camera();
@@ -610,7 +611,7 @@ public final class InputScene {
   c.options.pauseOnLostFocus=false;
   output=c.gameDirectory.toPath().resolve("jakmc/evidence/dark_motion");
   try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}
-  onServer(c,p->p.setAttached(JakData.DARK_ECO,100f));
+  onServer(c,p->dev.jakmc.player.JakResources.grant(p,0,Math.max(0,100-dev.jakmc.player.JakResources.totals(p)[0])));
  }
  private static void darkMotionActions(Minecraft c){
   int t=++tick;
@@ -662,8 +663,8 @@ public final class InputScene {
   lastCamera=null;
   onServer(c,p->{
    p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(3)));
-   p.setAttached(JakData.DARK_ECO,100f);
-   p.setAttached(JakData.LIGHT_ECO,100f);
+   dev.jakmc.player.JakResources.grant(p,0,Math.max(0,100-dev.jakmc.player.JakResources.totals(p)[0]));
+   dev.jakmc.player.JakResources.grant(p,1,Math.max(0,100-dev.jakmc.player.JakResources.totals(p)[1]));
    var mob=dev.jakmc.entity.JakEntities.TYPES.get("grunt")
        .create(p.level(),net.minecraft.world.entity.EntitySpawnReason.COMMAND);
    mob.setNoAi(true);

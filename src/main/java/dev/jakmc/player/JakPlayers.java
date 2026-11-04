@@ -36,6 +36,7 @@ public final class JakPlayers {
         Vec3 last;
         JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0,0,0);
         int pressed;
+        int boardUseTicks;
         boolean shield,shieldHit,altarMount,usingBoard,grinding,hostMoved;
         List<List<Vec3>> rails=List.of();
         long lastInput;
@@ -128,7 +129,8 @@ public final class JakPlayers {
         ServerTickEvents.END_SERVER_TICK.register(server->{
             var present=new HashSet<UUID>();
             for(ServerPlayer p:server.getPlayerList().getPlayers()){
-                if(!active(p)||p.isSleeping())continue;
+                JakResources.migrate(p);
+                if(!active(p)||p.isSleeping()){JakResources.synchronize(p,JakResources.totals(p));continue;}
                 present.add(p.getUUID());
                 Session s=LIVE.get(p.getUUID());
                 String dimension=p.level().dimension().identifier().toString();
@@ -156,6 +158,8 @@ public final class JakPlayers {
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server->{for(var s:LIVE.values())s.close();LIVE.clear();CONTROLLED.clear();PROBE_INPUT.clear();});
     }
     private static void step(ServerPlayer p,Session s){
+        float[] resources=JakResources.totals(p);
+        JakResources.synchronize(p,resources);
         boolean rebased=!s.grinding&&p.position().distanceToSqr(s.origin)>256*256;
         if(rebased){Vec3 delta=p.position().subtract(s.origin);NativeJak.rebase(s.nativeId,(float)delta.x,(float)delta.y,(float)delta.z);s.origin=p.position();}
         s.collision.origin=s.origin;
@@ -217,7 +221,7 @@ public final class JakPlayers {
             flags|=1<<16;
             s.shieldHit=false;
         }
-        b.putInt(flags).putFloat(p.getAttachedOrCreate(JakData.DARK_ECO)).putFloat(p.getAttachedOrCreate(JakData.LIGHT_ECO));
+        b.putInt(flags).putFloat(Math.min(100,resources[0])).putFloat(Math.min(100,resources[1]));
         b.putInt(s.mount!=null||flight!=null?-1:JakItems.GUNS.indexOf(p.getMainHandItem().getItem()));
         AABB region=p.getBoundingBox().inflate(6,5,6);
         var triangles=s.noTriangles; // Queries use the live Minecraft shape callback.
@@ -258,6 +262,10 @@ public final class JakPlayers {
             pose.getAsJsonArray("events").asList().clear();
         }
         s.usingBoard=pose.get("board").getAsBoolean();
+        if(s.usingBoard&&position.distanceToSqr(s.last)>.0001&&++s.boardUseTicks>=20){
+            s.boardUseTicks=0;
+            JakBoards.wear(p);
+        }
         s.grinding=s.usingBoard&&pose.get("state").getAsString().equals("board-grind");
         if(!Double.isFinite(position.x)||!Double.isFinite(position.y)||!Double.isFinite(position.z))throw new IllegalStateException("Nonfinite Jak pose");
         if(s.mount!=null){
@@ -287,8 +295,11 @@ public final class JakPlayers {
         p.setDeltaMovement(Vec3.ZERO);p.setOnGround((pose.get("status").getAsInt()&2)!=0);p.resetFallDistance();
         p.setYRot(input.yaw());p.setXRot(input.pitch());p.setYBodyRot(pose.get("yaw").getAsFloat());s.last=position;s.pressed=0;
         if(controlled)probeInput(p,input.held(),0,input.forward());
-        setEco(p,JakData.DARK_ECO,pose.get("darkEco").getAsFloat());setEco(p,JakData.LIGHT_ECO,pose.get("lightEco").getAsFloat());
-        for(int i=0;i<4;i++)setEco(p,JakData.AMMO.get(i),pose.getAsJsonArray("ammo").get(i).getAsFloat());
+        JakResources.consume(p,0,Math.max(0,Math.min(100,resources[0])-pose.get("darkEco").getAsFloat()));
+        JakResources.consume(p,1,Math.max(0,Math.min(100,resources[1])-pose.get("lightEco").getAsFloat()));
+        float[] caps={50,100,100,20};
+        for(int i=0;i<4;i++)JakResources.consume(p,i+2,Math.max(0,Math.min(caps[i],resources[i+2])-pose.getAsJsonArray("ammo").get(i).getAsFloat()));
+        JakResources.synchronize(p,JakResources.totals(p));
         if(pose.get("heal").getAsFloat()>0)p.heal(pose.get("heal").getAsFloat()*p.getMaxHealth());
         for(JsonElement e:pose.getAsJsonArray("events")){
             applyEvent(p,s.origin,e.getAsJsonObject());
@@ -331,7 +342,6 @@ public final class JakPlayers {
         mount.setYHeadRot(yaw);
         mount.setOnGround(ground);
     }
-    private static void setEco(ServerPlayer p,net.fabricmc.fabric.api.attachment.v1.AttachmentType<Float> type,float value){if(p.getAttachedOrCreate(type)!=value)p.setAttached(type,value);}
     private static float waterSurface(ServerPlayer p,Vec3 origin){
         var level=p.level();
         var surface=p.blockPosition().mutable();

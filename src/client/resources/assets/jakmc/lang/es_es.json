@@ -119,5 +119,7 @@
   "block.jakmc.vent_dark": "Fuente de eco oscuro",
   "block.jakmc.vent_light": "Fuente de eco luminoso",
   "entity.jakmc.yakow": "Yakow",
-  "item.jakmc.yakow_spawn_egg": "Huevo generador de yakow"
+  "item.jakmc.yakow_spawn_egg": "Huevo generador de yakow",
+  "tooltip.jakmc.fuel_remaining": "Carga restante: %s",
+  "tooltip.jakmc.fuel_partial": "Parcialmente usado; fabricar y comerciar requieren una unidad completa."
 }

@@ -17,6 +17,7 @@ abstract class CitizenMixin implements CitizenState {
  @Unique private static final EntityDataAccessor<Long> JAK_DEFENSE_START=SynchedEntityData.defineId(Villager.class,EntityDataSerializers.LONG);
  @Unique private static final EntityDataAccessor<Boolean> JAK_WEAPON_OUT=SynchedEntityData.defineId(Villager.class,EntityDataSerializers.BOOLEAN);
  @Unique private SpargusDefense jakmc$defense;
+ @Unique private long jakmc$restockDay=Long.MIN_VALUE;
  @Unique private SynchedEntityData jakmc$data(){return ((Villager)(Object)this).getEntityData();}
  public String citizenDefenseClip(){return jakmc$data().get(JAK_DEFENSE);}
  public long citizenDefenseStart(){return jakmc$data().get(JAK_DEFENSE_START);}
@@ -47,9 +48,15 @@ abstract class CitizenMixin implements CitizenState {
  public void citizenHit(){var v=(Villager)(Object)this;if(!v.level().isClientSide()&&v.isAlive()&&v.getType()==net.minecraft.world.entity.EntityTypes.VILLAGER&&citizenPhase()==0)jakmc$phase(1);}
  @Inject(method="tick",at=@At("TAIL"))private void jakmc$react(CallbackInfo ci){var v=(Villager)(Object)this;if(!(v.level() instanceof ServerLevel level))return;
   if(jakmc$defense!=null)jakmc$defense.tickShots(level);
+  long day=level.getOverworldClockTime()/24000;
+  if(v.tickCount%200==Math.floorMod(v.getId(),200)&&jakmc$restockDay!=day){
+   // City citizens without workstations also replenish their resource stock daily.
+   if(jakmc$restockDay!=Long.MIN_VALUE)dev.jakmc.content.JakTrades.restockResources(v.getOffers());
+   jakmc$restockDay=day;
+  }
   if(!v.isAlive()||citizenPhase()==0)return;double t=(dev.jakmc.player.JakEntityClock.time(v.level())-citizenPhaseStart())/20.;if(citizenPhase()==1&&(v.onGround()||v.isInWater())&&t>=.15)jakmc$phase(2);else if(citizenPhase()==2&&t>=jakmc$reactionKind().duration("knocked-back-land"))jakmc$phase(3);else if(citizenPhase()==3&&t>=jakmc$reactionKind().duration(jakmc$reactionKind().rise()))jakmc$phase(0);}
  @Unique private CitizenKind jakmc$reactionKind(){var kind=CitizenKind.of(citizenVariant());return kind.monk()?CitizenKind.of(0):kind;}
  @Inject(method="customServerAiStep",at=@At("HEAD"),cancellable=true)private void jakmc$reaction(ServerLevel level,CallbackInfo ci){if(citizenPhase()!=0){if(jakmc$defense!=null)jakmc$defense.interrupt();var v=(Villager)(Object)this;v.getNavigation().stop();v.getMoveControl().setWantedPosition(v.getX(),v.getY(),v.getZ(),0);ci.cancel();}else{var defense=jakmc$defense();if(defense!=null&&defense.tick(level))ci.cancel();}}
- @Inject(method="addAdditionalSaveData",at=@At("TAIL"))private void jakmc$save(ValueOutput out,CallbackInfo ci){out.putInt("JakCitizenVariant",citizenVariant());}
- @Inject(method="readAdditionalSaveData",at=@At("TAIL"))private void jakmc$load(ValueInput in,CallbackInfo ci){int variant=in.getIntOr("JakCitizenVariant",-1);if(variant>=0)citizenVariant(variant);}
+ @Inject(method="addAdditionalSaveData",at=@At("TAIL"))private void jakmc$save(ValueOutput out,CallbackInfo ci){out.putInt("JakCitizenVariant",citizenVariant());out.putLong("JakResourceRestockDay",jakmc$restockDay);}
+ @Inject(method="readAdditionalSaveData",at=@At("TAIL"))private void jakmc$load(ValueInput in,CallbackInfo ci){jakmc$restockDay=in.getLongOr("JakResourceRestockDay",Long.MIN_VALUE);int variant=in.getIntOr("JakCitizenVariant",-1);if(variant>=0)citizenVariant(variant);}
 }

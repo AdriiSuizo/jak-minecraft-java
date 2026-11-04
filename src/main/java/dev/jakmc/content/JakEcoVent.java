@@ -210,16 +210,8 @@ public final class JakEcoVent extends Block implements EntityBlock {
             }
             var player=(ServerPlayer)actor;
             if(stock==0)return false;
-            if(type==Color.LIGHT){
-                float stored=player.getAttachedOrCreate(JakData.LIGHT_ECO);
-                if(stored>=100)return false;
-                float take=Math.min(stock,(100-stored)/4);
-                player.setAttached(JakData.LIGHT_ECO,stored+take*4);
-                stock-=take;setChanged();
-                return accepted.add(actor.getUUID());
-            }
             if(accepted.contains(actor.getUUID())||!regular)return false;
-            Item item=type==Color.DARK?JakItems.DARK_ECO:JakItems.AMMUNITION.get(type.ordinal());
+            Item item=type==Color.LIGHT?JakItems.LIGHT_ECO:type==Color.DARK?JakItems.DARK_ECO:JakItems.AMMUNITION.get(type.ordinal());
             int count=Math.min(5,(int)stock);
             var stack=new ItemStack(item,count);
             player.getInventory().add(stack);

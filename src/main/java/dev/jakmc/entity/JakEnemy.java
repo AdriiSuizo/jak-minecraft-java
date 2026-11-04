@@ -333,10 +333,16 @@ public final class JakEnemy extends Monster {
  }
  @Override protected void dropCustomDeathLoot(ServerLevel level,DamageSource source,boolean playerKill){
   super.dropCustomDeathLoot(level,source,playerKill);
-  if(guard!=null){guard.dropAmmo(level);return;}
+  if(guard!=null){
+   guard.dropAmmo(level);
+   spawnAtLocation(level,new net.minecraft.world.item.ItemStack(JakItems.LIGHT_ECO));
+   if(playerKill&&random.nextInt(20)==0)spawnAtLocation(level,new net.minecraft.world.item.ItemStack(JakItems.GUNS.get(3)));
+   return;
+  }
   // Eligibility is independent of whether the model has a physical gem joint.
   if(kind.metalHead)dev.jakmc.content.GemPhysics.launch(spawnAtLocation(level,new net.minecraft.world.item.ItemStack(JakItems.SKULL_GEM)));
   spawnAtLocation(level,new net.minecraft.world.item.ItemStack(kind.jak1()?JakItems.LIGHT_ECO:JakItems.DARK_ECO));
+  if(!kind.jak1()&&random.nextInt(3)==0){int color=random.nextInt(4);spawnAtLocation(level,new net.minecraft.world.item.ItemStack(JakItems.AMMUNITION.get(color),color==2?16:color==3?2:4));}
  }
  @Override protected SoundEvent getHurtSound(DamageSource source){return kind==null?null:JakEnemySounds.first(kind,kind.model+"-hit",kind.model.equals("predator")?"pred-hit":"IMPACT_SOFT");}
  @Override protected SoundEvent getDeathSound(){return null;} // Authored art-group event, not a second arbitrary death cue.

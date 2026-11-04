@@ -181,6 +181,12 @@ impl Default for BoardInfo {
 }
 
 impl Jak {
+    /// The host owns the carried item: breakage/removal must also end riding.
+    pub fn remove_carried_board(&mut self) {
+        self.board_carried = false;
+        if self.state.is_board() { self.go(State::Falling { uppercut: false }); }
+    }
+
     /// Queue a supported world pad's impulse. Hosts discover pad contacts
     /// after `step`; entering a jump there lets the next tick's stuck check
     /// inspect the preceding stationary history before it has moved at all.

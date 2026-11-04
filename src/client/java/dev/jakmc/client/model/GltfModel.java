@@ -23,6 +23,7 @@ public final class GltfModel {
     private final boolean inheritScale;
     private final boolean compensateScale;
     private final boolean cinematic;
+    private final boolean equipment;
     private static final ThreadLocal<float[]> CAMERA_VERTICES=ThreadLocal.withInitial(()->new float[0]);
     private dev.jakmc.nativebridge.ModelSegments segments;
     private final Map<Identifier,Identifier> darkTextures=new HashMap<>(),lightTextures=new HashMap<>();
@@ -64,6 +65,7 @@ public final class GltfModel {
     public GltfModel(Path file,String key,boolean compensateScale)throws IOException {
         this.compensateScale=compensateScale;
         cinematic=key.endsWith("_cinematic");
+        equipment=file.getFileName().toString().equals("gun-lod0.glb")||file.getFileName().toString().startsWith("gun-ammo-");
         boolean jakTextures=key.equals("jak")||key.equals("jak_cinematic")||key.equals("jak_dark_cinematic");
         boolean forwardEyes=jakTextures||key.equals("daxter")||key.equals("daxter_cinematic");
         Path artTextures=forwardEyes?file.getParent().getParent().getParent().resolve("textures"):null;
@@ -107,9 +109,26 @@ public final class GltfModel {
             var pbr=material.getAsJsonObject("pbrMetallicRoughness");
             float[] factor=pbr.has("baseColorFactor")?array(pbr.getAsJsonArray("baseColorFactor")):new float[]{1,1,1,1};
             color=color.clone();for(int i=0;i<color.length;i++)color[i]*=factor[i%4];
+            if(equipment&&material.has("extensions")&&material.getAsJsonObject("extensions").has("KHR_materials_specular")){
+                var spec=material.getAsJsonObject("extensions").getAsJsonObject("KHR_materials_specular");
+                if(spec.has("specularColorTexture")){
+                    int tex=spec.getAsJsonObject("specularColorTexture").get("index").getAsInt();
+                    int source=json.getAsJsonArray("textures").get(tex).getAsJsonObject().get("source").getAsInt();
+                    var image=json.getAsJsonArray("images").get(source).getAsJsonObject();byte[] reflectionBytes;
+                    if(image.has("uri"))reflectionBytes=Base64.getDecoder().decode(image.get("uri").getAsString().split(",",2)[1]);
+                    else{var view=json.getAsJsonArray("bufferViews").get(image.get("bufferView").getAsInt()).getAsJsonObject();int offset=intOr(view,"byteOffset",0);reflectionBytes=new byte[view.get("byteLength").getAsInt()];bin.get(offset,reflectionBytes);}
+                    try(var reflection=NativeImage.read(new ByteArrayInputStream(reflectionBytes))){
+                        double[] rgb=new double[3];for(int y=0;y<reflection.getHeight();y++)for(int x=0;x<reflection.getWidth();x++){
+                            int pixel=reflection.getPixel(x,y);for(int c=0;c<3;c++)rgb[c]+=(pixel>>>(16-c*8))&255;
+                        }
+                        double max=Math.max(rgb[0],Math.max(rgb[1],rgb[2]));
+                        if(max>0)for(int i=0;i<color.length;i++)if(i%4<3)color[i]*=(float)(rgb[i%4]/max);
+                    }
+                }
+            }
             int texture=pbr.getAsJsonObject("baseColorTexture").get("index").getAsInt();
             String mode=material.has("alphaMode")?material.get("alphaMode").getAsString():"OPAQUE";
-            int coverage=!cinematic||mode.equals("BLEND")?-1:mode.equals("MASK")
+            int coverage=(!cinematic&&!equipment)||mode.equals("BLEND")?-1:mode.equals("MASK")
                 ?Math.round(255*(material.has("alphaCutoff")?material.get("alphaCutoff").getAsFloat():.5f)):0;
             var binding=new TextureBinding(texture,coverage);
             Identifier id=textures.get(binding);
