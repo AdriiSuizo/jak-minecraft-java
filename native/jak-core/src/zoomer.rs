@@ -204,7 +204,12 @@ impl Zoomer {
         };
         let turn = if self.grounded { steer * gain } else { 0.0 };
         self.yaw_rate += (turn - self.yaw_rate) * (DT / 0.1);
+        let old_yaw=self.yaw;
         self.yaw += self.yaw_rate * DT;
+        if self.yaw!=old_yaw && crate::wheeled::hull_hit(terrain,self.position,Vec3::ZERO,self.model.half(),self.heading()).is_some()
+            && crate::wheeled::hull_hit(terrain,self.position,Vec3::ZERO,self.model.half(),ahead).is_none(){
+            self.yaw=old_yaw;self.yaw_rate=0.0;
+        }
 
         let reversing = self.brake > 0.05 && forward_speed < 2.0 && self.throttle <= 0.0;
         let throttle = if reversing {

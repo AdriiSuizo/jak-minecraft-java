@@ -293,6 +293,7 @@ final class JakCloth {
             var sample=new Vector3f();
             for(int i=0;i<pos.length;i++)prev[i].lerp(pos[i],fraction,sample).get(vertices,i*3);
             for(int i=0;i<pins.length;i++)pins[i].get(vertices,def.pins[i].point*3);
+            var hurt=JakHurtVisuals.current();
             collector.submitCustomGeometry(root,RenderTypes.entityCutout(def.texture),(pose,buffer)->{
                 var a=new Vector3f();var b=new Vector3f();var normal=new Vector3f();var vertex=new Vector3f();
                 for(int i=0;i<def.triangles.length;i+=3){
@@ -303,7 +304,7 @@ final class JakCloth {
                     if(normal.lengthSquared()<1e-12f)continue;
                     normal.normalize();
                     int shade=Math.round(255*(.6f+.4f*Math.abs(normal.y)));
-                    int color=0xff000000|shade*0x010101;
+                    int color=hurt.tint(0xff000000|shade*0x010101);
                     for(int side=0;side<2;side++){
                         int middle=side==0?second:third,last=side==0?third:second;
                         for(int corner=0;corner<4;corner++){

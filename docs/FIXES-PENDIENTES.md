@@ -1,6 +1,6 @@
 # Fixes y diferencias pendientes del port de Jak
 
-Inventario del 4 de noviembre de 2026: **33 trabajos abiertos**, **11 contrastes concretos** y **3 pendientes que ya existían en el origen**. Incluye los fallos actuales del usuario y las peticiones nuevas de controles/explosión.
+Inventario del 4 de noviembre de 2026: **32 trabajos abiertos** y **1 integración resuelta**, **11 contrastes concretos** y **3 pendientes que ya existían en el origen**. Incluye los fallos actuales del usuario y las peticiones nuevas de controles/explosión.
 
 El inventario inicial no cambiaba el juego. El avance siguiente registra las correcciones posteriores sin cerrar variantes todavía sin contrastar. Se parte de PORTING-DELTA, del handoff y de los puntos de entrada/salida del código. Las pruebas antiguas de poses/efectos y daño a entidades no cubrían la destrucción del mundo. El arranque corregido del launcher tampoco certifica paridad jugable completa.
 
@@ -10,7 +10,12 @@ El inventario inicial no cambiaba el juego. El avance siguiente registra las cor
 
 La tabla se saca/guarda con Triángulo/Y solo cuando está equipada en su ranura; L2 usa Minecraft y R2 ataca/mina o dispara Morph Gun. Se conserva el teclado B y los gatillos de conducción. La prueba SDL `input_actions-20261105-000321` comprueba esas condiciones y Select/R3.
 
-Correcciones implementadas: salto desde agua sin descontar dos veces la separación de suelo; volumen conjunto de montura y jinete y movimiento con colisiones; puente de daño acumulado a bloques para Strike/Impact/WorldHit; despacho de las cuatro explosiones originales; daño de terreno para Hellcat/Helldog y coches; onda más pequeña, con obstrucción por paredes y empuje. La toma `integration-20261105-002439` comprueba salto simple de 0,450154 bloques sobre agua, contacto frontal del Flut Flut sin penetración ni daño, disparos nativos que rompen un muro, vegetación presente antes de explotar, drops, bedrock y ausencia de daño duplicado. Las otras direcciones, orillas y variantes siguen pendientes; los estados por ID se mantienen en `pendientes.json`.
+Correcciones implementadas: salto desde agua sin descontar dos veces la separación de suelo; volumen conjunto de montura y jinete y movimiento con colisiones; puente de daño acumulado a bloques para Strike/Impact/WorldHit; despacho de las cuatro explosiones originales; daño de terreno para Hellcat/Helldog y coches; onda más pequeña, con obstrucción por paredes y empuje. La toma `integration-20261105-003848` comprueba salto simple de 0,450154 bloques sobre agua, contacto frontal del Flut Flut sin penetración ni daño, disparos nativos que rompen un muro, vegetación presente antes de explotar, drops, bedrock y ausencia de daño duplicado. Las otras direcciones, orillas y variantes siguen pendientes; los estados por ID se mantienen en `pendientes.json`.
+
+
+Los cascos de zoomers y coches usan ahora barrido continuo orientado contra las formas reales de Minecraft. `integration-20261105-005746` cubre morros diagonales, espacios que deben quedar libres y barridos continuos en las ocho variantes. `cars-20261105-010230`, `zoomers-20261105-010611`, `hellcat-20261105-011500` y `helldog-20261105-010822` conservan los recorridos/controles comprobados. Hellcat/Helldog usan su inclinación completa para casco, cubierta y salida, con regresión del giro detenido ante pared.
+
+También se ha conectado el daño real de Minecraft con las reacciones originales de Jak, partículas, OOF/GET_BURNED y vibración, sin duplicar la salud ni el sonido de daño de Minecraft. El render comparte los temporizadores originales de parpadeo/quemadura/electricidad, incluidos Daxter y la ropa; las capturas de inventario conservan su aspecto neutro. La vibración ya tiene consumidor SDL. Las comprobaciones de esta tanda no sustituyen los otros casos de este inventario.
 
 ## Orden de trabajo
 
@@ -20,7 +25,7 @@ Agua/colisiones y daño al mundo, después interacción de objetos y las restant
 
 ### F01. Salida del agua al saltar
 
-**Estado:** Reportado.
+**Estado:** Corregido; contraste de salida a orillas pendiente.
 
 El salto desde natación apenas permite salir del agua. swim.rs coincide con el mashup; revisar el puente de altura de agua, escala y transición a salto.
 
@@ -30,7 +35,7 @@ El salto desde natación apenas permite salir del agua. swim.rs coincide con el 
 
 ### F02. Flut Flut: penetración de paredes
 
-**Estado:** Reportado + puente parcial.
+**Estado:** Corregido para contacto frontal; ampliar direcciones.
 
 La entidad tiene volumen Minecraft, pero montada recibe setPos desde la simulación de Jak. El volumen del pájaro y el del jinete deben concordar con el barrido nativo.
 
@@ -40,7 +45,7 @@ La entidad tiene volumen Minecraft, pero montada recibe setPos desde la simulaci
 
 ### F03. Flut Flut: daño al rozar una pared
 
-**Estado:** Reportado.
+**Estado:** Corregido en contacto frontal comprobado.
 
 La penetración causa daño y puede realimentar la reacción de montura. Se corrige el contacto; no se sustituye por invulnerabilidad.
 
@@ -50,7 +55,7 @@ La penetración causa daño y puede realimentar la reacción de montura. Se corr
 
 ### F04. Leaper: mismo puente de colisión de montura
 
-**Estado:** Parcial.
+**Estado:** Puente corregido; contraste específico pendiente.
 
 Comparte la actualización de posición de la montura con Flut Flut; la corrección debe cubrir también al lagarto.
 
@@ -60,7 +65,7 @@ Comparte la actualización de posición de la montura con Flut Flut; la correcci
 
 ### F05. Zoomers: casco y contacto con bloques
 
-**Estado:** Reportado por familia.
+**Estado:** Casco orientado integrado; casos geométricos y recorrido aprobados.
 
 Ajustar el volumen barrido, la rotación y el contacto del casco en sus seis variantes, conservando la simulación original.
 
@@ -70,7 +75,7 @@ Ajustar el volumen barrido, la rotación y el contacto del casco en sus seis var
 
 ### F06. Hellcat y Helldog: colisión del casco completo
 
-**Estado:** Reportado por familia.
+**Estado:** Orientación completa y giro contra paredes corregidos.
 
 La cubierta transitable no certifica el volumen exterior de la nave al volar o girar.
 
@@ -80,7 +85,7 @@ La cubierta transitable no certifica el volumen exterior de la nave al volar o g
 
 ### F07. Saltadunas y Arenatiburón: ruedas, casco y esquinas
 
-**Estado:** Reportado por familia.
+**Estado:** Casco orientado integrado; suspensión y paso de un bloque conservados.
 
 Cubrir el vehículo completo, además de los contactos verticales de ruedas ya implementados.
 
@@ -92,7 +97,7 @@ Cubrir el vehículo completo, además de los contactos verticales de ruedas ya i
 
 ### F08. Golpes cuerpo a cuerpo contra bloques
 
-**Estado:** Ausencia confirmada.
+**Estado:** Integrado; comprobación melee pendiente.
 
 Los eventos strike sin actor solo consultan hitProjector; no hay una ruta general de daño al mundo.
 
@@ -102,7 +107,7 @@ Los eventos strike sin actor solo consultan hitProjector; no hay una ruta genera
 
 ### F09. Impactos de armas contra bloques
 
-**Estado:** Ausencia confirmada.
+**Estado:** Integrado; Blaster comprobado.
 
 Los impactos sin actor solo tratan la propaganda. Completar también las rutas de armamento de vehículos que correspondan.
 
@@ -112,7 +117,7 @@ Los impactos sin actor solo tratan la propaganda. Completar también las rutas d
 
 ### F10. Explosiones del Morph Gun que ya rompían terreno
 
-**Estado:** Regresión de port confirmada.
+**Estado:** Integrado; cuatro variantes por contrastar.
 
 JNI sí emite explosion; Java no lo despacha. El host original aplica poderes TNT Red3=4, Dark1=3, Dark3=9 y Yellow3=1.5.
 
@@ -122,7 +127,7 @@ JNI sí emite explosion; Java no lo despacha. El host original aplica poderes TN
 
 ### F11. Hellcat/Helldog: romper vegetación y terreno
 
-**Estado:** Ausencia confirmada + petición actual.
+**Estado:** Integrado; escenario de torpedo pendiente.
 
 blast y explode terminan en sonido en el adaptador Java; los impactos a actores siguen otra ruta.
 
@@ -132,7 +137,7 @@ blast y explode terminan en sonido en el adaptador Java; los impactos a actores 
 
 ### F12. Hellcat/Helldog: onda expansiva
 
-**Estado:** Petición actual.
+**Estado:** Integrado; presentación real pendiente.
 
 Completar la onda y su respuesta física/visual coordinadas; un sonido o daño directo a un actor no completan esta mecánica.
 
@@ -142,7 +147,7 @@ Completar la onda y su respuesta física/visual coordinadas; un sonido o daño d
 
 ### F13. Hellcat/Helldog: reducir radio
 
-**Estado:** Petición actual.
+**Estado:** Radio reducido; comprobación visual pendiente.
 
 Reducir de forma coherente el alcance de daño, empuje y presentación de la explosión.
 
@@ -164,7 +169,7 @@ JakVehicle.wreck expulsa pasajeros, reproduce un sonido y elimina la entidad. Fa
 
 ### F15. L2: interacción y uso Minecraft
 
-**Estado:** Cambio solicitado; asignación actual distinta.
+**Estado:** Integrado; ampliar objetos contrastados.
 
 L2 está usado como apuntado general; la interacción nativa usa Triangle y parte de R2.
 
@@ -174,7 +179,7 @@ L2 está usado como apuntado general; la interacción nativa usa Triangle y part
 
 ### F16. R2: golpear, romper y acción primaria
 
-**Estado:** Cambio solicitado; puente parcial.
+**Estado:** Integrado; minado/objetos por contrastar.
 
 La clasificación actual deja R2 sin ataque para varias categorías y lo dirige a BOARD por defecto. La colocación depende de apuntar.
 
@@ -184,7 +189,7 @@ La clasificación actual deja R2 sin ataque para varias categorías y lo dirige 
 
 ### F17. Prioridades entre objeto, tabla, montura, poderes y conducción
 
-**Estado:** Parcial.
+**Estado:** Parcial corregido.
 
 Evitar que una acción reserve el gatillo y anule las demás. El bloqueo busy actual incluye agua/montura.
 
@@ -286,27 +291,25 @@ Las bibliotecas originales de partículas están conectadas; quedan familias/pas
 
 **Cierre:** Integrar cada pase pendiente respetando orientación, alfa, profundidad, anclajes y coste; sin sustituirlo por un brillo genérico.
 
-### F27. Voces y diálogos de habitantes
+### F27. Sonidos de animación de habitantes
 
 **Estado:** Pendiente documentado.
 
-Los sonidos de pasos, golpes, armas y vehículos no completan las voces/diálogos de los actores.
+La revisión del origen encuentra seis cues de animación was/wasf (pasos, aterrizaje y bastón). No encuentra un sistema de diálogos de ciudadanos; la etiqueta inicial de voces/diálogos era una inferencia que se retira. La defensa ya consume cues; contrastar pasos y recuperación.
 
-**Código/oráculo:** docs/CURRENT-PORT-HANDOFF.md: native citizens; origen audio/src/jak.rs y jak2_villagers.rs.
+**Código/oráculo:** origen crates/render_anim/src/jak2_villagers.rs:npc_sound/npc_walk_effects/npc_pose_effects; src/main/java/dev/jakmc/entity/SpargusDefense.java.
 
-**Cierre:** Conectar las voces disponibles y sus disparadores, sin voces duplicadas ni sonidos inventados.
+**Cierre:** Reproducir los cues originales en pasos y recuperación, sin duplicar los disparados por defensa ni inventar conversaciones.
 
 ### F28. Vibración original del mando
 
-**Estado:** Ausencia confirmada.
+**Estado:** Integrado y verificado mediante el callback real de SDL.
 
-El origen consume Event::Hurt.buzz mediante buzz_hurts. No aparece un consumidor de rumble/buzz en el adaptador SDL/JNI actual.
+Event::Hurt.buzz llega del núcleo al mando activo. Golpes usan motor fuerte 0,5 s y caídas motor débil 0,1 s, con parada al perder foco, entrar a menú o cambiar/desconectar el dispositivo.
 
 **Código/oráculo:** origen crates/render_anim/src/jak.rs:buzz_hurts; native/jak-jni/src/lib.rs:event; src/client/java/dev/jakmc/client/input/SdlGamepad.java.
 
-**Cierre:** Recuperar los pulsos y tiempos del origen mediante SDL, vinculados al mando que controla al jugador.
-
-## Ciudades, biomas y decoración
+**Verificación:** input_actions-20261105-013636: motor fuerte, motor débil, daño Minecraft, parpadeo y tintes de quemadura/electricidad aprobados. El pad virtual recibe el callback SDL real; no se afirma comprobación táctil de cada mando físico.
 
 ### F29. Catálogo de objetos todavía sin adaptación activa
 

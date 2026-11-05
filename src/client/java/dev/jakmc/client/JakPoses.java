@@ -132,6 +132,10 @@ public final class JakPoses {
         dev.jakmc.client.model.JakShotRenderer.receive(p.entityId(),origin,json);
         JakSounds.receive(p.entityId(),origin,json);
         JakEffects.receive(p.entityId(),origin,json);
+        if(client.player!=null&&client.player.getId()==p.entityId())for(var entry:json.getAsJsonArray("events")){
+            var event=entry.getAsJsonObject();
+            if(event.get("kind").getAsString().equals("hurt"))JakInput.hurtFeedback(event.get("buzz").getAsFloat());
+        }
         InputScene.observeMountEvents(p.entityId(),json);
         if(client.player!=null&&client.player.getId()==p.entityId()&&json.get("hellcat") instanceof JsonObject flight&&flight.has("fired")){
             InputScene.observeHellcatEvent("fire");

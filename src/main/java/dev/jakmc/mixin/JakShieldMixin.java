@@ -19,4 +19,14 @@ abstract class JakShieldMixin {
             result.setReturnValue(false);
         }
     }
+    @Inject(method="hurtServer",at=@At("RETURN"))
+    private void jakmc$reaction(ServerLevel level,DamageSource source,float amount,CallbackInfoReturnable<Boolean> result){
+        if(result.getReturnValue()&&amount>0&&(Object)this instanceof ServerPlayer player)JakPlayers.hurt(player,source);
+    }
+    @Inject(method="playHurtSound",at=@At("HEAD"),cancellable=true)
+    private void jakmc$sourceHurtSound(DamageSource source,org.spongepowered.asm.mixin.injection.callback.CallbackInfo result){
+        // The source hit already emits OOF/GET_BURNED. Keep vanilla audio for other players.
+        if((Object)this instanceof net.minecraft.world.entity.player.Player player&&JakPlayers.active(player))result.cancel();
+    }
+
 }

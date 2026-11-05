@@ -50,6 +50,14 @@ pub enum Event {
 pub trait Ground {
     fn below(&mut self, start: Vec3, reach: f32) -> Option<f32>;
     fn sweep(&mut self, start: Vec3, step: Vec3, half: Vec3) -> Option<(f32, Vec3)>;
+    /// Hosts with native block shapes can sweep the complete oriented chassis.
+    /// The source adapter remains the fallback for other simulation hosts.
+    fn sweep_hull(&mut self,start:Vec3,step:Vec3,half:Vec3,forward:Vec3)->Option<(f32,Vec3)>{
+        let reach=(half.z-half.x).max(0.0);
+        let bead=Vec3::new(half.x,half.y,half.x);
+        [0.0,reach,-reach].into_iter().filter_map(|offset|self.sweep(start+forward*offset,step,bead))
+            .filter(|(fraction,_)|*fraction<1.0).min_by(|a,b|a.0.total_cmp(&b.0))
+    }
 }
 
 pub struct Car {
@@ -306,7 +314,13 @@ impl Car {
             self.yaw_rate *= (-1.2 * DT).exp();
         }
         self.velocity += force * DT;
+        let old_yaw=self.yaw;
         self.yaw += self.yaw_rate * DT;
+        let mut hull_forward=Vec3::new(self.yaw.sin(),0.0,self.yaw.cos());
+        if self.yaw!=old_yaw && hull_hit(ground,self.position,Vec3::ZERO,self.model.half(),hull_forward).is_some()
+            && hull_hit(ground,self.position,Vec3::ZERO,self.model.half(),forward).is_none(){
+            self.yaw=old_yaw;self.yaw_rate=0.0;hull_forward=forward;
+        }
         self.pitch_rate += pitch_torque / (if toad { 10. } else { 5. }) * DT;
         self.roll_rate += roll_torque / 5. * DT;
         let damping = (-2.5 * DT).exp();
@@ -314,7 +328,7 @@ impl Car {
         self.roll_rate = (self.roll_rate * damping).clamp(-3., 3.);
         self.pitch = (self.pitch + self.pitch_rate * DT).clamp(-1.2, 1.2);
         self.roll = (self.roll + self.roll_rate * DT).clamp(-1.2, 1.2);
-        self.move_hull(ground, forward, events);
+        self.move_hull(ground, hull_forward, events);
         if c.fire && self.shot_delay == 0. {
             self.shot_delay = if toad { 1. } else { 0.06 };
             self.barrel = !self.barrel;
@@ -376,13 +390,7 @@ pub(super) fn hull_hit(
     dimensions: Vec3,
     forward: Vec3,
 ) -> Option<(f32, Vec3)> {
-    let reach = (dimensions.z - dimensions.x).max(0.);
-    let half = Vec3::new(dimensions.x, dimensions.y, dimensions.x);
-    [0., reach, -reach]
-        .into_iter()
-        .filter_map(|offset| world.sweep(position + forward * offset, step, half))
-        .filter(|(fraction, _)| *fraction < 1.)
-        .min_by(|a, b| a.0.total_cmp(&b.0))
+    world.sweep_hull(position,step,dimensions,forward)
 }
 
 fn climb(

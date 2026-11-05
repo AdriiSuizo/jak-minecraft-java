@@ -24,7 +24,7 @@ mod hover_host;
 static EXTRA_ART: OnceLock<HashMap<String, art_group::ArtAnim>> = OnceLock::new();
 static ANIMS:OnceLock<Arc<jak_core::anim::Anims>>=OnceLock::new();
 
-pub const ABI_VERSION: u32 = 4;
+pub const ABI_VERSION: u32 = 5;
 /// One Minecraft block = 1.5625 original meters. Actor stands 1.8 blocks tall.
 pub const BLOCK: f32 = 6400.;
 // Match the visible upper-body aim rotation in the server-owned pose.
@@ -169,6 +169,7 @@ fn event(e:Event)->Value {
  match e {
   Event::Strike{actor,pos:p,dir,damage}=>json!({"kind":"strike","actor":actor,"pos":pos(p),"dir":pos(dir*BLOCK),"damage":damage}),
   Event::Impact(h)=>json!({"kind":"impact","actor":h.actor,"pos":pos(h.surface),"dir":pos(h.dir*BLOCK),"normal":pos(h.normal*BLOCK),"damage":h.damage}),
+  Event::Hurt{mode,pos:p,buzz}=>json!({"kind":"hurt","mode":format!("{mode:?}"),"pos":pos(p),"buzz":buzz}),
   Event::WorldHit{surface,normal,damage}=>json!({"kind":"world_hit","pos":pos(surface),"normal":pos(normal*BLOCK),"damage":damage}),
   Event::Sound{name,volume,pitch}=>json!({"kind":"sound","name":name,"volume":volume,"pitch":pitch}),
   Event::SoundAt{name,pos:p}=>json!({"kind":"sound_at","name":name,"pos":pos(p)}),
@@ -199,6 +200,19 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_abi(_:JNIEnv,_:JCla
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_floor(mut env:JNIEnv,_:JClass,id:JString,step:JString)->jint {
  let id:Result<String,_>=env.get_string(&id).map(Into::into);let step:Result<String,_>=env.get_string(&step).map(Into::into);
  protect(&mut env,||Ok(jak_steps::floor_of_block(&id.map_err(|e|e.to_string())?,&step.map_err(|e|e.to_string())?) as jint))
+}
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hurt(mut env:JNIEnv,_:JClass,id:jlong,mode:jint,positioned:jni::sys::jboolean,x:f32,y:f32,z:f32){
+ protect(&mut env,||{
+  let from=Vec3::new(x,y,z)*BLOCK;
+  if !from.is_finite(){return Err("Nonfinite hurt origin".into());}
+  use jak_core::HurtMode;
+  let mode=match mode{0=>HurtMode::Generic,1=>HurtMode::Explode,2=>HurtMode::Burn,3=>HurtMode::Shock,4=>HurtMode::Damage,5=>HurtMode::Fall,_=>return Err("Invalid hurt mode".into())};
+  let mut sessions=lock_sessions()?;
+  let session=sessions.live.get_mut(&(id as u64)).ok_or("Stale hurt session")?;
+  session.jak.hurt(mode,(positioned!=0).then_some(from));
+  Ok(())
+ });
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_bodyDimensions(mut env:JNIEnv,_:JClass,id:jlong,radius:f32,height:f32){
@@ -578,7 +592,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
    json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
+  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"hurt":{"ticks":j.time,"invulnerableUntil":j.hurt_invulnerable_until(),"burnStart":j.hurt_fx.burn_start,"shockUntil":j.hurt_fx.shock_until},"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
 }

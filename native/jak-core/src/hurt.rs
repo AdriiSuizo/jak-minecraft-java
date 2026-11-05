@@ -220,6 +220,9 @@ impl Jak {
         }
     }
 
+    /// Authoritative deadline for host render clocks between snapshots.
+    pub fn hurt_invulnerable_until(&self) -> i64 { self.invulnerable_until }
+
     /// Hidden this frame: one 60 Hz frame in four while blows pass him by
     /// (`post-flag-setup`'s `tinvuln1` blink).
     pub fn blink_hidden(&self) -> bool {

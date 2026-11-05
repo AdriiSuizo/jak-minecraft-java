@@ -35,6 +35,7 @@ public final class JakPlayers {
     private static final net.minecraft.resources.Identifier VANILLA_SPRINT=
         net.minecraft.resources.Identifier.withDefaultNamespace("sprinting");
     private static final Map<net.minecraft.world.level.block.state.BlockState,Integer> FLOOR_SOUNDS=new IdentityHashMap<>();
+    private record Hurt(int mode,Vec3 from){}
     private static final class Session implements AutoCloseable {
         final long nativeId;
         final MinecraftCollision.Query collision;
@@ -45,6 +46,7 @@ public final class JakPlayers {
         Vec3 last;
         JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0,0,0);
         int pressed;
+        final ArrayList<Hurt> hurts=new ArrayList<>();
         int boardUseTicks;
         boolean shield,shieldHit,altarMount,usingBoard,grinding,hostMoved;
         List<List<Vec3>> rails=List.of();
@@ -84,6 +86,23 @@ public final class JakPlayers {
         Session s=LIVE.computeIfAbsent(player.getUUID(),id->new Session(player));
         if(input.sequence()<=s.input.sequence())return;
         s.input=input;s.pressed|=input.pressed();s.lastInput=player.level().getGameTime();
+    }
+    /** Queue after real Minecraft health damage, outside the native collision callback. */
+    public static void hurt(ServerPlayer player,net.minecraft.world.damagesource.DamageSource source){
+        if(!active(player)||!player.isAlive())return;
+        Session session=LIVE.get(player.getUUID());if(session==null||session.hurts.size()>=8)return;
+        int mode;
+        if(source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION))mode=1;
+        else if(source.is(net.minecraft.world.damagesource.DamageTypes.LIGHTNING_BOLT))mode=3;
+        else if(source.is(net.minecraft.world.damagesource.DamageTypes.FALL))mode=5;
+        else if(source.is(net.minecraft.world.damagesource.DamageTypes.ON_FIRE))mode=4;
+        else if(source.is(net.minecraft.tags.DamageTypeTags.IS_FIRE))mode=2;
+        else if(source.getEntity()!=null||source.is(net.minecraft.tags.DamageTypeTags.IS_PROJECTILE)
+            ||source.is(net.minecraft.world.damagesource.DamageTypes.CACTUS)
+            ||source.is(net.minecraft.world.damagesource.DamageTypes.SWEET_BERRY_BUSH))mode=0;
+        else mode=4;
+        if(session.craft!=null&&mode!=5)mode=4;
+        session.hurts.add(new Hurt(mode,source.getSourcePosition()));
     }
     public static boolean mount(ServerPlayer player,JakLeaper mount){
         if(!active(player)||player.isSleeping()||player.isSpectator()||mount.riderId()>=0||
@@ -254,6 +273,11 @@ public final class JakPlayers {
             NativeJak.bodyDimensions(s.nativeId,radius,height);
             s.bodyRadius=radius;s.bodyHeight=height;
         }
+        for(var hurt:s.hurts){
+            Vec3 from=hurt.from()==null?Vec3.ZERO:hurt.from().subtract(s.origin);
+            NativeJak.hurt(s.nativeId,hurt.mode(),hurt.from()!=null,(float)from.x,(float)from.y,(float)from.z);
+        }
+        s.hurts.clear();
         JsonObject pose=JsonParser.parseString(NativeJak.step(s.nativeId,b,triangles,actors,3)).getAsJsonObject();
         s.shield=pose.get("shield").getAsBoolean();
         s.entityRate=pose.get("entityRate").getAsFloat();

@@ -114,7 +114,7 @@ public final class JakHellcat extends Entity {
     public String beamData(){return entityData.get(BEAMS);}
     public boolean wrecked(){return entityData.get(WRECK);}
     @Override protected AABB makeBoundingBox(Vec3 position){
-        return HellcatDeck.bounds(position,getYRot(),hellDog());
+        return HellcatDeck.bounds(position,attitude(),hellDog());
     }
     @Override public boolean isPickable(){return !isRemoved()&&!wrecked();}
     public boolean canBoard(Player player,Vec3 hit){

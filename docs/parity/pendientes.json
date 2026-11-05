@@ -1,6 +1,6 @@
 {
   "date": "2026-11-05",
-  "java_commit": "d2761d8d90a7ce7545dd141a6ca0e16195a3d41a",
+  "java_commit": "55fe40598b644e0b3e19ff5acf551befb0ad0910",
   "reference": "../2010-rust-rewrite-mashup-trabajo",
   "items": [
     {
@@ -47,28 +47,31 @@
       "id": "F05",
       "group": "Agua y colisiones",
       "title": "Zoomers: casco y contacto con bloques",
-      "state": "Reportado por familia",
+      "state": "Casco orientado integrado; casos geométricos y recorrido aprobados",
       "evidence": "Ajustar el volumen barrido, la rotación y el contacto del casco en sus seis variantes, conservando la simulación original.",
       "references": "src/main/java/dev/jakmc/entity/JakVehicle.java; native/jak-jni/src/hover_host.rs",
-      "acceptance": "No atravesar esquinas, suelo ni techo; mantener el paso suave de desniveles y ambas alturas de circulación."
+      "acceptance": "No atravesar esquinas, suelo ni techo; mantener el paso suave de desniveles y ambas alturas de circulación.",
+      "latest_evidence": "integration-20261105-005746: esquinas de morro, hueco exterior al casco y barrido continuo para las seis variantes. zoomers-20261105-010611: ambos modelos recorridos, luces, alturas, marcha atrás y stacks."
     },
     {
       "id": "F06",
       "group": "Agua y colisiones",
       "title": "Hellcat y Helldog: colisión del casco completo",
-      "state": "Reportado por familia",
+      "state": "Orientación completa y giro contra paredes corregidos",
       "evidence": "La cubierta transitable no certifica el volumen exterior de la nave al volar o girar.",
       "references": "src/main/java/dev/jakmc/entity/JakHellcat.java; src/main/java/dev/jakmc/entity/HellcatDeck.java; native/jak-jni/src/hellcat_host.rs",
-      "acceptance": "Casco y extremos paran ante bloques en cualquier orientación; la cubierta conserva sus colisiones y daños por etapas."
+      "acceptance": "Casco y extremos paran ante bloques en cualquier orientación; la cubierta conserva sus colisiones y daños por etapas.",
+      "latest_evidence": "Esferas, cubierta, límites y punto de salida siguen la actitud completa. Regresión nativa de giro detenido ante pared. hellcat-20261105-011500 y helldog-20261105-010822: 12 acciones aprobadas por nave, incluido descenso con luces/propulsión y patada de apagado."
     },
     {
       "id": "F07",
       "group": "Agua y colisiones",
       "title": "Saltadunas y Arenatiburón: ruedas, casco y esquinas",
-      "state": "Reportado por familia",
+      "state": "Casco orientado integrado; suspensión y paso de un bloque conservados",
       "evidence": "Cubrir el vehículo completo, además de los contactos verticales de ruedas ya implementados.",
       "references": "src/main/java/dev/jakmc/entity/JakVehicle.java; native/jak-jni/src/wheeled_host.rs",
-      "acceptance": "No introducir carrocería/ruedas en bloques; subir un bloque y desniveles diagonales sin choque falso ni frenazo, con aterrizaje y suspensión conservados."
+      "acceptance": "No introducir carrocería/ruedas en bloques; subir un bloque y desniveles diagonales sin choque falso ni frenazo, con aterrizaje y suspensión conservados.",
+      "latest_evidence": "integration-20261105-005746: casos de esquinas y barrido continuo para ambos coches. cars-20261105-010230: cuatro contactos de rueda, subida de un bloque, conducción, salto y turbo aéreo. El casco mantiene el perfil vertical de la simulación original."
     },
     {
       "id": "F08",
@@ -253,20 +256,22 @@
     {
       "id": "F27",
       "group": "Presentación y efectos",
-      "title": "Voces y diálogos de habitantes",
+      "title": "Sonidos de animación de habitantes",
       "state": "Pendiente documentado",
-      "evidence": "Los sonidos de pasos, golpes, armas y vehículos no completan las voces/diálogos de los actores.",
-      "references": "docs/CURRENT-PORT-HANDOFF.md: native citizens; origen audio/src/jak.rs y jak2_villagers.rs",
-      "acceptance": "Conectar las voces disponibles y sus disparadores, sin voces duplicadas ni sonidos inventados."
+      "evidence": "La revisión del origen encuentra seis cues de animación was/wasf (pasos, aterrizaje y bastón). No encuentra un sistema de diálogos de ciudadanos; la etiqueta inicial de voces/diálogos era una inferencia que se retira. La defensa ya consume cues; contrastar pasos y recuperación.",
+      "references": "origen crates/render_anim/src/jak2_villagers.rs:npc_sound/npc_walk_effects/npc_pose_effects; src/main/java/dev/jakmc/entity/SpargusDefense.java",
+      "acceptance": "Reproducir los cues originales en pasos y recuperación, sin duplicar los disparados por defensa ni inventar conversaciones."
     },
     {
       "id": "F28",
       "group": "Presentación y efectos",
       "title": "Vibración original del mando",
-      "state": "Ausencia confirmada",
-      "evidence": "El origen consume Event::Hurt.buzz mediante buzz_hurts. No aparece un consumidor de rumble/buzz en el adaptador SDL/JNI actual.",
+      "state": "Integrado y verificado mediante el callback real de SDL",
+      "evidence": "Event::Hurt.buzz llega del núcleo al mando activo. Golpes usan motor fuerte 0,5 s y caídas motor débil 0,1 s, con parada al perder foco, entrar a menú o cambiar/desconectar el dispositivo.",
       "references": "origen crates/render_anim/src/jak.rs:buzz_hurts; native/jak-jni/src/lib.rs:event; src/client/java/dev/jakmc/client/input/SdlGamepad.java",
-      "acceptance": "Recuperar los pulsos y tiempos del origen mediante SDL, vinculados al mando que controla al jugador."
+      "acceptance": "Recuperar los pulsos y tiempos del origen mediante SDL, vinculados al mando que controla al jugador.",
+      "latest_evidence": "input_actions-20261105-013636: motor fuerte, motor débil, daño Minecraft, parpadeo y tintes de quemadura/electricidad aprobados. El pad virtual recibe el callback SDL real; no se afirma comprobación táctil de cada mando físico.",
+      "resolved": true
     },
     {
       "id": "F29",

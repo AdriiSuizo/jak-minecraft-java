@@ -121,7 +121,24 @@ public final class JakRenderer {
     public static int firstPersonArmTriangles;
     public static float firstPersonRetraction=1;
     public static net.minecraft.world.phys.Vec3 firstPersonMuzzle;
+    public static long hurtHiddenDraws;
+    public static float hurtRed=1,hurtGreen=1,hurtBlue=1;
     private static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
+                                 net.minecraft.client.renderer.state.level.CameraRenderState camera,boolean firstPerson){
+        var client=Minecraft.getInstance();
+        var actor=client.level==null?null:client.level.getEntity(state.id);
+        var frame=JakGuiContext.active()||actor==null||!actor.getAttachedOrCreate(JakData.ENABLED)
+            ?JakHurtVisuals.REST:JakHurtVisuals.sample(JakPoses.rendered(state.id));
+        if(actor==client.player){
+            hurtRed=frame.red();hurtGreen=frame.green();hurtBlue=frame.blue();
+            if(frame.hidden())hurtHiddenDraws++;
+        }
+        if(frame.hidden())return true;
+        var previous=JakHurtVisuals.current();JakHurtVisuals.current(frame);
+        try{return submitActor(state,stack,collector,camera,firstPerson);}
+        finally{JakHurtVisuals.current(previous);}
+    }
+    private static boolean submitActor(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
                                  net.minecraft.client.renderer.state.level.CameraRenderState camera,boolean firstPerson){
         var pose=JakPoses.rendered(state.id);
         var client=Minecraft.getInstance();if(client.level==null)return false;

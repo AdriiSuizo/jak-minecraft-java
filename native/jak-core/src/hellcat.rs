@@ -213,6 +213,7 @@ pub struct HellCat {
     shots: Vec<Shot>,
     blasts: Vec<Blast>,
     cache: CollideCache,
+    collision_orientation: Quat,
     pub events: Vec<HellCatEvent>,
 }
 
@@ -285,6 +286,7 @@ impl HellCat {
             shots: Vec::new(),
             blasts: Vec::new(),
             cache: CollideCache::default(),
+            collision_orientation: Quat::from_rotation_y(yaw),
             events: Vec::new(),
         }
     }
@@ -740,7 +742,41 @@ impl HellCat {
     /// Moves the six spheres by the velocity, bouncing off what they meet
     /// (`bounce-factor` 0.4).
     fn travel(&mut self, dt: f32, world: &mut dyn CollideWorld) {
-        let q = Quat::from_rotation_y(self.yaw);
+        let proposed=self.orientation();
+        let old=self.collision_orientation;
+        let mut share=1.0_f32;
+        if old.dot(proposed).abs()<0.9999999 {
+            for sphere in SPHERES {
+                let local=Vec3::new(sphere[0],sphere[1],sphere[2]);
+                let from=self.trans+old*local;
+                let motion=proposed*local-old*local;
+                self.cache.fill_line_sphere(world,from,motion,sphere[3]);
+                if let Some(hit)=self.cache.probe_line_sphere(from,motion,sphere[3]){share=share.min((hit.u-0.001).max(0.0));}
+            }
+        }
+        if share<1.0 {
+            // A sphere follows an arc when the hull turns; a chord's time of
+            // impact is not the same interpolation fraction for that arc.
+            let mut low=0.0;let mut high=share;
+            for _ in 0..12 {
+                let mid=(low+high)*0.5;let attitude=old.slerp(proposed,mid);
+                let mut overlap=false;
+                for sphere in SPHERES {
+                    let at=self.trans+attitude*Vec3::new(sphere[0],sphere[1],sphere[2]);
+                    self.cache.fill_line_sphere(world,at,Vec3::ZERO,sphere[3]+1.0);
+                    if self.cache.overlaps_sphere(at,sphere[3]+1.0){overlap=true;break;}
+                }
+                if overlap{high=mid;}else{low=mid;}
+            }
+            let limited=old.slerp(proposed,low);
+            if self.free.is_some(){self.free=Some(limited);}else{
+                let (yaw,pitch,roll)=limited.to_euler(glam::EulerRot::YXZ);
+                self.yaw=yaw;self.pitch=-pitch;self.roll=-roll;
+            }
+            self.spin=Vec3::ZERO;self.yaw_rate=0.0;self.pitch_rate=0.0;self.roll_rate=0.0;
+        }
+        let q = self.orientation();
+        self.collision_orientation=q;
         let mut remaining = self.vel * dt;
         for _ in 0..3 {
             if remaining.length_squared() < 1.0 {
@@ -1108,6 +1144,23 @@ impl HellCat {
 #[cfg(test)]
 mod gear_tests {
     use super::*;
+
+    #[test]
+    fn stationary_steering_cannot_rotate_the_hull_through_a_wall(){
+        let x=meters(4.4);let far=meters(30.0);
+        let a=Vec3::new(x,-far,-far);let b=Vec3::new(x,far,far);
+        let mut world=crate::TriangleGrid::new(vec![
+            crate::Tri{v:[a,b,Vec3::new(x,far,-far)],pat:crate::Pat::default()},
+            crate::Tri{v:[a,Vec3::new(x,-far,far),b],pat:crate::Pat::default()},
+        ],meters(4.0));
+        let mut craft=HellCat::new(Vec3::Y*meters(2.0),0.0);
+        craft.yaw=-std::f32::consts::FRAC_PI_4;
+        craft.travel(SECONDS_PER_FRAME,&mut world);
+        for sphere in SPHERES{
+            let at=craft.trans+craft.orientation()*Vec3::new(sphere[0],sphere[1],sphere[2]);
+            assert!(at.x+sphere[3]<=x+2.0,"rotating wing penetrated wall");
+        }
+    }
 
     #[test]
     fn adapted_shockwave_has_small_range_and_is_blocked_by_walls() {

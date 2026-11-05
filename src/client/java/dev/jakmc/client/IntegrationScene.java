@@ -121,6 +121,26 @@ final class IntegrationScene {
             check("explosion_respects_bedrock",l.getBlockState(bedrock).is(Blocks.BEDROCK));
             check("world_explosion_no_duplicate_actor_damage",cow.getHealth()==before&&cow.getDeltaMovement().lengthSqr()<1e-10);
             cow.discard();
+            var wall=base.offset(44,3,12);l.setBlock(wall,Blocks.STONE.defaultBlockState(),3);
+            int k=0;
+            for(var model:dev.jakmc.entity.JakVehicle.Model.values()){
+                float hx=model==dev.jakmc.entity.JakVehicle.Model.TOAD?2.3f:model==dev.jakmc.entity.JakVehicle.Model.SNAKE?1.8f:model.bike()?.8f:1.4f;
+                float hy=model==dev.jakmc.entity.JakVehicle.Model.TOAD?1.15f:model==dev.jakmc.entity.JakVehicle.Model.SNAKE?.65f:model.bike()?.6f:.7f;
+                float hz=model==dev.jakmc.entity.JakVehicle.Model.TOAD?4.8f:model==dev.jakmc.entity.JakVehicle.Model.SNAKE?3.5f:model.bike()?1.5f:2.4f;
+                double rx=(hx+hz)*.64/Math.sqrt(2),rz=(hz-hx)*.64/Math.sqrt(2);
+                Vec3 corner=new Vec3(wall.getX()-rx+.03,wall.getY()+.5,wall.getZ()-rz+.2);
+                var query=new dev.jakmc.nativebridge.WheeledCollision(l,p,corner,model.hover());
+                var hit=query.sweepHull(0,0,0,0,0,0,hx,hy,hz,.70710677f,0,.70710677f);
+                check("oriented_nose_corner_"+model.id,hit[0]==0);
+                query.origin=new Vec3(wall.getX()-rx+.03,wall.getY()+.5,wall.getZ()-rx+.03);
+                hit=query.sweepHull(0,0,0,0,0,0,hx,hy,hz,.70710677f,0,.70710677f);
+                check("oriented_hull_not_oversized_"+model.id,hit[0]==1);
+                query.origin=corner.add(-.5,0,0);
+                hit=query.sweepHull(0,0,0,.78125f,0,0,hx,hy,hz,.70710677f,0,.70710677f);
+                check("oriented_hull_continuous_"+model.id,hit[0]>0&&hit[0]<1);
+                k++;
+            }
+            check("all_vehicle_hulls_checked",k==8);
         }
         stage=t;
     }

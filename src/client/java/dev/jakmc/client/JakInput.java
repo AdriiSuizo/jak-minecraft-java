@@ -79,6 +79,7 @@ public final class JakInput {
 
     private static void poll(Minecraft c){
         if(!enabled(c)){
+            GAMEPAD.rumble(controllerId,0);
             pad=uiPad=dev.jakmc.client.input.SdlGamepad.State.EMPTY;
             physicalHeld=physicalSystem=pressedPad=systemEdges=previous=suppressed=0;
             aiming=useHeld=attackHeld=useClicked=attackClicked=false;
@@ -88,6 +89,7 @@ public final class JakInput {
         var next=GAMEPAD.poll(InputScene.replayPad());
         uiPad=next;
         if(next.id()!=controllerId){
+            GAMEPAD.rumble(controllerId,0);
             cancelPower|=controllerId!=0;
             controllerId=next.id();
             physicalHeld=physicalSystem=0;
@@ -98,6 +100,7 @@ public final class JakInput {
         systemEdges|=next.system()&~physicalSystem&~zoomDirections;
         if(c.gui.screen()!=null&&(next.held()&4)!=0&&(physicalHeld&4)==0)systemEdges|=64;
         if(blocked(c)){
+            GAMEPAD.rumble(controllerId,0);
             suppressed=next.held();
             pressedPad=0;
             aiming=useHeld=attackHeld=useClicked=attackClicked=false;
@@ -164,6 +167,10 @@ public final class JakInput {
         physicalSystem=next.system();
     }
 
+    public static void hurtFeedback(float seconds){
+        var client=Minecraft.getInstance();
+        if(enabled(client)&&(client.isWindowActive()||InputScene.backgroundPad(controllerId))&&client.gui.screen()==null)GAMEPAD.rumble(controllerId,seconds);
+    }
     public static boolean aiming(){return aiming;}
     public static boolean controllerReady(int id){return GAMEPAD.has(id);}
     public static boolean useHeld(){return useHeld;}

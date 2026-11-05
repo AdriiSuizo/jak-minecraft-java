@@ -614,6 +614,7 @@ public final class GltfModel {
             }
             pendingTextures.clear();
         }
+        var hurt=JakHurtVisuals.current(); // Capture before deferred submission.
         int surfaceNumber=0;var ready=selected==surfaces?prepared.get(posed):null;
         float seconds=materialSeconds();
         int effectFrame=effect==null?0:effect.frame(seconds);
@@ -671,7 +672,7 @@ public final class GltfModel {
                     }else if(surface.skullGem){
                         texV=(gemFrame+(.5f+(texV-(float)Math.floor(texV))*63)/64)/60;
                     }
-                    buffer.addVertex(v.x,v.y,v.z,color,u,texV,overlay,light,normal.x,normal.y,normal.z);
+                    buffer.addVertex(v.x,v.y,v.z,hurt.tint(color),u,texV,overlay,light,normal.x,normal.y,normal.z);
                 }
             });
         }

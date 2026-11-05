@@ -47,6 +47,24 @@ pub(super) struct Terrain {
     pub(super) error: Option<String>,
 }
 impl Ground for Terrain {
+    fn sweep_hull(&mut self,at:Vec3,delta:Vec3,half:Vec3,forward:Vec3)->Option<(f32,Vec3)>{
+        let result=(||->jni::errors::Result<[f32;4]>{
+            let mut env=JVM.get().unwrap().attach_current_thread()?;
+            let mut data=[0.0;4];
+            let args=[at.x,at.y,at.z,delta.x,delta.y,delta.z,half.x,half.y,half.z,forward.x,forward.y,forward.z].map(JValue::Float);
+            let result=env.call_method(self.query.as_obj(),"sweepHull","(FFFFFFFFFFFF)[F",&args).and_then(|value|{
+                let array=jni::objects::JFloatArray::from(value.l()?);
+                let read=env.get_float_array_region(&array,0,&mut data);let _=env.delete_local_ref(array);read
+            });
+            if result.is_err(){let _=env.exception_clear();}
+            result.map(|_|data)
+        })();
+        match result{
+            Ok([t,x,y,z]) if (0.0..1.0).contains(&t)=>Some((t,Vec3::new(x,y,z))),
+            Ok(_)=>None,Err(error)=>{self.error=Some(error.to_string());None}
+        }
+    }
+
     fn below(&mut self, at: Vec3, reach: f32) -> Option<f32> {
         let result = (|| -> jni::errors::Result<f32> {
             let mut env = JVM.get().unwrap().attach_current_thread()?;

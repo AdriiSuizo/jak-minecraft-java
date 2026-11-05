@@ -15,6 +15,7 @@ public final class SdlGamepad implements AutoCloseable {
  private record Device(long handle,String name){}
  private final Map<Integer,Device> pads=new LinkedHashMap<>();private final Map<Integer,Integer> heldLast=new HashMap<>();
  private boolean initialized;private int active;private long nextScan;
+ private final Set<Integer> rumbling=new HashSet<>();
  public State poll(int preferred){
   if(!initialized){if(!SDLInit.SDL_InitSubSystem(SDLInit.SDL_INIT_GAMEPAD))throw new IllegalStateException("SDL gamepad: "+SDLError.SDL_GetError());initialized=true;}
   long now=System.nanoTime();if(now>=nextScan){refresh();nextScan=now+1_000_000_000L;}
@@ -28,12 +29,23 @@ public final class SdlGamepad implements AutoCloseable {
   }
   State chosen=State.EMPTY;int candidate=active;
   var it=pads.entrySet().iterator();while(it.hasNext()){
-   var e=it.next();if(!SDL_GamepadConnected(e.getValue().handle)){SDL_CloseGamepad(e.getValue().handle);heldLast.remove(e.getKey());it.remove();nextScan=0;continue;}
+   var e=it.next();if(!SDL_GamepadConnected(e.getValue().handle)){SDL_CloseGamepad(e.getValue().handle);rumbling.remove(e.getKey());heldLast.remove(e.getKey());it.remove();nextScan=0;continue;}
    int prior=heldLast.getOrDefault(e.getKey(),0);State s=read(e.getKey(),e.getValue(),prior);int combined=s.held|(s.system<<16);heldLast.put(s.id,combined);
    if((combined&~prior)!=0||s.activity()>.5f){candidate=s.id;chosen=s;}
    else if(s.id==candidate||chosen.id==0)chosen=s;
   }
   if(chosen.id!=0)active=chosen.id;return chosen;
+ }
+ /** Original host: long hits use the strong motor, short fall pulses the weak motor. */
+ public boolean rumble(int id,float seconds){
+  var device=pads.get(id);
+  if(device==null||!SDL_GamepadConnected(device.handle)||!Float.isFinite(seconds))return false;
+  int duration=(int)Math.ceil(Math.clamp(seconds,0,2)*1000);
+  if(duration==0&&!rumbling.remove(id))return false;
+  int low=duration>=300?65535:0,high=duration>0&&duration<300?65535:0;
+  boolean supported=SDL_RumbleGamepad(device.handle,(short)low,(short)high,duration);
+  if(supported&&duration>0)rumbling.add(id);
+  return supported;
  }
  public boolean has(int id){return pads.containsKey(id);}
  public void refresh(){
@@ -51,5 +63,5 @@ public final class SdlGamepad implements AutoCloseable {
   if(brake>=((previous&32)!=0?.65f:.75f))held|=32;if(throttle>=((previous&128)!=0?.65f:.75f))held|=128;
   return new State(id,device.name,held,system,ControllerMath.stick(SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_LEFTX)),-ControllerMath.stick(SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_LEFTY)),ControllerMath.stick(SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHTX)),-ControllerMath.stick(SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHTY)),brake,throttle);
  }
- public void close(){for(var p:pads.values())SDL_CloseGamepad(p.handle);pads.clear();heldLast.clear();active=0;nextScan=0;if(initialized){SDLInit.SDL_QuitSubSystem(SDLInit.SDL_INIT_GAMEPAD);initialized=false;}}
+ public void close(){for(int id:List.copyOf(rumbling))rumble(id,0);for(var p:pads.values())SDL_CloseGamepad(p.handle);pads.clear();heldLast.clear();rumbling.clear();active=0;nextScan=0;if(initialized){SDLInit.SDL_QuitSubSystem(SDLInit.SDL_INIT_GAMEPAD);initialized=false;}}
 }

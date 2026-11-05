@@ -54,6 +54,13 @@ def run():
     # scene gets its own copy, never the manual save (even if a scene fails).
     dev_save=ROOT/'run/saves/New World (1)'
     if project_client_running():raise RuntimeError('The project client is already open; leave the running/manual game untouched')
+    # Asset copying/native compilation is build work, not a hung game startup.
+    # Complete it before the bounded launch timer, with no game window open.
+    with (evidence/'build.log').open('w',encoding='utf-8') as build_log:
+        subprocess.run([str(gradle),'classes','compileClientJava','--no-daemon','--console=plain'],
+            cwd=ROOT,env=env,stdout=build_log,stderr=subprocess.STDOUT,check=True,timeout=600,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+    if project_client_running():raise RuntimeError('A manual project client opened during compilation; leave it untouched')
     world=('Jak worldgen ' if args.fresh_world else 'Jak probe ')+stamp
     fresh=ROOT/'run/saves'/world
     if args.fresh_world:
@@ -86,7 +93,7 @@ def run():
         process.wait(timeout=120 if scene in ('first_person','enemies','weapons','input','gems','citizens','cities','sites','new_sites','natural_cities') else 90 if scene in ('powers','hellcat_crossing','weather') else 60 if scene=='systems' else 40)
         if process.returncode!=0:raise RuntimeError(f'Native game exited {process.returncode}')
         shutil.copyfile(result,evidence/'result.json')
-        if scene in ('first_person','equipment','economy','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','natural_cities','zoomers') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
+        if scene in ('integration','first_person','equipment','economy','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','natural_cities','zoomers') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
         if scene not in ('sites','new_sites','natural_cities'):
             if scene in ('first_person','weapons','rings','dark_motion','surface','player_sleep','yakow') and (not image.exists() or image.stat().st_mtime_ns<capture_after):
                 raise RuntimeError(f'{scene} completed without a fresh screenshot')

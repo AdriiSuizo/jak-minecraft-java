@@ -10,6 +10,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.sdl.SDLGamepad;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import dev.jakmc.client.model.JakRenderer;
 import java.nio.file.*;
 import java.util.*;
 
@@ -81,7 +82,7 @@ public final class InputScene {
    stageReady=true;
   });
  }
- public static void startInteractions(Minecraft c){start(c);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
+ public static void startInteractions(Minecraft c){start(c,true);c.player.getInventory().setSelectedSlot(0);interactions=true;output=c.gameDirectory.toPath().resolve("jakmc/evidence/input_actions");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.getInventory().setSelectedSlot(0);p.setAttached(JakData.BOARD,ItemStack.EMPTY);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));}});}
  private static volatile int hellcatId;
  private static boolean crossing,crossingSample,hellDog;
  private static final long[] crossingFrames=new long[40000];
@@ -205,10 +206,10 @@ public final class InputScene {
   pad.axis(5,ride>=10&&ride<27?0:ride>=27&&ride<65?1:-1);
   pad.axis(1,ride>=28&&ride<40?.75f:0);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH,ride>=51&&ride<55);
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,ride>=43&&ride<48);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,ride>=43&&ride<48||off>=17&&off<22||off>=32&&off<37);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,ride>=58&&ride<63);
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,(hellcatBoardPress>0&&t>=hellcatBoardPress&&t<hellcatBoardPress+3&&ride<0)
-   ||channel!=null&&ride>=69&&ride<105&&(ride-69)%12<5);
+  pad.axis(4,hellcatBoardPress>0&&t>=hellcatBoardPress&&t<hellcatBoardPress+3&&channel==null?1:-1);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,channel!=null&&ride>=69&&ride<105&&(ride-69)%12<5);
   if(channel!=null){
    hellcatNight|=cat.lamps()>.95;
    if(ride>=0){
@@ -232,7 +233,7 @@ public final class InputScene {
    look(at.add(5,2.7,-4),at);
    if(off==8)capture(c,"hellcat-left-powered.png");
   }
-  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,off>=17&&off<22||off>=32&&off<37);
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,false);
   if(off>=16&&off<=45&&channel==null){
    aimAt(c,cat.position().subtract(Vec3.directionFromRotation(0,cat.getYRot()).scale(.65)));
    var at=cat.position();
@@ -274,7 +275,7 @@ public final class InputScene {
  private static void hellcatCrossingActions(Minecraft c,dev.jakmc.entity.JakHellcat cat,JsonObject channel,int ride){
   if(channel==null){finish(c,"Lost the HellCat during the crossing");return;}
   if(ride==0){
-   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,false);
+   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,false);pad.axis(4,-1);
    c.gui.hud.getChat().clearMessages(false);
   }
   var pos=cat.position();
@@ -808,10 +809,17 @@ public final class InputScene {
    finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"power/aim assertion failed");
   }
  }
- private static int firstPersonAt;
+ private static int firstPersonAt,strongPulse,slotBeforeZoom;
+ private static long hiddenBefore;
+ private static boolean shockTintSeen;
  private static void actions(Minecraft c){
   int t=++tick;
-  if(t==1)firstPersonAt=0;
+  if(t==1){
+   firstPersonAt=0;shockTintSeen=false;
+   c.player.getInventory().setSelectedSlot(0);
+   c.getConnection().send(new net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket(0));
+   onServer(c,p->{p.getInventory().setSelectedSlot(0);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.BOARD));});
+  }
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,t==8||t==60||t==125);
   pad.axis(4,t==25?1:-1);
   pad.axis(5,t==45||t==100?1:-1);
@@ -830,9 +838,32 @@ public final class InputScene {
    ACTIONS.addProperty("select_kept_perspective",c.options.getCameraType()==CameraType.THIRD_PERSON_BACK);
    capture(c,"input-actions-gui.png");
   }
-  if(t>=180&&firstPersonAt==0&&c.options.getCameraType().isFirstPerson())firstPersonAt=t;
+  if(t==169)hiddenBefore=JakRenderer.hurtHiddenDraws;
+  if(t==170)onServer(c,p->{p.setGameMode(net.minecraft.world.level.GameType.SURVIVAL);p.hurtServer(p.level(),p.damageSources().cactus(),2);});
+  if(t==176){
+   var hurtPose=JakPoses.get(c.player.getId());
+   ACTIONS.addProperty("minecraft_damage_source_reaction",hurtPose!=null&&hurtPose.clip().contains("-hit-"));
+   ACTIONS.addProperty("source_strong_haptic_motor",pad.lastPulseLow==65535&&pad.lastPulseHigh==0);
+  }
+  if(t==244)strongPulse=pad.pulseCount;
+  if(t==245)onServer(c,p->p.hurtServer(p.level(),p.damageSources().fall(),2));
+  if(t==251)ACTIONS.addProperty("source_weak_fall_motor",pad.pulseCount>strongPulse&&pad.lastPulseLow==0&&pad.lastPulseHigh==65535);
+  if(t==350)ACTIONS.addProperty("source_hurt_blink_rendered",JakRenderer.hurtHiddenDraws>hiddenBefore);
+  if(t==360)onServer(c,p->{p.setHealth(p.getMaxHealth());p.hurtServer(p.level(),p.damageSources().lava(),1);});
+  if(t==400){
+   ACTIONS.addProperty("source_burn_tint_rendered",JakRenderer.hurtRed>.45f&&JakRenderer.hurtRed<.65f&&JakRenderer.hurtRed==JakRenderer.hurtGreen);
+   capture(c,"input-actions-burn.png");
+  }
+  if(t==450)onServer(c,p->p.hurtServer(p.level(),p.damageSources().lightningBolt(),1));
+  if(t>=451&&t<=470&&JakRenderer.hurtRed>=.5f&&Math.abs(JakRenderer.hurtBlue-JakRenderer.hurtRed-.5f)<.001f){
+   if(!shockTintSeen)capture(c,"input-actions-shock.png");
+   shockTintSeen=true;
+  }
+  if(t==470)ACTIONS.addProperty("source_shock_tint_rendered",shockTintSeen);
+  if(t==259)slotBeforeZoom=c.player.getInventory().getSelectedSlot();
+  if(t>=260&&firstPersonAt==0&&c.options.getCameraType().isFirstPerson())firstPersonAt=t;
   int age=firstPersonAt==0?-1:t-firstPersonAt;
-  boolean zoomIn=t>=180&&firstPersonAt==0;
+  boolean zoomIn=t>=260&&firstPersonAt==0;
   boolean zoomOut=age>=2&&age<24;
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK,zoomIn||zoomOut);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_UP,zoomIn);
@@ -841,12 +872,13 @@ public final class InputScene {
    ACTIONS.addProperty("r3_zoom_reached_first_person",true);
    ACTIONS.addProperty("r3_zoom_returned_to_third_person",c.options.getCameraType()==CameraType.THIRD_PERSON_BACK&&JakInput.cameraZoomFactor()>.5);
    ACTIONS.addProperty("zoom_did_not_open_inventory",c.gui.screen()==null);
+   ACTIONS.addProperty("zoom_kept_hotbar_slot",c.player.getInventory().getSelectedSlot()==slotBeforeZoom);
    var pose=JakPoses.get(c.player.getId());
    ACTIONS.addProperty("r3_did_not_transform",pose!=null&&!pose.dark()&&!pose.light());
   }
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_START,age==30||age==36);
   if(age==33)ACTIONS.addProperty("start_native_pause",c.gui.screen() instanceof net.minecraft.client.gui.screens.PauseScreen);
-  if(age>=40||t>=300){
+  if((age>=40||t>=380)&&t>=500){
    ACTIONS.addProperty("r3_zoom_reached_first_person",firstPersonAt>0);
    ACTIONS.addProperty("start_closed_pause",c.gui.screen()==null);
    finish(c,ACTIONS.entrySet().stream().allMatch(e->e.getValue().getAsBoolean())?"complete":"controller layout assertion failed");
@@ -856,7 +888,7 @@ public final class InputScene {
   if(!running)return;if(c.player==null||c.getSingleplayerServer()==null){finish(c,"lost world");return;}
   // Hot-plug enumeration is asynchronous. Replay must wait for the normal backend
   // to open the device at rest, as SDL calibrates virtual triggers on open.
-  if(!stageReady||!JakInput.controllerReady(pad.id)){if(System.nanoTime()>deviceDeadline)finish(c,"Replay setup or SDL device did not become ready");return;}
+  if(!stageReady||!JakInput.controllerReady(pad.id)||dev.jakmc.client.model.JakRenderer.clothRenderSerial<=clothStart){if(System.nanoTime()>deviceDeadline)finish(c,"Replay setup or SDL device did not become ready");return;}
   if(powers){powerActions(c);return;}
   if(darkMotion){darkMotionActions(c);return;}
   if(hellcat){hellcatActions(c);return;}
@@ -902,7 +934,7 @@ public final class InputScene {
   }
   if(t==415||t==445){var uuid=c.player.getUUID();boolean light=t==445;c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null)p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(light?JakItems.LIGHT_ECO:JakItems.DARK_ECO));});}
   if(t>=415&&t<475){look(c.player.position().add(2,2.2,-2.8),c.player.position().add(0,1.1,0));if(t==435||t==465)capture(c,"input-eco-hand-"+t+".png");}
-  if(t==480){view=null;c.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(c.player));}
+  if(t==400){view=null;c.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(c.player));}
   if(t==495)capture(c,"input-eco-gui.png");
   if(t>=505)finish(c,!ACTIONS.has("minimap_reads_displayed_camera")||!ACTIONS.get("minimap_reads_displayed_camera").getAsBoolean()
       ?"Minimap yaw differs from camera":!STATES.containsAll(Set.of("double-jump","roll-flip","attack","board-stance"))
