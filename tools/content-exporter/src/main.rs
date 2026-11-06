@@ -102,7 +102,9 @@ fn main(){let args:Vec<_>=std::env::args().collect();let root=Path::new(&args[1]
  if args.get(2).is_some_and(|s|s=="--wall-roots-only"){return;}
  save_track(root);
  jak_items::set_block_texture_source(texture);
- jak_items::write_pack(&root.join("source-pack")).unwrap();
+ // A file just written can be held a moment by another program (an antivirus scan): os error 32 while the old pack
+ // is removed. Try again a few times before giving up (06/11: an install failed so).
+ for attempt in 1..=6{match jak_items::write_pack(&root.join("source-pack")){Ok(())=>break,Err(e) if attempt<6=>{eprintln!("pack write failed ({e}), retrying");std::thread::sleep(std::time::Duration::from_secs(3));}Err(e)=>panic!("{e}")}}
  let layout=jak_barrio::natural_layout(8048,(0,0),64,0,&Flat).expect("Haven source plan");
  let palace=layout.palace.expect("Haven must surround palace");
  let mut haven=jak_barrio::village_from_layout(8048,layout,&Flat);
