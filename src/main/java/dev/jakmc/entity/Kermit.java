@@ -31,6 +31,11 @@ final class Kermit {
  private static final double PULSE_RADIUS=.7;
  /** tongueA (skin joint 23; node 24 in the original) in kermit-lod0.glb's bind pose, in creature metres from the feet. */
  private static final Vec3 MOUTH=new Vec3(0,1.12,1.191);
+ /**
+  * stand-in: the original's hop follows the nav mesh's ground; here its stride (kermit-post's move) climbs a block,
+  * as Minecraft's step does, so a frog is not stopped by a one-block rise (Adrii 06/11).
+  */
+ static final double STEP=1;
  private final JakEnemy body;
  private Phase phase=Phase.IDLE;
  private int ticks,clipTicks,hops,lost,pulseTicks;

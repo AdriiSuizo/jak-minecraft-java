@@ -80,7 +80,7 @@ public final class JakEnemy extends Monster {
    knocked.replace("knocked0","knocked-land0"),knocked.replace("knocked","knocked-land"),knocked);
   setPathfindingMalus(net.minecraft.world.level.pathfinder.PathType.WATER,0);
   getNavigation().setCanFloat(true);
-  jumpControl=new net.minecraft.world.entity.ai.control.JumpControl(this){@Override public void jump(){if(isInWater()||isInLava())super.jump();else if(guard!=null)super.jump();else if(onGround()&&!leaping&&leapWindup==0&&landTicks==0)requestLeap=true;}};
+  jumpControl=new net.minecraft.world.entity.ai.control.JumpControl(this){@Override public void jump(){if(isInWater()||isInLava())super.jump();else if(guard!=null||!kind.leaps)super.jump();else if(onGround()&&!leaping&&leapWindup==0&&landTicks==0)requestLeap=true;}};
  }
  @Override protected void registerGoals(){goalSelector.addGoal(0,new FloatGoal(this));}
  @Override protected void defineSynchedData(SynchedEntityData.Builder b){super.defineSynchedData(b);b.define(CLIP,"");b.define(CLIP_START,0L);b.define(LOOP,true);b.define(PLAY_RATE,1f);b.define(CLIP_OFFSET,0f);b.define(PHASE,0);b.define(SHOT,"");b.define(TONGUE,-1);b.define(TONGUE_STRETCH,0f);b.define(TONGUE_MAX,2f);b.define(TONGUE_PULSE,-1f);}

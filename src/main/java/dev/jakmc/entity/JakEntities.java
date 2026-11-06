@@ -32,7 +32,7 @@ public final class JakEntities {
    Registry.register(BuiltInRegistries.ENTITY_TYPE,key,type);KINDS.put(type,k);TYPES.put(k.model,type);
    // One original Jak damage point is the same 2.5 Minecraft health used by
    // the Morph Gun/melee bridge; no former clone health multiplication.
-   FabricDefaultAttributeRegistry.register(type,Monster.createMonsterAttributes().add(Attributes.MAX_HEALTH,k.hp*2.5).add(Attributes.ATTACK_DAMAGE,k.damage).add(Attributes.MOVEMENT_SPEED,k.guard()?navigationSpeed(k.run):k.run*JakEnemyKind.SCALE/20).add(Attributes.FOLLOW_RANGE,k.stop*JakEnemyKind.SCALE).add(Attributes.STEP_HEIGHT,.6));
+   FabricDefaultAttributeRegistry.register(type,Monster.createMonsterAttributes().add(Attributes.MAX_HEALTH,k.hp*2.5).add(Attributes.ATTACK_DAMAGE,k.damage).add(Attributes.MOVEMENT_SPEED,k.guard()?navigationSpeed(k.run):k.run*JakEnemyKind.SCALE/20).add(Attributes.FOLLOW_RANGE,k.stop*JakEnemyKind.SCALE).add(Attributes.STEP_HEIGHT,k.model.equals("kermit")?Kermit.STEP:.6));
    if(!k.guard()){
    SpawnPlacements.register(type,SpawnPlacementTypes.ON_GROUND,Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,Monster::checkMonsterSpawnRules);
    }

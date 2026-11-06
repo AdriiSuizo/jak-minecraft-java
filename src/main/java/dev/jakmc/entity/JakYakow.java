@@ -53,6 +53,9 @@ public final class JakYakow extends AbstractCow {
     private boolean running;
     private float soundFrame=Float.NEGATIVE_INFINITY;
     private float idleRate=1;
+    /** The client's own clock in the clip (the server's arrives a tick late and not every tick): clip and seconds. */
+    private int shownClip=-1;
+    private float shown;
 
     public JakYakow(EntityType<? extends JakYakow> type,Level level){super(type,level);}
 
@@ -62,7 +65,7 @@ public final class JakYakow extends AbstractCow {
         var key=ResourceKey.create(Registries.ENTITY_TYPE,JakData.id("yakow"));
         TYPE=Registry.register(BuiltInRegistries.ENTITY_TYPE,key,EntityType.Builder
             .<JakYakow>of(JakYakow::new,MobCategory.CREATURE)
-            .sized(2.5f*SCALE*2,3.5f*SCALE).eyeHeight(2.85f*SCALE).clientTrackingRange(8).updateInterval(2).build(key));
+            .sized(2.5f*SCALE*2,3.5f*SCALE).eyeHeight(2.85f*SCALE).clientTrackingRange(8).updateInterval(1).build(key));
         FabricDefaultAttributeRegistry.register(TYPE,createAttributes().add(Attributes.MAX_HEALTH,12.5)
             .add(Attributes.MOVEMENT_SPEED,JakEntities.navigationSpeed(WALK_SPEED)).add(Attributes.TEMPT_RANGE,10));
         SpawnPlacements.register(TYPE,SpawnPlacementTypes.ON_GROUND,Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,Animal::checkAnimalSpawnRules);
@@ -127,11 +130,32 @@ public final class JakYakow extends AbstractCow {
     }
 
     public String clip(){return CLIPS[entityData.get(CLIP)];}
-    public float animationAge(float partial){return entityData.get(PHASE)+partial*entityData.get(RATE)/20;}
+    public float animationAge(float partial){
+        float rate=entityData.get(RATE);
+        if(!level().isClientSide()||shownClip!=entityData.get(CLIP))return entityData.get(PHASE)+partial*rate/20;
+        return Math.min(animations.get(CLIPS[shownClip]).duration(),shown+partial*rate/20);
+    }
+
+    /**
+     * The server's phase came a step at a time (every other tick, a tick late), so the yakow's legs moved in jerks
+     * (Adrii 06/11): here it runs on at the server's rate every tick, starts again where the server does (at the
+     * clip's end) and takes the server's when the clip changes or it drifts a quarter second off.
+     */
+    private void showAnimation(){
+        int clip=entityData.get(CLIP);
+        float synced=entityData.get(PHASE),length=animations.get(CLIPS[clip]).duration();
+        if(clip!=shownClip){shownClip=clip;shown=synced;return;}
+        shown+=entityData.get(RATE)/20;
+        if(shown>=length)shown=clip==KICKED?length:0;
+        float drift=synced-shown;
+        if(drift>length/2)drift-=length;else if(drift<-length/2)drift+=length;
+        if(Math.abs(drift)>.25f)shown=synced;
+    }
 
     @Override public void aiStep(){
         super.aiStep();
-        if(!(level() instanceof ServerLevel)||!isAlive())return;
+        if(level().isClientSide()){showAnimation();return;}
+        if(!isAlive())return;
         if(home==null)home=blockPosition();
         if(fleeDelay>0)fleeDelay--;
         if(kicked>0)kicked--;
