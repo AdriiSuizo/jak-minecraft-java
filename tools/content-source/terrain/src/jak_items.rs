@@ -465,7 +465,8 @@ fn write_block(assets: &Path, vanilla: Option<&Path>, block: &JakBlock) -> Resul
         std::fs::write(assets.join("models/block").join(format!("{name}.json")), model)?;
     }
     for t in block.look.textures() {
-        block_texture(t).save(assets.join("textures/block").join(format!("{}.png", t.to_lowercase())))?;
+        let file = assets.join("textures/block").join(format!("{}.png", t.to_lowercase()));
+        block_texture(t).save(&file).map_err(|e| anyhow::anyhow!("{}: {e}", file.display()))?;
     }
     Ok(())
 }
@@ -943,6 +944,19 @@ fn block_texture(name: &str) -> RgbaImage {
 }
 
 /// Writes the pack into `dir` unless it is already there at this version.
+/// The old pack's folder removed. 06/11: in an installed copy `remove_dir_all` kept failing with a sharing violation
+/// (os error 32) where removing its files one by one, then its folders, went through.
+fn remove_tree(dir: &Path) -> std::io::Result<()> {
+    if std::fs::remove_dir_all(dir).is_ok() || !dir.exists() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() { remove_tree(&path)?; } else { std::fs::remove_file(&path)?; }
+    }
+    std::fs::remove_dir(dir)
+}
+
 pub fn write_pack(dir: &Path) -> Result<()> {
     // World, item and background atlas loaders may arrive together. A second
     // writer must not remove files while the first is publishing them.
@@ -972,7 +986,7 @@ pub fn write_pack(dir: &Path) -> Result<()> {
     // Written afresh: a file of an older pack left in it (a texture by a
     // name no longer valid: 23/10) would still be read by the atlas.
     if assets.is_dir() {
-        std::fs::remove_dir_all(&assets)?;
+        remove_tree(&assets).map_err(|e| anyhow::anyhow!("removing {}: {e}", assets.display()))?;
     }
     for sub in ["items", "models/item", "textures/item", "blockstates", "models/block", "textures/block"] {
         std::fs::create_dir_all(assets.join(sub))?;
