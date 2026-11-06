@@ -21,27 +21,37 @@ import org.joml.Vector3f;
 
 /**
  * The 3x3 doors, fitted to their blocks. The Geyser Rock iris door (jng-iris-door): its blades turn open as
- * jng-iris-door-idle plays forward (eco-door door-opening, speed 1), back as it closes, and once open it is
- * hidden (door-open). Haven's airlock: com-airlock-outer and com-airlock-inner back to back, each its "idle"
- * clip run as airlock.gc's open and close states run it, with their sounds.
+ * jng-iris-door-idle plays forward (eco-door door-opening, speed 1), back as it closes. stand-in (Adrii 06/11):
+ * door-open hides it all; here its frame (the "base" joint's ring) stays, the blades gone, and the ring's
+ * outside is drawn square to sit with the blocks round it. Haven's airlock: com-airlock-outer and
+ * com-airlock-inner back to back, each its "idle" clip run as airlock.gc's open and close states run it, with their sounds.
  */
 public final class IrisDoorRenderer implements BlockEntityRenderer<JakIrisDoor.Door,IrisDoorRenderer.State> {
     /** One door's mesh, its clip, its fit to three blocks and how airlock.gc runs it: the open state's
      * stretches (to an artist frame, at a speed) and the close state's, the last of each to the clip's end. */
     private record Leaf(GltfModel model,String clip,Vector3f middle,float fit,boolean flat,float depth,int cells,float thick,
-                        float[][] opening,float[][] closing,String[] openSounds,String[] closeSounds){
+                        float[][] opening,float[][] closing,String[] openSounds,String[] closeSounds,float gain){
         float frames(){return Math.max(model.duration(clip),.01f)*60;}
     }
     private static final float MOST_SECONDS=2.5f;
     private static Leaf iris;private static Leaf[] airlock;private static boolean irisMissing,airlockMissing;
+    /** The iris door open: its frame alone. */
+    private static GltfModel.Posed irisFrame;
+    private static final String[] BLADES={"rote1","rote2","rote3","rote4","rote5","rote6","rote7","rote8"};
+    /** Adrii 06/11, the airlock too loud: airlock.gc's CTYWIDE1 streams take Jak 2's x4.5 bank gain on import
+     * (import_audio.py mix_gain) yet stand some 10 dB over its bank sounds (mean -8 to -15 dB against a median
+     * -25); played at 0.3 they sit with them. */
+    private static final float AIRLOCK_GAIN=.3f;
     public static final class State extends BlockEntityRenderState {
         GltfModel.Posed[] poses;Leaf[] leaves;Direction facing;
     }
     @Override public State createRenderState(){return new State();}
     @Override public int getViewDistance(){return 64;}
 
-    private static Leaf leaf(java.nio.file.Path file,String name,String clip,int cells,float[][] opening,float[][] closing,String[] openSounds,String[] closeSounds) throws IOException{
+    private static Leaf leaf(java.nio.file.Path file,String name,String clip,int cells,float[][] opening,float[][] closing,String[] openSounds,String[] closeSounds,float gain) throws IOException{
         var model=new GltfModel(file,name,true);
+        // The iris door's frame squared (the ring's outer edge 4 m out, its inner 2.83 m, both from jng-iris-door-lod0).
+        if(name.equals("jng-iris-door"))model.squareRing("base",3.5f);
         var closed=model.pose(clip,0);
         var bounds=model.bounds(closed,new Matrix4f());
         var size=new Vector3f(bounds[1]).sub(bounds[0]);
@@ -52,7 +62,7 @@ public final class IrisDoorRenderer implements BlockEntityRenderer<JakIrisDoor.D
         float fit=across>0?cells/across:1;
         // The airlock's two doors share one block of thickness (Adrii 06/11: thinner, same size).
         float thick=clip.startsWith("com-airlock")&&depth>0?Math.min(fit,.5f/depth):fit;
-        return new Leaf(model,clip,middle,fit,flat,depth,cells,thick,opening,closing,openSounds,closeSounds);
+        return new Leaf(model,clip,middle,fit,flat,depth,cells,thick,opening,closing,openSounds,closeSounds,gain);
     }
     private static Leaf[] leaves(boolean isAirlock){
         if(isAirlock){
@@ -61,18 +71,23 @@ public final class IrisDoorRenderer implements BlockEntityRenderer<JakIrisDoor.D
                 // com-airlock-outer: pre-open 35, lock 45, open 45, pre-open speed 2; its sounds by stretch.
                 var outer=leaf(root.resolve("com-airlock-outer-lod0.glb"),"com-airlock-outer","com-airlock-outer-idle",3,
                     new float[][]{{45,2},{45,2},{-1,1}},new float[][]{{45,2},{0,1}},
-                    new String[]{"airlock_slider",null,"airlock_seal","airlock_hit"},new String[]{"airlock_open","airlock_hit",null});
+                    new String[]{"jak2/airlock_slider",null,"jak2/airlock_seal","jak2/airlock_hit"},new String[]{"jak2/airlock_open","jak2/airlock_hit",null},AIRLOCK_GAIN);
                 // com-airlock-inner: lock 37, pre-open 65, open 75, pre-open speed 0.9; its gear turning and unlocking.
                 var inner=leaf(root.resolve("com-airlock-inner-lod0.glb"),"com-airlock-inner","com-airlock-inner-idle",3,
                     new float[][]{{37,.9f},{75,2},{-1,1}},new float[][]{{75,2},{0,1}},
-                    new String[]{"airlock_gear","airlock_turn","airlock_unlock",null},new String[]{null,null,null});
+                    new String[]{"jak2/airlock_gear","jak2/airlock_turn","jak2/airlock_unlock",null},new String[]{null,null,null},AIRLOCK_GAIN);
                 airlock=new Leaf[]{outer,inner};
             }catch(IOException failure){airlockMissing=true;dev.jakmc.JakMod.LOG.warn("Airlock meshes missing",failure);}
             return airlock;
         }
         if(iris==null&&!irisMissing)try{
+            // stand-in: tra-iris-door sets no open-sound or close-sound (only "blue-eco-on", played by the block);
+            // sun-iris-door's "irisdoor2", Jak 1's own iris door, as it opens and as it closes.
             iris=leaf(RuntimeConfig.gameAssets("jak1").resolve("levels/training/jng-iris-door-lod0.glb"),"jng-iris-door","jng-iris-door-idle",3,
-                new float[][]{{-1,1}},new float[][]{{0,1}},new String[]{null,null},new String[]{null,null});
+                new float[][]{{-1,1}},new float[][]{{0,1}},new String[]{"jak1/irisdoor2",null},new String[]{"jak1/irisdoor2",null},1);
+            var frame=iris.model.poseAtTime(iris.clip,iris.model.duration(iris.clip));
+            for(var blade:BLADES)frame=iris.model.withLocal(frame,blade,null,new Vector3f(1e-4f));
+            irisFrame=frame;
         }catch(IOException failure){irisMissing=true;dev.jakmc.JakMod.LOG.warn("Iris door mesh missing",failure);}
         return iris==null?null:new Leaf[]{iris};
     }
@@ -116,17 +131,16 @@ public final class IrisDoorRenderer implements BlockEntityRenderer<JakIrisDoor.D
             if(step!=door.step[i]&&door.changedAt!=Long.MIN_VALUE/2){
                 door.step[i]=step;
                 var sounds=open?leaf.openSounds:leaf.closeSounds;
-                if(step<sounds.length&&sounds[step]!=null)play(door,sounds[step]);
+                if(step<sounds.length&&sounds[step]!=null)play(door,sounds[step],leaf.gain);
             }
-            // door-open: the iris is gone once open.
-            if(!kind.airlock&&open&&at[0]>=frames){state.poses=null;return;}
-            state.poses[i]=leaf.model.poseAtTime(leaf.clip,at[0]/60);
+            // door-open: the iris open, its frame alone.
+            state.poses[i]=!kind.airlock&&open&&at[0]>=frames?irisFrame:leaf.model.poseAtTime(leaf.clip,at[0]/60);
         }
     }
-    private static void play(JakIrisDoor.Door door,String name){
+    private static void play(JakIrisDoor.Door door,String name,float gain){
         var level=door.getLevel();if(level==null)return;
         var at=door.getBlockPos().above();
-        level.playLocalSound(at.getX()+.5,at.getY()+.5,at.getZ()+.5,SoundEvent.createVariableRangeEvent(JakData.id("sfx/jak2/"+name)),SoundSource.BLOCKS,1,1,false);
+        level.playLocalSound(at.getX()+.5,at.getY()+.5,at.getZ()+.5,SoundEvent.createVariableRangeEvent(JakData.id("sfx/"+name)),SoundSource.BLOCKS,gain,1,false);
     }
 
     @Override public void submit(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){

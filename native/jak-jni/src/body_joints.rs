@@ -15,6 +15,7 @@ pub struct BodyJoints {
     clips: HashMap<String, Vec<Vec<[f32; 10]>>>,
     flut_main: Vec<Vec3>,
     fingers: Option<(usize,usize)>,
+    crown: Option<usize>,
 }
 
 impl BodyJoints {
@@ -83,7 +84,9 @@ impl BodyJoints {
                 .map(|main|Vec3::from_slice(main)*jak_core::METER).collect());
         let index=|name:&str|joint_nodes.iter().position(|&node|nodes[node]["name"].as_str()==Some(name));
         let fingers=index("lindA").zip(index("rindA"));
-        Ok(Self { joints, clips, flut_main, fingers })
+        // The top of his head (render_anim `Animator::crown`), for the water to float him by.
+        let crown=index("MhairB").or_else(||index("neckB"));
+        Ok(Self { joints, clips, flut_main, fingers, crown })
     }
 
     pub fn sample(&self, jak: &mut jak_core::Jak, rotations: &mut Vec<Quat>) {
@@ -122,5 +125,6 @@ impl BodyJoints {
         }
         // Jak 3 center-hold, as used by render_anim::jak_pose::Animator::hold in the Rust port.
         jak.hold=self.fingers.map(|(left,right)|(jak.joints[left]+jak.joints[right])*0.5);
+        jak.crown=self.crown.map(|crown|jak.joints[crown]);
     }
 }

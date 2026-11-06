@@ -39,6 +39,7 @@ public final class JakBlocks {
             var loot=ResourceKey.create(Registries.LOOT_TABLE,Identifier.fromNamespaceAndPath("jak","blocks/"+path));
             var properties=BlockBehaviour.Properties.ofLegacyCopy(base).setId(key).overrideLootTable(Optional.of(loot));
             if(path.contains("luz")||path.contains("luminosa")||path.contains("neon"))properties.lightLevel(state->15);
+            if(look.has("see_through"))properties.noOcclusion();
             Block block=path.equals("altar_turbotabla")||path.equals("altar_turbotabla_vacio")
                 ?new JakBoardAltar(properties.noOcclusion(),path.equals("altar_turbotabla"),look.getAsJsonArray("boxes"))
                 :switch(kind){

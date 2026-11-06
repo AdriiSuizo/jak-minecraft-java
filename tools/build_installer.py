@@ -43,7 +43,7 @@ def main():
     (payload/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
     # Keep a runnable source bundle for headless verification of exactly the
     # payload that PyInstaller packages.
-    converters=['import_content','nombres_es','import_facades','import_facade_parts','import_flut_eyes','import_hellcat_deck','import_audio','extract_skate_tower_support']
+    converters=['import_content','import_dark_eco','nombres_es','import_facades','import_facade_parts','import_flut_eyes','import_hellcat_deck','import_audio','extract_skate_tower_support']
     for name in converters:copy(ROOT/'tools'/f'{name}.py',STAGE/'converters'/f'{name}.py')
     catalog='content-source/terrain/src/spargus_city_blocks.rs'
     copy(ROOT/'tools'/catalog,STAGE/'converters'/catalog)

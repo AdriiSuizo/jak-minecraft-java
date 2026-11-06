@@ -202,6 +202,13 @@ fn make_shape(kind: usize) -> Option<Shape> {
         // closed base, outer wall, rim and inside, all in its original metal.
         burning_can(*textures.iter().position(|n|*n=="city-slum-burning-can").as_ref()? as u16)
     } else {tris};
+    let rock = o.group == "roca";
+    if rock {
+        let turned = level_rock(&mut tris);
+        let base = rock_base(&tris);
+        diag::info!(World, "{}: levelled {:.1} degrees, base of {} triangles", o.block, turned, base.len());
+        tris.extend(base);
+    }
     let luma: f32 = tris.iter().flat_map(|t| t.color.iter()).map(|c| 0.299 * f32::from(c[0]) + 0.587 * f32::from(c[1]) + 0.114 * f32::from(c[2])).sum::<f32>()
         / (tris.len() * 3) as f32;
     if luma < 110.0 {
@@ -232,16 +239,161 @@ fn make_shape(kind: usize) -> Option<Shape> {
     else if o.block=="objeto_haven_propaganda_ajustada" || o.group=="decorado" {Some(fit_grid(&mut tris,(1,1))?)} else{None};
     let wall_root = if o.versioned_foliage() { Some(align_overhang(&mut tris)?) } else { None };
     let top = if let Some((top,_))=fit {(top-0.00001).ceil()}
-        else if wall_root.is_some() { tris.iter().flat_map(|t|t.p).reduce(Vec3::max)?.ceil() } else { (hi - 0.05).ceil() };
+        else if wall_root.is_some() { tris.iter().flat_map(|t|t.p).reduce(Vec3::max)?.ceil() }
+        else if rock { (tris.iter().flat_map(|t|t.p).reduce(Vec3::max)? - 0.0001).ceil() } else { (hi - 0.05).ceil() };
     let size = (top.x.max(1.0) as i32, top.y.max(1.0) as i32, top.z.max(1.0) as i32);
     let cut = crate::jak_pieces::cut_area(&crate::jak_pieces::Source::new(tris), (0, size.0 - 1), (0, size.2 - 1));
     let cells: HashMap<(i32, i32, i32), Piece> = cut
         .pieces
         .into_iter()
         .filter(|((_, y, _), p)| (0..size.1).contains(y)
-            && p.tris.iter().map(tri_area).sum::<f32>() > if wall_root.is_some()||fit.is_some(){0.0}else{0.002})
+            && p.tris.iter().map(tri_area).sum::<f32>() > if wall_root.is_some()||fit.is_some()||rock{0.0}else{0.002})
         .collect();
     (!cells.is_empty()).then_some(Shape { place, cells, size, wall_root,actor_scale:0.75*fit.map_or(1.0,|(_,s)|s) })
+}
+
+/// Footprint columns of a rock's base, metres.
+const ROCK_COLUMN: f32 = 0.25;
+
+/// The lowest height of the triangles' surface over (x, z), if any covers it.
+fn lowest_surface(tris: &[crate::jak_pieces::SourceTri], x: f32, z: f32) -> Option<f32> {
+    let mut low: Option<f32> = None;
+    for t in tris {
+        let [a, b, c] = t.p;
+        let d = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+        if d.abs() < 1e-9 { continue; }
+        let u = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / d;
+        let v = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / d;
+        let w = 1.0 - u - v;
+        if u < -1e-4 || v < -1e-4 || w < -1e-4 { continue; }
+        let y = u * a.y + v * b.y + w * c.y;
+        low = Some(low.map_or(y, |l| l.min(y)));
+    }
+    low
+}
+
+/// stand-in: the original rocks sit on the level's slopes, bottoms tilted and
+/// hollow. Adrii (06/11) wants them on flat ground: a plane fitted to the lowest
+/// vertex of each footprint column (leaving out the hollow's higher ones) is turned
+/// level (a rigid turn, as `align_overhang`), the rock set on y=0 and its footprint
+/// centred in the grid it fills. Returns the turn, degrees.
+fn level_rock(tris: &mut [crate::jak_pieces::SourceTri]) -> f32 {
+    let mut low: HashMap<(i32, i32), Vec3> = HashMap::new();
+    for p in tris.iter().flat_map(|t| t.p) {
+        let e = low.entry((p.x.floor() as i32, p.z.floor() as i32)).or_insert(p);
+        if p.y < e.y { *e = p; }
+    }
+    let mut points: Vec<Vec3> = low.into_values().collect();
+    points.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.z.total_cmp(&b.z)));
+    let mut turn = glam::Quat::IDENTITY;
+    let mut plane: Option<(f32, f32, f32)> = None;
+    for _ in 0..4 {
+        // Without the points a first fit shows to be the hollow's.
+        let used: Vec<Vec3> = match plane {
+            None => points.clone(),
+            Some((a, b, c)) => points.iter().copied().filter(|p| p.y - (a * p.x + b * p.z + c) < 0.25).collect(),
+        };
+        if used.len() < 3 { break; }
+        let mean = used.iter().copied().sum::<Vec3>() / used.len() as f32;
+        let (mut sxx, mut sxz, mut szz, mut sxy, mut szy) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        for p in &used {
+            let (x, y, z) = (p.x - mean.x, p.y - mean.y, p.z - mean.z);
+            sxx += x * x; sxz += x * z; szz += z * z; sxy += x * y; szy += z * y;
+        }
+        let det = sxx * szz - sxz * sxz;
+        if det < 1e-4 { break; }
+        let (a, b) = ((sxy * szz - szy * sxz) / det, (szy * sxx - sxy * sxz) / det);
+        plane = Some((a, b, mean.y - a * mean.x - b * mean.z));
+        turn = glam::Quat::from_rotation_arc(Vec3::new(-a, 1.0, -b).normalize(), Vec3::Y);
+    }
+    let centre = tris.iter().flat_map(|t| t.p).fold(Vec3::ZERO, |s, p| s + p) / (tris.len() * 3).max(1) as f32;
+    for t in tris.iter_mut() { t.p = t.p.map(|p| turn * (p - centre) + centre); }
+    let lo = tris.iter().flat_map(|t| t.p).fold(Vec3::splat(f32::MAX), Vec3::min);
+    let hi = tris.iter().flat_map(|t| t.p).fold(Vec3::splat(f32::MIN), Vec3::max);
+    let grid = |extent: f32| (extent - 1e-4).ceil().max(1.0);
+    let shift = Vec3::new((grid(hi.x - lo.x) - (hi.x - lo.x)) * 0.5 - lo.x, -lo.y, (grid(hi.z - lo.z) - (hi.z - lo.z)) * 0.5 - lo.z);
+    for t in tris.iter_mut() { t.p = t.p.map(|p| p + shift); }
+    turn.to_axis_angle().1.to_degrees()
+}
+
+/// stand-in: closes the hollow under a levelled rock (the original sits on the
+/// ground, which closes it): a flat base on y=0 under its footprint and side faces
+/// up to its lowest surface in each column, in the rock's own texture, colours and
+/// texture density.
+fn rock_base(tris: &[crate::jak_pieces::SourceTri]) -> Vec<crate::jak_pieces::SourceTri> {
+    use glam::Vec2;
+    let Some(first) = tris.first() else { return Vec::new() };
+    let lo = tris.iter().flat_map(|t| t.p).fold(Vec3::splat(f32::MAX), Vec3::min);
+    let hi = tris.iter().flat_map(|t| t.p).fold(Vec3::splat(f32::MIN), Vec3::max);
+    let step = ROCK_COLUMN;
+    let (x0, z0) = ((lo.x / step).floor() * step, (lo.z / step).floor() * step);
+    let (nx, nz) = (((hi.x - x0) / step).ceil() as usize + 1, ((hi.z - z0) / step).ceil() as usize + 1);
+    // Per column: the lowest surface over it, if its middle is under the rock.
+    let mut height: Vec<Option<f32>> = vec![None; nx * nz];
+    for j in 0..nz {
+        for i in 0..nx {
+            let (cx, cz) = (x0 + (i as f32 + 0.5) * step, z0 + (j as f32 + 0.5) * step);
+            if lowest_surface(tris, cx, cz).is_none() { continue; }
+            let mut low = f32::MAX;
+            for (dx, dz) in [(-1.0, -1.0), (0.0, -1.0), (1.0, -1.0), (-1.0, 0.0), (0.0, 0.0), (1.0, 0.0), (-1.0, 1.0), (0.0, 1.0), (1.0, 1.0)] {
+                if let Some(y) = lowest_surface(tris, cx + dx * step / 3.0, cz + dz * step / 3.0) { low = low.min(y); }
+            }
+            height[j * nx + i] = Some(low.max(0.0));
+        }
+    }
+    let at = |i: i64, j: i64| if i < 0 || j < 0 || i >= nx as i64 || j >= nz as i64 { None } else { height[j as usize * nx + i as usize] };
+    // The rock's texture density (texture per metre) and colours.
+    let (mut uv_area, mut area) = (0.0f32, 0.0f32);
+    let (mut sum, mut count) = ([0u32; 4], 0u32);
+    for t in tris {
+        let [a, b, c] = t.p;
+        area += (b - a).cross(c - a).length() * 0.5;
+        let [ua, ub, uc] = t.uv;
+        uv_area += (ub - ua).perp_dot(uc - ua).abs() * 0.5;
+        for c in t.color { for k in 0..4 { sum[k] += u32::from(c[k]); } count += 1; }
+    }
+    let density = if area > 1e-6 && uv_area > 1e-9 { (uv_area / area).sqrt() } else { 0.25 };
+    let color = sum.map(|s| (s / count.max(1)) as u8);
+    let mut out = Vec::new();
+    let mut quad = |p: [Vec3; 4], outward: Vec3| {
+        let uv = p.map(|v| {
+            let along = if outward.y != 0.0 { Vec2::new(v.x, v.z) } else if outward.x != 0.0 { Vec2::new(v.z, v.y) } else { Vec2::new(v.x, v.y) };
+            along * density
+        });
+        let flip = (p[1] - p[0]).cross(p[2] - p[0]).dot(outward) < 0.0;
+        for k in if flip { [[0, 2, 1], [0, 3, 2]] } else { [[0, 1, 2], [0, 2, 3]] } {
+            out.push(crate::jak_pieces::SourceTri { p: k.map(|n| p[n]), uv: k.map(|n| uv[n]), texture: first.texture, color: [color; 3], repeat: [true; 2], blend: false });
+        }
+    };
+    for j in 0..nz as i64 {
+        // The floor, one strip for each run of columns.
+        let mut i = 0i64;
+        while i < nx as i64 {
+            if at(i, j).is_none() { i += 1; continue; }
+            let start = i;
+            while at(i, j).is_some() { i += 1; }
+            let (xa, xb) = (x0 + start as f32 * step, x0 + i as f32 * step);
+            let (za, zb) = (z0 + j as f32 * step, z0 + (j + 1) as f32 * step);
+            quad([Vec3::new(xa, 0.0, za), Vec3::new(xb, 0.0, za), Vec3::new(xb, 0.0, zb), Vec3::new(xa, 0.0, zb)], -Vec3::Y);
+        }
+        for i in 0..nx as i64 {
+            let Some(h) = at(i, j) else { continue };
+            if h < 1e-4 { continue; }
+            let (xa, xb) = (x0 + i as f32 * step, x0 + (i + 1) as f32 * step);
+            let (za, zb) = (z0 + j as f32 * step, z0 + (j + 1) as f32 * step);
+            for (di, dj) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
+                if at(i + di, j + dj).is_some() { continue; }
+                let (outward, edge) = match (di, dj) {
+                    (-1, _) => (-Vec3::X, [(xa, za), (xa, zb)]),
+                    (1, _) => (Vec3::X, [(xb, za), (xb, zb)]),
+                    (_, -1) => (-Vec3::Z, [(xa, za), (xb, za)]),
+                    _ => (Vec3::Z, [(xa, zb), (xb, zb)]),
+                };
+                quad([Vec3::new(edge[0].0, 0.0, edge[0].1), Vec3::new(edge[1].0, 0.0, edge[1].1), Vec3::new(edge[1].0, h, edge[1].1), Vec3::new(edge[0].0, h, edge[0].1)], outward);
+            }
+        }
+    }
+    out
 }
 
 fn burning_can(texture:u16)->Vec<crate::jak_pieces::SourceTri>{
@@ -263,6 +415,36 @@ fn burning_can(texture:u16)->Vec<crate::jak_pieces::SourceTri>{
         tri(p,p.map(|v|Vec2::new(v.x,v.z)));
     }}
     out
+}
+
+#[cfg(test)]mod rock_tests{
+ use super::*;
+ /// Adrii 06/11: the rocks stood tilted, floating and hollow. Each now has its lowest
+ /// vertex on y=0 and a bottom layer of cells under its whole footprint.
+ #[test]fn rocks_sit_level_with_a_closed_base(){
+  let mut seen=0;
+  for(kind,o)in OBJECTS.iter().enumerate().filter(|(_,o)|o.group=="roca"){
+   let Some(s)=shape(kind)else{continue};seen+=1;
+   let world:Vec<[Vec3;3]>=s.cells.iter().flat_map(|(c,p)|p.tris.iter().map(move|t|t.p.map(|v|Vec3::from_array(v)+Vec3::new(c.0 as f32,c.1 as f32,c.2 as f32)))).collect();
+   let lowest=world.iter().flatten().map(|v|v.y).fold(f32::MAX,f32::min);
+   assert!(lowest.abs()<1e-3,"{} lowest vertex {lowest}",o.block);
+   let source:Vec<crate::jak_pieces::SourceTri>=world.iter().map(|p|crate::jak_pieces::SourceTri{p:*p,uv:[glam::Vec2::ZERO;3],texture:0,color:[[0;4];3],repeat:[true;2],blend:false}).collect();
+   let mut columns=0;
+   for x in 0..s.size.0*4{for z in 0..s.size.2*4{
+    let(cx,cz)=((x as f32+0.5)*0.25,(z as f32+0.5)*0.25);
+    if lowest_surface(&source,cx,cz).is_none(){continue;}
+    columns+=1;
+    assert!(s.cells.contains_key(&(x/4,0,z/4)),"{}: no bottom cell under ({cx}, {cz})",o.block);
+   }}
+   assert!(columns>0);
+   let(ax,az)=world.iter().flatten().fold((f32::MAX,f32::MAX),|m,v|(m.0.min(v.x),m.1.min(v.z)));
+   assert!(ax>=-1e-3&&az>=-1e-3,"{} outside its grid",o.block);
+   let top=world.iter().flatten().map(|v|v.y).fold(f32::MIN,f32::max);
+   assert!(top<=s.size.1 as f32+1e-3&&top>s.size.1 as f32-1.0,"{} height {top} vs {}",o.block,s.size.1);
+   eprintln!("{}: size {:?}, {} cells, {columns} base columns, top {top:.2}",o.block,s.size,s.cells.len());
+  }
+  assert!(seen>=3,"rocks cut: {seen}");
+ }
 }
 
 #[cfg(test)]mod palm_tests{

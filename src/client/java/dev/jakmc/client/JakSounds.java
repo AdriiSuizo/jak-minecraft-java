@@ -86,12 +86,13 @@ public final class JakSounds {
   VENTS.put(pos,loop);
   Minecraft.getInstance().getSoundManager().play(loop);
  }
- /** generic-obs.gc launcher-active: "launch-start" as it wakes, then "launch-idle" round while it stays awake. */
+ /** generic-obs.gc launcher-active: "launch-start" as it wakes, then "launch-idle" round while it stays awake.
+  * Adrii 06/11, with the rest: launch-start stands some 9 dB over Jak 1's sounds (mean -14.6 dB against a median -23), so 0.35. */
  static void launcher(BlockPos pos,Vec3 listener){
   var loop=LAUNCHERS.get(pos);
   if(loop!=null){loop.seen=System.nanoTime();return;}
   var sounds=Minecraft.getInstance().getSoundManager();
-  sounds.play(new SimpleSoundInstance(event("jak1:launch-start"),SoundSource.BLOCKS,1,1,SoundInstance.createUnseededRandom(),pos.getX()+.5,pos.getY()+.2,pos.getZ()+.5));
+  sounds.play(new SimpleSoundInstance(event("jak1:launch-start"),SoundSource.BLOCKS,.35f,1,SoundInstance.createUnseededRandom(),pos.getX()+.5,pos.getY()+.2,pos.getZ()+.5));
   loop=new LauncherLoop(pos);LAUNCHERS.put(pos.immutable(),loop);sounds.play(loop);
  }
  private static final class LauncherLoop extends AbstractTickableSoundInstance {

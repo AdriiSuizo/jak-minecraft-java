@@ -86,6 +86,56 @@ impl Jak {
     }
 }
 
+/// Jak 1's `powerups.gc` parts, in their own range of the shared bank: Jak 3's gun parts use the same numbers.
+pub const OOZE_PARTS: u32 = 2000;
+
+/// The parts `target-powerup-process` launches for each colour, each list one launch: a choice of two (one or
+/// the other at random), then the ones launched as well (render_anim eco_power_fx.rs `parts`).
+fn ooze_parts(kind: EcoKind) -> &'static [&'static [u32]] {
+    match kind {
+        EcoKind::Yellow => &[&[269, 270], &[271], &[271]],
+        EcoKind::Red => &[&[273, 274], &[275], &[275]],
+        EcoKind::Blue => &[&[259], &[255, 256], &[260]],
+        EcoKind::Green => &[&[277, 278], &[279], &[279]],
+    }
+}
+
+impl Jak {
+    /// `target-powerup-process`: while he carries eco, the more time is left the likelier (all of it from three
+    /// seconds up), its colour's particles at one of his joints chosen at random (the third on). Adrii 06/11: he
+    /// carried blue eco without it.
+    // stand-in: part 259's jump-state spread (`init-specs 4` reset when he jumps) is not changed, as the Rust port.
+    pub(crate) fn eco_power_fx(&mut self) {
+        let Some(p) = self.eco_power else { return };
+        let joints: Vec<_> = self.joints.iter().filter(|l| l.length() < 2.5 * crate::math::METER).map(|&local| self.control.trans + self.control.quat * local).collect();
+        if p.level <= 0.0 || joints.len() <= 3 {
+            return;
+        }
+        let left = p.left(self.time) as f32;
+        let Some(particles) = self.particles.as_mut() else { return };
+        let mut seed = (self.time as u32).wrapping_mul(0x9e37_79b9) | 1;
+        let mut random = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed >> 8) as f32 / (1u32 << 24) as f32
+        };
+        if random() >= (left / 900.0).clamp(0.0, 1.0) {
+            return;
+        }
+        let n = joints.len() - 3;
+        for choice in ooze_parts(p.kind) {
+            let joint = joints[3 + (random() * n as f32) as usize % n];
+            let part = choice[(random() * choice.len() as f32) as usize % choice.len()];
+            particles.launch(OOZE_PARTS + part, joint, crate::glam::Mat3::IDENTITY);
+            // Blue: half the time 257 too, where 255 or 256 went.
+            if matches!(part, 255 | 256) && random() < 0.5 {
+                particles.launch(OOZE_PARTS + 257, joint, crate::glam::Mat3::IDENTITY);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

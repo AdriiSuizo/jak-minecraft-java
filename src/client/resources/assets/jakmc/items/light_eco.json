@@ -6,13 +6,8 @@
       {
         "when": "gui",
         "model": {
-          "type": "minecraft:special",
-          "base": "jakmc:item/light_eco",
-          "model": {
-            "type": "jakmc:eco",
-            "light": true,
-            "gui": true
-          }
+          "type": "minecraft:model",
+          "model": "jakmc:item/light_eco_icon"
         }
       }
     ],

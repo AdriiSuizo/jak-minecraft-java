@@ -593,6 +593,31 @@ public final class GltfModel {
         submitJakBody(pose,stack,collector,light,false,luminous,false,armSurfaces);
         return armSurfaces.stream().mapToInt(s->s.indices.length/3).sum();
     }
+    /**
+     * stand-in (Adrii 06/11, the iris door's frame): the vertices skinned wholly to `joint` lying past `inner`
+     * of its axis in the x/y plane pushed out along their direction onto the square round that ring's outer edge,
+     * so the ring's outside is square and its hole kept.
+     */
+    public void squareRing(String joint,float inner){
+        Integer node=namedNodes.get(joint);if(node==null)return;
+        int bone=-1;for(int i=0;i<joints.length;i++)if(joints[i]==node)bone=i;
+        if(bone<0)return;
+        float outer=0;
+        for(var s:surfaces)if(s.joints!=null&&s.weights!=null)for(int v=0;v<s.positions.length/3;v++){
+            float r=(float)Math.hypot(s.positions[v*3],s.positions[v*3+1]);
+            if(r>inner&&onBone(s,v,bone))outer=Math.max(outer,r);
+        }
+        for(var s:surfaces)if(s.joints!=null&&s.weights!=null)for(int v=0;v<s.positions.length/3;v++){
+            float x=s.positions[v*3],y=s.positions[v*3+1],m=Math.max(Math.abs(x),Math.abs(y));
+            if(m<=0||Math.hypot(x,y)<=inner||!onBone(s,v,bone))continue;
+            s.positions[v*3]=x*outer/m;s.positions[v*3+1]=y*outer/m;
+        }
+        prepared.clear();terminalPoses.clear();
+    }
+    private static boolean onBone(Surface s,int v,int bone){
+        for(int k=0;k<4;k++)if(s.weights[v*4+k]>0&&s.joints[v*4+k]!=bone)return false;
+        return true;
+    }
     public boolean hasClip(String name){return clips.containsKey(name);}
     /** Some clip of this model (null with none). */
     public String anyClip(){return clips.isEmpty()?null:clips.keySet().stream().sorted().findFirst().get();}

@@ -416,16 +416,20 @@ public final class JakPlayers {
             if(run<4)p.causeFoodExhaustion((float)(.05*run));
         }
         String nativeState=pose.get("state").getAsString();
-        if(nativeState.equals("jump")&&!s.lastState.equals("jump"))p.causeFoodExhaustion(.05f);
+        boolean jumped=nativeState.equals("jump")&&!s.lastState.equals("jump");
+        if(jumped)p.causeFoodExhaustion(.05f);
         s.lastState=nativeState;strikeState=nativeState;
         burn(p,s);
         BLUE_ECO.put(p,pose.has("blueEco")&&pose.get("blueEco").getAsBoolean());
-        // generic-obs.gc launcher (stand-in: the block under the feet): grounded on it with blue eco, its 'launch.
-        if(flight==null&&s.mount==null&&(pose.get("status").getAsInt()&2)!=0
-            &&p.level().getBlockState(net.minecraft.core.BlockPos.containing(position.x,position.y-.05,position.z)).is(dev.jakmc.content.JakEcoLauncher.BLOCK)
+        // generic-obs.gc launcher (stand-in: the block under the feet), its 'launch with blue eco. stand-in (Adrii 06/11):
+        // the original throws Jak as he touches it; here as he jumps from it (the step his jump starts, from where he stood).
+        Vec3 stood=s.last!=null?s.last:position;
+        if(flight==null&&s.mount==null&&jumped
+            &&p.level().getBlockState(net.minecraft.core.BlockPos.containing(stood.x,stood.y-.05,stood.z)).is(dev.jakmc.content.JakEcoLauncher.BLOCK)
             &&NativeJak.launch(s.nativeId,dev.jakmc.content.JakEcoLauncher.SPRING_METRES)){
+            // Adrii 06/11, its sounds with the rest: launch-fire stands some 5 dB over Jak 1's (mean -18.6 dB against a median -23).
             var fire=net.minecraft.sounds.SoundEvent.createVariableRangeEvent(dev.jakmc.JakData.id("sfx/jak1/launch_fire"));
-            p.level().playSound(null,position.x,position.y,position.z,fire,net.minecraft.sounds.SoundSource.PLAYERS,1,1);
+            p.level().playSound(null,position.x,position.y,position.z,fire,net.minecraft.sounds.SoundSource.PLAYERS,.55f,1);
         }
         p.setYRot(input.yaw());p.setXRot(input.pitch());p.setYBodyRot(pose.get("yaw").getAsFloat());s.last=position;s.pressed=0;
         if(controlled)probeSet(p,input.held(),0,input.forward());

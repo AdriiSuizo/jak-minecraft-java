@@ -304,7 +304,7 @@ public final class JakEnemy extends Monster {
   if(state==State.CHASE||state==State.WALK){
    if(!onGround()&&!isInWater()&&!kind.jump[1].isEmpty())c=kind.jump[1];
    else if(landTicks>0&&!kind.jump[2].isEmpty()){c=kind.jump[2];loops=false;}
-   else if(isInWater())c=kind.first(kind.model+"-swim",kind.jump[1],c);
+   // In water they just float (FloatGoal): their own idle/move clip, no swim loop (Adrii 06/11).
    else if(getDeltaMovement().horizontalDistanceSqr()<.0001)c=kind.clips[0];
   }
   animate(c,loops,1);

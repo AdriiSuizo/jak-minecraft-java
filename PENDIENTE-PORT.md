@@ -125,6 +125,19 @@ Estados: HECHO · EN CURSO · PENDIENTE · FUERA (HUD/no pedido)
 - HECHO Desierto de Jak: sus texturas (arena, roca, acantilados, cuevas, hierba seca, piedras, palmeras, roca roja, tótem) no estaban en los niveles que lee el exportador y salían rayas de relleno; ahora son las de las páginas de texturas de Jak 3. La arena, a sus 128 texeles, se extiende sobre 4x4 bloques sin girar, como en Jak 3. Siguen de relleno vil1-medres-hutroof y snow-gate-wood (no están en ninguna página).
 - HECHO Tests: cada uno crea un mundo nuevo y borra todos los anteriores (los ajustes del mundo quedan en .local/test-world-template).
 
+## Lote de Adrii 06/11 tarde
+- HECHO Enemigos nuevos en el agua: flotan con su animación normal, sin bucle de nado (los guardias de Krimson siguen pataleando como en Jak 2).
+- HECHO Jak nada a la profundidad del port en Rust (el agua usaba el tamaño 0,64 y no el que se dibuja) y su salto desde el agua sube lo del Rust; la cabeza queda fuera (joint de pelo).
+- HECHO Eco luminoso: icono de inventario de Jak 3 (inv-items-lighteco-01). Láminas y barrotes con icono plano, como los cristales de Minecraft.
+- HECHO Follaje de Villarefugio: tiene objeto en la mano y ya no deja ver a través del mundo (bloques con huecos en la textura no tapan a sus vecinos). Bidón ardiente también tenía el objeto perdido.
+- HECHO Quitadas las rocas pequeñas del palacio. Rocas de Spargus y del pantano niveladas y con la base cerrada (stand-in: las originales están sobre pendiente).
+- HECHO Agarre a bordes: Java enviaba caras ocultas entre bloques como si fueran bordes; ahora se quitan como en el Rust, y no se engancha si la pared sigue por encima del borde (stand-in de seguridad).
+- HECHO Esclusa: se abre y cierra con clic izquierdo o L2 (mayús+clic la rompe), sonidos más bajos, colisión de bloque donde está y donde quedan las hojas abiertas.
+- HECHO Puerta iris: su marco se queda al abrir, con el borde de fuera cuadrado; suena irisdoor2 de Jak 1 (stand-in: la original solo suena el eco azul).
+- HECHO Lanzador: encima del bloque, sonidos igualados, colisión solo en su bloque; lanza al saltar encima con eco azul, no al ponerse (stand-in pedido por Adrii).
+- HECHO Eco azul: rezuma de Jak (powerups.gc target-powerup-process, también amarillo, rojo y verde) y reloj de eco de Jak 1 a la derecha (hud-pie, hud-ecometer, harddot; solo si esas texturas están en una exportación de Jak 1).
+- HECHO Eco oscuro líquido: el instalador no generaba sus texturas (import_dark_eco.py no estaba en el instalador).
+
 ## Pendiente, por orden
 - Nada del Rust en la lista. Lo siguiente lo decide Adrii.
 

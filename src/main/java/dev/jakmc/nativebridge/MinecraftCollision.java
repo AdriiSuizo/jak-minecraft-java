@@ -159,8 +159,10 @@ public final class MinecraftCollision {
             int material=state.is(Blocks.BLUE_ICE)?12:state.is(Blocks.PACKED_ICE)?8:
                 state.is(Blocks.ICE)||state.is(Blocks.FROSTED_ICE)?4:0;
             var shape=state.getCollisionShape(level,pos,context);
-            if(shape==net.minecraft.world.phys.shapes.Shapes.block()){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z,material,covered(level,pos));}
-            else if(!shape.isEmpty())shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->boxes.add(x0+x-origin.x,y0+y-origin.y,z0+z-origin.z,x1+x-origin.x,y1+y-origin.y,z1+z-origin.z,material));
+            // Rust sim voxel.rs block_triangles: any full cube (a shape built of boxes, such as a Jak-lands leaf block) and any box face on the
+            // cell's edge against a full neighbour is left out, so a wall of them has no top face inside it for the ledge probe (Adrii 06/11).
+            if(shape==net.minecraft.world.phys.shapes.Shapes.block()||(!shape.isEmpty()&&net.minecraft.world.level.block.Block.isShapeFullBlock(shape))){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z,material,covered(level,pos));}
+            else if(!shape.isEmpty()){int neighbours=covered(level,pos);shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->boxes.add(x0+x-origin.x,y0+y-origin.y,z0+z-origin.z,x1+x-origin.x,y1+y-origin.y,z1+z-origin.z,material,neighbours&onEdge(x0,y0,z0,x1,y1,z1)));}
         }
         var decks=level.getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,region.inflate(4),
             deck->deck!=actor&&!deck.wrecked()&&(actor==null||deck.pilotId()!=actor.getId()));
@@ -189,6 +191,10 @@ public final class MinecraftCollision {
             if(JakAssemblies.trackMesh(next)==null&&next.isCollisionShapeFullBlock(level,at))bits|=1<<i;
         }
         return bits;
+    }
+    /** The faces (bits as [covered]) of a box inside a cell that lie on the cell's own edge. */
+    private static int onEdge(double x0,double y0,double z0,double x1,double y1,double z1){
+        return (y1>=1?1:0)|(y0<=0?2:0)|(x0<=0?4:0)|(x1>=1?8:0)|(z0<=0?16:0)|(z1>=1?32:0);
     }
     private static void box(ByteBuffer b,int material,int wall,int hidden,float x,float y,float z,float X,float Y,float Z){
         if((hidden&1)==0)face(b,material,x,Y,z,x,Y,Z,X,Y,Z,X,Y,z);

@@ -84,6 +84,12 @@ impl Jak {
         if (top_y - hands).abs() > meters(0.45) * s {
             return None;
         }
+        // stand-in: room over the edge. OpenGOAL's edges are corners of the mesh with nothing above them, and the Rust host never gives a seam
+        // inside a wall; whatever the host's mesh, a wall that goes on above the edge at hand height is not an edge to hang from.
+        let rim = Vec3::new(low.x, top_y + meters(0.3) * s, low.z);
+        if Self::probe(world, rim, ahead * meters(0.9) * s, meters(0.1)).is_some_and(|above| above.normal.y.abs() <= 0.3) {
+            return None;
+        }
         // High enough over the ground below him to hang from.
         let reach = self.edge_grab_min_height + meters(0.3);
         if let Some(floor) = Self::probe(world, feet + Vec3::Y * meters(0.2), Vec3::new(0.0, -reach, 0.0), meters(0.2)) {
@@ -394,5 +400,48 @@ mod tests {
             if f%3==2 {log.push(format!("{}:{}:{:.2},{:.2}",f/3,jak.state.name(),jak.trans().y/b,jak.trans().z/b));}
         }
         eprintln!("cube wall: {}",log.join(" "));
+    }
+}
+
+#[cfg(test)]
+mod flat_wall_probe {
+    use super::*;
+    use crate::collide::{Tri, Pat, PatMode};
+    struct Blocks(Vec<Tri>);
+    impl CollideWorld for Blocks { fn fill(&mut self,_min:Vec3,_max:Vec3,out:&mut Vec<Tri>){out.extend_from_slice(&self.0);} }
+    fn wall(high: i32, cull: bool) -> Blocks {
+        let b = 6400.0; let mut tris = Vec::new();
+        let solid = |x: i32, y: i32, z: i32| (z == 4 && (0..high).contains(&y) && (-5..=5).contains(&x)) || (y == -1 && (-5..=5).contains(&x) && (-5..=6).contains(&z));
+        for x in -5..=5 { for z in -5..=6 { for y in -1..high {
+            if !solid(x, y, z) { continue; }
+            let (x0,y0,z0,x1,y1,z1) = (x as f32*b,y as f32*b,z as f32*b,(x+1) as f32*b,(y+1) as f32*b,(z+1) as f32*b);
+            let mut q = |v: [Vec3;4], mode, hidden: bool| { if hidden && cull { return; } let pat = Pat{mode,..Default::default()}; tris.push(Tri{v:[v[0],v[1],v[2]],pat}); tris.push(Tri{v:[v[0],v[2],v[3]],pat}); };
+            q([Vec3::new(x0,y1,z0),Vec3::new(x0,y1,z1),Vec3::new(x1,y1,z1),Vec3::new(x1,y1,z0)],PatMode::Ground,solid(x,y+1,z));
+            q([Vec3::new(x0,y0,z0),Vec3::new(x1,y0,z0),Vec3::new(x1,y0,z1),Vec3::new(x0,y0,z1)],PatMode::Wall,solid(x,y-1,z));
+            q([Vec3::new(x0,y0,z0),Vec3::new(x0,y0,z1),Vec3::new(x0,y1,z1),Vec3::new(x0,y1,z0)],PatMode::Wall,solid(x-1,y,z));
+            q([Vec3::new(x1,y0,z1),Vec3::new(x1,y0,z0),Vec3::new(x1,y1,z0),Vec3::new(x1,y1,z1)],PatMode::Wall,solid(x+1,y,z));
+            q([Vec3::new(x1,y0,z0),Vec3::new(x0,y0,z0),Vec3::new(x0,y1,z0),Vec3::new(x1,y1,z0)],PatMode::Wall,solid(x,y,z-1));
+            q([Vec3::new(x0,y0,z1),Vec3::new(x1,y0,z1),Vec3::new(x1,y1,z1),Vec3::new(x0,y1,z1)],PatMode::Wall,solid(x,y,z+1));
+        }}}
+        Blocks(tris)
+    }
+    /// A flat wall of blocks, with the host's hidden faces left out or not, is never grabbed below its top.
+    #[test]
+    fn flat_wall_is_never_a_ledge() {
+        let b = 6400.0;
+        for cull in [true, false] {
+            let mut world = wall(6, cull);
+            let mut found = Vec::new();
+            for step in 0..400 {
+                let y = step as f32 * 0.01 * b;
+                for zf in [3.3f32, 3.5, 3.7] {
+                    let mut jak = Jak::new(Vec3::new(0.5*b, y, zf*b), 0.0);
+                    jak.control.set_body_dimensions(0.3*b,1.8*b); jak.size = 0.64; jak.edge_grab_min_height = 1.9*b;
+                    jak.control.transv = Vec3::new(0.0, -meters(5.0), 0.0);
+                    if let Some(l) = jak.find_ledge(&mut world) { found.push((step, zf, l.top / b)); }
+                }
+            }
+            assert!(found.is_empty(), "cull={cull}: a flat wall was grabbed at {:?}", found.iter().step_by(7).collect::<Vec<_>>());
+        }
     }
 }

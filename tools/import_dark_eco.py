@@ -1,4 +1,4 @@
-"""Dark eco liquid textures from the owner's Jak 1 export (private, into src/generated).
+"""Dark eco liquid textures from the owner's Jak 1 export and the light eco icon from Jak 3 (private, into src/generated).
 
 Rust: assets::jak_model::jak1_texture (same roots), render_anim::minecraft_world::celestial_image
 (alpha x2) and render_gpu drawsurf/minecraft_world.rs darkeco_fragment (the colour)."""
@@ -21,6 +21,17 @@ def jak1_texture(folder,name):
             return img
     raise FileNotFoundError(f'{folder}/{name}.png: no Jak 1 texture export found')
 
+def jak3_texture(folder,name):
+    roots=[os.environ.get('IW4L_JAK3_TEXTURES')]
+    if os.environ.get('USERPROFILE'):roots.append(os.path.join(os.environ['USERPROFILE'],r'Documents\Jak OpenGOAL\active\jak3\data\decompiler_out\jak3\textures'))
+    for root in filter(None,roots):
+        path=pathlib.Path(root)/folder/(name+'.png')
+        if path.is_file():
+            img=Image.open(path).convert('RGBA')
+            img.putdata([(r,g,b,min(255,a*2)) for r,g,b,a in img.getdata()])
+            return img
+    raise FileNotFoundError(f'{folder}/{name}.png: no Jak 3 texture export found')
+
 def main():
     water=jak1_texture('finalboss-vis-pris','cv-darkecowater')
     shine=jak1_texture('finalboss-vis-pris','environment-darkeco')
@@ -41,6 +52,10 @@ def main():
         for y in (0,water.height):flow.paste(still,(x,y))
     DEST.mkdir(parents=True,exist_ok=True)
     still.save(DEST/'dark_eco_still.png');flow.save(DEST/'dark_eco_flow.png')
+    # Adrii 06/11: the light eco item drew as its white additive pill in the inventory, lost on the slot. Jak 3's
+    # own inventory icon for it (progress-minimap2 inv-items-lighteco-01) instead, the PS2 alpha doubled.
+    icon=jak3_texture('progress-minimap2','inv-items-lighteco-01')
+    items=DEST.parent/'item';items.mkdir(parents=True,exist_ok=True);icon.save(items/'light_eco_icon.png')
     print('dark eco textures:',DEST,'mean shine',[round(c*255) for c in mean])
 
 if __name__=='__main__':main()

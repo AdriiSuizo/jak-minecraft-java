@@ -703,6 +703,10 @@ pub struct Jak {
     /// scaled to stand two blocks tall): he floats as deep as his drawn
     /// body would in his own game.
     pub size: f32,
+    /// How many times his own size the host really draws him, where that is
+    /// not [`Jak::size`] (the Rust port's `visual_scale`): the water holds
+    /// him by it (`swim_size`).
+    pub drawn_size: Option<f32>,
     pub lightjak: LightJak,
     /// Dark Jak: changed into with dark eco (Jak 3's `eco-pill-dark`), which
     /// his dark punches spend, back to Jak when it runs out (`darkjak.rs`).
@@ -785,6 +789,7 @@ impl Jak {
             crown: None,
             wade: None,
             size: 1.0,
+            drawn_size: None,
             lightjak: LightJak::default(),
             dark: false,
             dark_eco: 0.0,
@@ -899,12 +904,14 @@ impl Jak {
         self.code.arrived = false;
         self.hurt_frame();
         self.eco_power_frame();
+        self.eco_power_fx();
         self.dark_eco_frame();
         if let Some(height) = self.pad_bounce.take() {
             let launch = std::mem::take(&mut self.pad_launch);
             // A hurt or relocation may have removed the supporting contact
             // since the world requested the bounce. Do not override it.
-            if self.control.status & control::status::ON_GROUND != 0 {
+            // A launch asked as his jump from the launcher starts goes on from that jump (Adrii 06/11).
+            if self.control.status & control::status::ON_GROUND != 0 || launch && matches!(self.state, State::Jump { .. }) {
                 if launch {
                     self.launch_from_pad(height);
                 } else {

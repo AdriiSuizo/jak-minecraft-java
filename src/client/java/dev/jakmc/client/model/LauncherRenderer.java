@@ -15,13 +15,18 @@ import net.minecraft.world.phys.Vec3;
 public final class LauncherRenderer implements BlockEntityRenderer<JakEcoLauncher.Pad,LauncherRenderer.State> {
     private static final String CLIP="citb-launcher-idle";
     private static GltfModel model;private static boolean missing;
+    /** How far its mesh reaches below its origin (its top): lifted by that it stands on the block below (Adrii 06/11). */
+    private static float lift;
     public static final class State extends BlockEntityRenderState {GltfModel.Posed pose;}
     @Override public State createRenderState(){return new State();}
     @Override public int getViewDistance(){return 64;}
     @Override public void extractRenderState(JakEcoLauncher.Pad pad,State state,float partial,Vec3 camera,ModelFeatureRenderer.CrumblingOverlay breaking){
         BlockEntityRenderer.super.extractRenderState(pad,state,partial,camera,breaking);
         if(model==null&&!missing){
-            try{model=new GltfModel(RuntimeConfig.gameAssets("jak1").resolve("levels/citadel/citb-launcher-lod0.glb"),"citb-launcher",true);}
+            try{
+                model=new GltfModel(RuntimeConfig.gameAssets("jak1").resolve("levels/citadel/citb-launcher-lod0.glb"),"citb-launcher",true);
+                lift=-model.bounds(model.duration(CLIP)>0?model.poseAtTime(CLIP,0):model.pose("",0),new org.joml.Matrix4f())[0].y;
+            }
             catch(IOException failure){missing=true;dev.jakmc.JakMod.LOG.warn("Blue eco launcher mesh missing",failure);}
         }
         if(model==null){state.pose=null;return;}
@@ -33,7 +38,7 @@ public final class LauncherRenderer implements BlockEntityRenderer<JakEcoLaunche
         if(state.pose==null)return;
         stack.pushPose();
         float m=dev.jakmc.entity.JakEnemyKind.SCALE;
-        stack.translate(.5,0,.5);stack.scale(m,m,m);
+        stack.translate(.5,0,.5);stack.scale(m,m,m);stack.translate(0,lift,0);
         model.submit(state.pose,stack,collector,state.lightCoords);
         stack.popPose();
     }

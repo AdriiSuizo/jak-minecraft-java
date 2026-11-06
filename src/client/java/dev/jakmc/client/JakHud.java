@@ -55,6 +55,7 @@ public final class JakHud {
             graphics.nextStratum();
             graphics.blit(RenderPipelines.GUI_TEXTURED,ID,7,graphics.guiHeight()-52,0,0,44,44,62,62,62,62);
         }
+        ecoTimer(graphics,client,player);
         var board=player.getAttachedOrCreate(JakData.BOARD);
         if(!board.isEmpty()){
             int x=graphics.guiWidth()/2+96,y=graphics.guiHeight()-20;
@@ -66,6 +67,59 @@ public final class JakHud {
             var ammo=new net.minecraft.world.item.ItemStack(dev.jakmc.content.JakItems.AMMUNITION.get(color));
             graphics.item(ammo,x,y);graphics.itemDecorations(client.font,ammo,x,y,Integer.toString((int)Math.ceil(player.getAttachedOrCreate(JakData.AMMO.get(color)))));
         }
+    }
+    // Jak 1's eco timer (hud-power, hud-classes.gc; the Rust port's jak1_eco_timer.rs) while he carries Jak 1's eco
+    // (Adrii 06/11: "no hay reloj"): the backing dot (harddot, part 328), three pie slices (hud-pie, 329-331) turned
+    // by the time left (calculate-rotation-and-color-for-slice) in the eco's colour, flashing under a fifth, and the
+    // meter's frame (hud-ecometer, 327). Places are Jak 1's 512x416 HUD in 640x480, from the right edge.
+    private static final net.minecraft.resources.Identifier[] TIMER={JakData.id("hud/jak1_pie"),JakData.id("hud/jak1_ecometer"),JakData.id("hud/jak1_harddot")};
+    private static final int[] TIMER_SIZE=new int[3];
+    private static int timerState;
+    private static void ecoTimer(GuiGraphicsExtractor graphics,Minecraft client,net.minecraft.client.player.LocalPlayer player){
+        var pose=JakPoses.rendered(player.getId());
+        if(pose==null||!(pose.raw().get("ecoTimer") instanceof com.google.gson.JsonArray timer))return;
+        if(timerState==0){
+            timerState=2;String[] names={"hud-pie","hud-ecometer","harddot"};
+            for(int i=0;i<3;i++){
+                var file=dev.jakmc.client.sky.JakSkyRender.jak1("effects",names[i]);
+                if(file==null){timerState=1;break;}
+                try(var in=Files.newInputStream(file)){
+                    var image=NativeImage.read(in);TIMER_SIZE[i]=image.getWidth();
+                    for(int y=0;y<image.getHeight();y++)for(int x=0;x<image.getWidth();x++){int c=image.getPixel(x,y);image.setPixel(x,y,c&0x00ffffff|Math.min(255,(c>>>24)*2)<<24);}
+                    var id=TIMER[i];client.getTextureManager().register(id,new DynamicTexture(id::getPath,image));
+                }catch(java.io.IOException e){JakMod.LOG.error("Jak 1 eco timer texture unavailable",e);timerState=1;break;}
+            }
+        }
+        if(timerState!=2)return;
+        int kind=timer.get(0).getAsInt();float left=timer.get(1).getAsFloat();
+        float k=graphics.guiHeight()/480f;
+        // part-hud-eco-timer-0x-func: yellow, red, blue, green.
+        float[][] tints={{128,96,0},{128,32,0},{0,64,128},{0,128,32}};
+        float[] tint=tints[Math.clamp(kind,0,3)];float green=tint[1];
+        if(left>0&&left<.2f&&(((int)(System.nanoTime()/16_666_667L))&4)==0)green*=2;
+        int slice=0xff000000|channel(tint[0])<<16|channel(green)<<8|channel(tint[2]);
+        graphics.nextStratum();
+        piece(graphics,k,435,370,2.5f,2,0,0x80ffc77e);
+        for(int i=0;i<3;i++)piece(graphics,k,432,368,2,0,sliceTurn(i,left),slice);
+        piece(graphics,k,435,370,3.2f,1,0,0xffffffff);
+    }
+    private static int channel(float ps2){return Math.clamp(Math.round(ps2/128*255),0,255);}
+    /** One piece at Jak 1's (x, y), its size in metres at 16 pixels each, turned deg degrees. */
+    private static void piece(GuiGraphicsExtractor graphics,float k,float x,float y,float metres,int texture,float deg,int color){
+        float size=metres*16*640/512f*k,cx=graphics.guiWidth()+(x*640/512f-640)*k,cy=y*480/416f*k;int side=TIMER_SIZE[texture];
+        var pose=graphics.pose();
+        pose.pushMatrix().translate(cx,cy).rotate((float)Math.toRadians(deg)).scale(size/side,size/side);
+        graphics.blit(RenderPipelines.GUI_TEXTURED,TIMER[texture],-side/2,-side/2,0,0,side,side,side,side,side,side,color);
+        pose.popMatrix();
+    }
+    /** calculate-rotation-and-color-for-slice: slice i's turn with left of the most time left (degrees). */
+    static float sliceTurn(int i,float left){
+        if(left<=0)return -16566.045f/182.04445f;
+        return switch(i){
+            case 0 -> left>1?5:5+263*(1-left);
+            case 1 -> left>2/3f?95:95+173*(1-1.5f*left);
+            default -> left>1/3f?185:185+83*(1-3*left);
+        };
     }
     private static int over(int background,int foreground){
         int a=Math.min(255,(foreground>>>24)*2),ba=background>>>24;

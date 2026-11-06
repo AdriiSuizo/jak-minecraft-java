@@ -206,6 +206,12 @@ impl Jak {
         if !self.has_eco(crate::eco_power::EcoKind::Blue) || self.state.is_board() {
             return false;
         }
+        // stand-in (Adrii 06/11): the host asks as his jump from the launcher starts, a frame off the ground.
+        if matches!(self.state, State::Jump { .. }) && self.pad_bounce.is_none() && height.is_finite() && height > 0.0 {
+            self.pad_bounce = Some(height);
+            self.pad_launch = true;
+            return true;
+        }
         if !self.request_pad_bounce(height) {
             return false;
         }
@@ -1617,6 +1623,25 @@ mod pad_regressions {
             if states.last() != Some(&name) { states.push(name); }
         }
         assert!((peak-start.y-height).abs()<meters(1.0),"rise={}m states {:?}",(peak-start.y)/METER,states);
+    }
+
+    #[test]
+    fn a_jump_from_the_launcher_launches_him() {
+        let mut world = floor(None);
+        let mut jak = rested(false,&mut world);
+        let start = jak.trans();
+        jak.get_eco_power(crate::eco_power::EcoKind::Blue, crate::eco_power::FULL_INC);
+        let x = button::X;
+        jak.step(&PadInput { held: x, pressed: x, ..Default::default() },&mut world,None);
+        let mut asked = false;
+        let mut peak = start.y;
+        for _ in 0..400 {
+            if !asked && matches!(jak.state, State::Jump { .. }) { asked = jak.request_launch(meters(40.0)); }
+            jak.step(&PadInput::default(),&mut world,None);
+            peak = peak.max(jak.trans().y);
+        }
+        assert!(asked, "the launch was refused once the jump began");
+        assert!(peak - start.y > meters(30.0), "rise={}m", (peak - start.y) / METER);
     }
 
     #[test]

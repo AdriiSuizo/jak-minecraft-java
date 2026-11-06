@@ -101,6 +101,14 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
     JAK1_VENTS.set(Arc::new(jak1)).map_err(|_|"Jak I vent configuration raced")?;
    }
   }
+  // target-powerup-process: the eco on Jak (Adrii 06/11), Jak 1's own parts moved past Jak 3's, which share their numbers.
+  if let Ok(text)=std::fs::read_to_string(active.join("jak1/data/goal_src/jak1/engine/game/powerups.gc")){
+   // The launched ones and the ones they hand on to (:next-launcher 258, 272, 276, 280).
+   let ids:Vec<u32>=(255..=280).collect();
+   let mut ooze=crate::particle_subset::particle_subset(&text,&[],&ids,&[]);
+   for &id in ids.iter().rev(){ooze=ooze.replace(&format!("defpart {id}"),&format!("defpart {}",jak_core::eco_power::OOZE_PARTS+id)).replace(&format!("sp-item {id}"),&format!("sp-item {}",jak_core::eco_power::OOZE_PARTS+id)).replace(&format!(":next-launcher {id})"),&format!(":next-launcher {})",jak_core::eco_power::OOZE_PARTS+id));}
+   library.read_jak1(&ooze);
+  }
   let flut=active.join("jak1/data/goal_src/jak1/levels/flut_common/flut-part.gc");
   if let Ok(text)=std::fs::read_to_string(flut){
    let slam=crate::particle_subset::particle_subset(&text,&["group-flut-attack-strike-ground"],&[],&[]);

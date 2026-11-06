@@ -210,7 +210,8 @@ public final class JakEffects {
     if(kind==BARREL)JakSounds.barrel(pos,focus);
     var fx=DECORATIONS.computeIfAbsent(key,decoration->{
      long handle=NativeJak.fxCreateDecor(decoration.kind());
-     return handle==0?null:new Owner(Vec3.atBottomCenterOf(pos).add(0,kind==BARREL?.86:kind==PROJECTOR?1.01:.30,0),handle);
+     // The launcher's over its mesh's top, now standing on the block below (JakEcoLauncher.TOP).
+     return handle==0?null:new Owner(Vec3.atBottomCenterOf(pos).add(0,kind==BARREL?.86:kind==PROJECTOR?1.01:kind==LAUNCHER?dev.jakmc.content.JakEcoLauncher.TOP+.30:.30,0),handle);
     });
     if(fx!=null&&kind>=10&&kind<=13&&entry.getValue() instanceof dev.jakmc.content.JakEcoVent.Vent vent
         &&vent.pickupEntity>=0&&vent.pickupTime!=fx.pickupAt&&client.level.getGameTime()-vent.pickupTime<=15){

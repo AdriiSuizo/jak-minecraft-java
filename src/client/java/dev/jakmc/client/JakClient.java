@@ -29,7 +29,7 @@ public final class JakClient implements ClientModInitializer {
   ScaleScene.initialize();
   PortScene.initialize();
   EnemyScene.initialize();
-  SpydroidScene.initialize();KermitScene.initialize();LoteScene.initialize();
+  SpydroidScene.initialize();KermitScene.initialize();LoteScene.initialize();Lote2Scene.initialize();
   WeaponScene.initialize();
   InputScene.initialize();
   IntegrationScene.initialize();

@@ -127,6 +127,18 @@ def gate_resources():
     (target/'blockstates'/f'{GATE}.json').write_text(json.dumps({'multipart':multipart}),encoding='utf-8')
     return by_open
 
+# Adrii 06/11: the palace's small rocks are a cutout cube of a few grey shards, no use as a block.
+REMOVED={'sp_waspala-small-rocks'}
+
+def has_holes(path):
+    model=DEST/'assets/jak/models/block'/(path+'.json')
+    if not model.is_file():return False
+    from PIL import Image
+    for texture in set(json.loads(model.read_text(encoding='utf-8')).get('textures',{}).values()):
+        image=DEST/'assets/jak/textures/block'/(texture.split('/')[-1]+'.png')
+        if image.is_file() and Image.open(image).convert('RGBA').getextrema()[3][0]<128:return True
+    return False
+
 def configure_materials(definitions):
     for row in definitions:
         kind,vanilla=row['look']['kind'],row['look'].get('vanilla','')
@@ -139,6 +151,10 @@ def configure_materials(definitions):
             kind='gate'
             row['look']={'kind':kind,'parts':gate_resources()}
         row['ready']=not row['path'].startswith('objeto_') and (kind!='native' or vanilla in NATIVE_MATERIALS)
+        if row['path'] in REMOVED:row['ready']=False
+        # Adrii 06/11: a full block or slab whose texture has holes (the Haven foliage) still hid its neighbours'
+        # faces, so the world showed through it. Such blocks are marked to leave them drawn.
+        if kind in ('cube','slab','pillar','layers') and has_holes(row['path']):row['look']['see_through']=True
 
 def material_resources(definitions):
     """Minecraft owns the loot transactions and partial block-state predicates."""
@@ -152,7 +168,9 @@ def material_resources(definitions):
         return {'type':'minecraft:set_count','count':count,'condition':loot_state(path,prop,value)}
     for row in definitions:
         path,look=row['path'],row['look']
-        if not row['ready']:continue
+        if not row['ready']:
+            # A block taken out keeps no drop (its recipe would name an unregistered item).
+            (loot/f'{path}.json').unlink(missing_ok=True);continue
         kind,vanilla=look['kind'],look.get('vanilla','')
         drop='altar_turbotabla_vacio' if path=='altar_turbotabla' else path
         entry={'type':'minecraft:item','name':'jak:'+drop}
@@ -319,7 +337,11 @@ def icons():
         (assets/'models/item'/f'{path}.json').write_text(json.dumps(model),encoding='utf-8')
         objects+=1
     blocks=0
+    # Panes and bars keep their flat icon, as Minecraft's glass panes and iron bars (Adrii 06/11: drawn as their
+    # block, a thin sheet seen side on, they hardly showed).
+    flat={row['path'] for row in json.loads((catalog/'blocks.json').read_text(encoding='utf-8')) if row['look'].get('vanilla') in ('glass_pane','iron_bars')}
     for file in sorted((assets/'items').glob('*.json')):
+        if file.stem in flat:continue
         model=json.loads(file.read_text(encoding='utf-8'))['model']
         if model.get('type')!='minecraft:model':continue
         item_model=assets/'models/item'/file.name
@@ -337,6 +359,17 @@ def icons():
         if not block or not block.startswith('jak:block/'):continue
         if not (assets/'models/block'/(block[len('jak:block/'):]+'.json')).is_file():continue
         item_model.write_text(json.dumps({'parent':block,'display':BLOCK_DISPLAY}),encoding='utf-8')
+        blocks+=1
+    # Adrii 06/11: two blocks (the Haven foliage and burning-can slabs) had no item at all: missing in the hand.
+    for loot in sorted((DEST/'data/jak/loot_table/blocks').glob('*.json')):
+        path=loot.stem
+        if (assets/'items'/f'{path}.json').is_file() or not (assets/'blockstates'/f'{path}.json').is_file():continue
+        states=json.loads((assets/'blockstates'/f'{path}.json').read_text(encoding='utf-8'))
+        first=next(iter(states['variants'].values()),None) if 'variants' in states else next((part['apply'] for part in states.get('multipart',[])),None)
+        if isinstance(first,list):first=first[0] if first else None
+        if not first:continue
+        (assets/'models/item'/f'{path}.json').write_text(json.dumps({'parent':first['model'],'display':BLOCK_DISPLAY}),encoding='utf-8')
+        (assets/'items'/f'{path}.json').write_text(json.dumps({'model':{'type':'minecraft:model','model':'jak:item/'+path}}),encoding='utf-8')
         blocks+=1
     print('Item icons:',objects,'objects drawn as their model,',blocks,'blocks as their block model')
 

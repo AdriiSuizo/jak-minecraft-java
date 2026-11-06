@@ -67,12 +67,17 @@ impl Jak {
             .is_some_and(|hit| hit.u > 0.0)
     }
 
+    /// The size the water measures him by: his drawn one.
+    pub(crate) fn swim_size(&self) -> f32 {
+        self.drawn_size.unwrap_or(self.size)
+    }
+
     /// How far under the surface his feet float: the swim height, less
     /// if the pose would hold the top of his head under the water.
     pub(crate) fn float_depth(&self) -> f32 {
-        let swim_height = SWIM_HEIGHT * self.size;
+        let (size, swim_height) = (self.swim_size(), SWIM_HEIGHT * self.swim_size());
         match self.crown {
-            Some(crown) => swim_height.min((crown.y - CROWN_OUT) * self.size),
+            Some(crown) => swim_height.min((crown.y - CROWN_OUT) * size),
             None => swim_height,
         }
     }
@@ -83,7 +88,7 @@ impl Jak {
     pub(crate) fn wade_scale(&self) -> f32 {
         match self.wade {
             Some(depth) => {
-                let t = ((depth / self.size - WADE_DEPTH) / meters(1.5)).clamp(0.0, 1.0);
+                let t = ((depth / self.swim_size() - WADE_DEPTH) / meters(1.5)).clamp(0.0, 1.0);
                 0.8 - 0.2 * t
             }
             None => 1.0,
@@ -100,7 +105,7 @@ impl Jak {
         self.wade = self.water.and_then(|surface| {
             let depth = surface - self.control.trans.y;
             let on_ground = self.control.status & crate::control::status::ON_GROUND != 0;
-            (self.swim.is_none() && on_ground && depth >= WADE_DEPTH * self.size && depth < SWIM_HEIGHT * self.size)
+            (self.swim.is_none() && on_ground && depth >= WADE_DEPTH * self.swim_size() && depth < SWIM_HEIGHT * self.swim_size())
                 .then_some(depth)
         });
         // Triangle by a Flut Flut, swimming: onto it.
@@ -116,7 +121,7 @@ impl Jak {
         };
         let depth = surface - self.control.trans.y;
         // As deep as his drawn body would float in his own game.
-        let (swim_height, leave_depth) = (SWIM_HEIGHT * self.size, LEAVE_DEPTH * self.size);
+        let (swim_height, leave_depth) = (SWIM_HEIGHT * self.swim_size(), LEAVE_DEPTH * self.swim_size());
         if self.swim.is_none() {
             // Dark and Light Jak swim as he does.
             // Dropping into it (off the board as it slows, from a jump)
@@ -151,7 +156,7 @@ impl Jak {
         if !swim.diving && (self.pad.pressed(button::X) || climb_out) {
             self.swim = None;
             self.swim_tilt = 0.0;
-            let height = self.float_depth() + SWIM_JUMP_HEIGHT * self.size;
+            let height = self.float_depth() + SWIM_JUMP_HEIGHT * self.swim_size();
             // Out of the water into his own jump (its animation, not the
             // walk the state he swam in would go on with), as high as the
             // bank needs.
@@ -175,7 +180,7 @@ impl Jak {
         // Out of the water only well over where he floats: floating higher
         // for his head (`float_depth`), he never wades out and falls back
         // in over and over (a splash each time).
-        let leave_depth = leave_depth.min(self.float_depth() - LEAVE_UNDER_FLOAT * self.size);
+        let leave_depth = leave_depth.min(self.float_depth() - LEAVE_UNDER_FLOAT * self.swim_size());
         // (Just dropped in he is still sinking to it: not out again yet.)
         let settling = self.time - swim.since < seconds(0.5)
             && self.control.status & crate::control::status::ON_GROUND == 0;
@@ -277,6 +282,8 @@ mod tests {
         let block=6400.0;
         let mut jak=Jak::new(Vec3::ZERO,0.0);
         jak.size=0.64;
+        // The model is drawn 1.94 blocks tall for 2.51 m of his own.
+        jak.drawn_size=Some(1.94/2.510636*block/crate::METER);
         jak.control.set_body_dimensions(0.3*block,1.8*block);
         jak.water=Some(2.0*block);
         jak.control.trans.y=2.0*block-jak.float_depth();
@@ -288,8 +295,21 @@ mod tests {
             jak.step(&crate::PadInput{held:button::X,pressed:if frame==0{button::X}else{0},..Default::default()},&mut world,None);
             peak=peak.max(jak.trans().y-2.0*block);
         }
-        assert!(peak>0.35*block,"feet only rise {} blocks over the water",peak/block);
-        assert!(peak<0.65*block,"water jump must retain the authored height: {}",peak/block);
+        // `SWIM_JUMP_HEIGHT` drawn: 1.1 m of 1.2 blocks to the metre.
+        assert!(peak>0.75*block,"feet only rise {} blocks over the water",peak/block);
+        assert!(peak<0.95*block,"water jump must retain the authored height: {}",peak/block);
+    }
+
+    /// Drawn two blocks tall, he floats as deep as in his game: his feet
+    /// 1.8 of his meters under it (1.4 blocks), not 0.74 as at `size`.
+    #[test]
+    fn floats_by_his_drawn_size() {
+        let block=6400.0;
+        let mut jak=Jak::new(Vec3::ZERO,0.0);
+        jak.size=0.64;
+        jak.drawn_size=Some(1.94/2.510636*block/crate::METER);
+        let under=jak.float_depth()/block;
+        assert!((under-1.39).abs()<0.02,"feet {under} blocks under the water");
     }
 
     /// Floating, the top of his head stays over the water however the pose
