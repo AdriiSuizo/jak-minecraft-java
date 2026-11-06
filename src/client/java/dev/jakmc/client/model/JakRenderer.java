@@ -53,6 +53,9 @@ public final class JakRenderer {
             wings.attachmentAnimationsFrom(clips,"jakb-wings-");
             shield=new GltfModel(root.resolve("jakb-shield-shield-lod0.glb"),"light_shield");
             shield.attachmentAnimationsFrom(clips,"jakb-shield-");
+            // Ready before Light Jak first uses them: their first draw stalled the frame.
+            LightFormTexture.Form.SHIELD.prepare();LightFormTexture.Form.WINGS.prepare();
+            shield.uploadTextures();wings.uploadTextures();
             daxter=new GltfModel(root.resolve("daxter-lod0.glb"),"daxter");
             var levels=root.getParent();
             cinematicBody=cinematic(levels.resolve("arenacst/jakc-highres-lod0.glb"),"jak_cinematic",body);
@@ -171,6 +174,7 @@ public final class JakRenderer {
             stack.translate(0,1.62,0);
             stack.rotateDegrees(Axis.XP,client.gameRenderer.mainCamera().xRot());
             stack.translate(0,-1.62+.25,.6);
+            viewSway(stack,pose,elapsed);
         }else if(boardFrame==null)stack.rotateDegrees(Axis.YP,-shownYaw);
         else {
             stack.mulPose(portrait?new Matrix4f().rotationY((float)Math.toRadians(-shownYaw)):new Matrix4f().rotation(boardFrame.rotation()));
@@ -252,7 +256,11 @@ public final class JakRenderer {
         boolean gunOut=gunState!=null&&gunState.get("out").getAsBoolean();
         boolean shieldUp=pose.raw().has("shield")&&pose.raw().get("shield").getAsBoolean();
         if(!climbing&&!pose.board()&&!mounted&&gunKind>=0&&gunOut&&!shieldUp&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
-            skeleton=overlayGun(skeleton,pose,gunKind,frame,frames,elapsed);
+            var held=gunClip(pose,gunKind,frame,frames,elapsed);
+            skeleton=body.overlayUpper(skeleton,held.clip(),held.age());
+            // sidekick.gc: Daxter plays his own clip of the same name (daxter-gun-...), not the stance under it.
+            String dax="daxter-"+held.clip().substring("jakb-".length());
+            if(daxter.hasClip(dax))daxPose=daxter.poseAtTime(dax,held.age());
         }
         boolean aiming=pose.raw().has("aim")&&pose.raw().get("aim").getAsBoolean();
         float lookYaw=pose.raw().has("lookYaw")?pose.raw().get("lookYaw").getAsFloat():pose.yaw();
@@ -288,7 +296,9 @@ public final class JakRenderer {
             }
             stack.popPose();return true;
         }
-        visibleBody.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,false);
+        // Rust jak_pose.rs: Invisibility hides Jak, his cloth and Daxter (board, Flut Flut and gun stay).
+        if(!state.isInvisible)visibleBody.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,JakBlink.shut(actor.getId(),state.ageInTicks/20f));
+        if(warmFrames<3&&actor==client.player&&!luminous&&!pose.dark()){warmFrames++;warm(visibleBody,skeleton,stack,collector,state.lightCoords);}
         if(visibleBody!=body&&visibleDaxter!=daxter&&actor==client.player)cinematicRenderSerial++;
         submitCloth(actor,state,skeleton,stack,collector,camera.pos,pose.raw().get("session").getAsLong());
         var wingState=pose.raw().get("wings");
@@ -314,7 +324,7 @@ public final class JakRenderer {
             var d=visibleDaxter.bounds(daxPose,new Matrix4f(daxAnchor).scale(1/1.4f));
             currentTop=(Math.max(b[1].y,d[1].y)+floorOffset)*bodyScale;
         }
-        visibleDaxter.submitEyes(daxPose,stack,collector,state.lightCoords,false);stack.popPose();
+        if(!state.isInvisible)visibleDaxter.submitEyes(daxPose,stack,collector,state.lightCoords,JakBlink.shut(~actor.getId(),state.ageInTicks/20f));stack.popPose();
         if(boardJoint!=null||!actor.getAttachedOrCreate(JakData.BOARD).isEmpty()){
             boolean folding=boardFrame!=null&&boardFrame.closing();
             String clip=boardJoint==null||folding?"board-close":"board-open";
@@ -544,7 +554,50 @@ public final class JakRenderer {
         shield.submitLightEffect(shield.poseAtTime(clip,frameTime),stack,collector,LightFormTexture.Form.SHIELD,fraction);
         stack.popPose();
     }
+    /**
+     * The first frames of Light Jak, Dark Jak, the shield and the wings stalled 70 to 110 ms each (the
+     * graphics driver readying their drawing the first time it is asked to). Drawn once, shrunk to
+     * nothing, beside the first frames of plain Jak so that wait comes at load and not mid-game.
+     */
+    private static int warmFrames;
+    private static float sway;private static long swayAt;
+    /**
+     * Rust jak_pose.rs gun_view, in the first-person frame: the bob of the walk, (0.012·sin s, −0.008·|sin 2s|) m
+     * with s growing by dt·min(speed, 12 m/s)·0.9 (jak.rs), and a shot's kick, 1 − age/0.16 s within the
+     * 0.45 s it is shown: 0.03 m back and 0.12 rad muzzle up.
+     */
+    private static void viewSway(PoseStack stack,JakPoses.Pose pose,float elapsed){
+        long now=System.nanoTime();float dt=swayAt==0?0:Math.min(.1f,(now-swayAt)/1e9f);swayAt=now;
+        var velocity=pose.raw().get("velocity") instanceof com.google.gson.JsonArray v?dev.jakmc.player.JakPlayers.vector(v):net.minecraft.world.phys.Vec3.ZERO;
+        double speed=Math.hypot(velocity.x,velocity.z)/dev.jakmc.player.JakPlayers.METRE;
+        sway+=dt*(float)Math.min(speed,12)*.9f;
+        float kick=0;
+        if(pose.raw().get("gun") instanceof com.google.gson.JsonObject gun&&gun.has("fireAge")){
+            float age=gun.get("fireAge").getAsFloat()+elapsed;
+            if(age>=0&&age<.45f)kick=Math.clamp(1-age/.16f,0,1);
+        }
+        float m=(float)dev.jakmc.player.JakPlayers.METRE;
+        stack.translate(-.012f*Math.sin(sway)*m,-.008f*Math.abs(Math.sin(2*sway))*m,-.03f*kick*m);
+        stack.rotateDegrees(Axis.XP,(float)Math.toDegrees(-.12f*kick));
+    }
+    private static void warm(GltfModel visibleBody,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector,int light){
+        stack.pushPose();
+        stack.scale(1e-4f,1e-4f,1e-4f);
+        visibleBody.submitJakBody(skeleton,stack,collector,light,false,true,false);
+        visibleBody.submitJakBody(skeleton,stack,collector,light,true,false,false);
+        String wingClip=wings==null?null:wings.anyClip();
+        if(wingClip!=null){wings.submitLightEffect(wings.pose(wingClip,0),stack,collector,LightFormTexture.Form.WINGS,1);wings.submitLightEffect(wings.pose(wingClip,0),stack,collector,LightFormTexture.Form.WINGS,.5f);}
+        for(String clip:new String[]{"jakb-shield-idle","jakb-shield-hit"})if(shield!=null&&shield.hasClip(clip)){
+            shield.submitLightEffect(shield.poseAtTime(clip,0),stack,collector,LightFormTexture.Form.SHIELD,1);
+            shield.submitLightEffect(shield.poseAtTime(clip,0),stack,collector,LightFormTexture.Form.SHIELD,.5f);
+        }
+        stack.popPose();
+    }
     private static GltfModel.Posed overlayGun(GltfModel.Posed skeleton,JakPoses.Pose pose,int kind,float frame,int frames,float elapsed){
+        var held=gunClip(pose,kind,frame,frames,elapsed);return body.overlayUpper(skeleton,held.clip(),held.age());
+    }
+    private record GunClip(String clip,float age){}
+    private static GunClip gunClip(JakPoses.Pose pose,int kind,float frame,int frames,float elapsed){
             String upper=switch(kind/3){case 0->"jakb-gun-stance";case 1->"jakb-gun-stance-yellow";case 2->"jakb-gun-stance-blue";default->"jakb-gun-stance-dark";};
             float age=0;var g=pose.raw().getAsJsonObject("gun");
             if(g!=null&&g.get("out").getAsBoolean()){
@@ -557,7 +610,7 @@ public final class JakRenderer {
                     age=frame/Math.max(1,frames-1)*body.duration(upper);
                 }else age=(g.get("time").getAsFloat()+elapsed)%Math.max(.001f,body.duration(upper));
             }
-            return body.overlayUpper(skeleton,upper,age);
+            return new GunClip(upper,age);
     }
     private static GltfModel.Posed gunPose(JakPoses.Pose source,int kind,float elapsed){
         String color=new String[]{"red","yellow","blue","dark"}[kind/3];
@@ -638,4 +691,5 @@ public final class JakRenderer {
         if(!Float.isFinite(a.length())||!Float.isFinite(b.length())||a.length()>=b.length())throw new IllegalStateException("Original board-close prejoint does not fold the rendered geometry");
         return out;
     }
+
 }

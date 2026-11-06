@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "jakmc:mass_inverter",
+    "jakmc:dark_ammo",
+    "jakmc:dark_ammo",
+    "minecraft:diamond",
+    "minecraft:diamond",
+    "minecraft:ender_eye"
+  ],
+  "result": {
+    "id": "jakmc:super_nova",
+    "count": 1
+  }
+}

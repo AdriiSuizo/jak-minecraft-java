@@ -6,14 +6,16 @@ import java.nio.file.Path;
 import net.minecraft.world.phys.Vec3;
 /** Actual Jak II GLB clip clocks; native Villager owns its brain, trades and save lifecycle. */
 public record CitizenKind(String model,String asset,Map<String,Float> clips,String game,Vec3 shotMuzzle) {
- public static final int HAVEN_VARIANTS=3, SPARGUS_MALE=3, SPARGUS_FEMALE=4, MONK=5;
+ public static final int HAVEN_VARIANTS=3, SPARGUS_MALE=3, SPARGUS_FEMALE=4, MONK=5, JAK1_FIRST=6, JAK1_PEOPLE=5;
  public static final List<CitizenKind> ALL=new ArrayList<>();
  public static void initialize(){if(!ALL.isEmpty())return;try(var in=CitizenKind.class.getResourceAsStream("/data/jakmc/citizens.json")){for(var row:JsonParser.parseReader(new java.io.InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8)).getAsJsonArray()){var j=row.getAsJsonObject();Map<String,Float> clips=new LinkedHashMap<>();j.getAsJsonObject("clips").entrySet().forEach(e->clips.put(e.getKey(),e.getValue().getAsFloat()));ALL.add(new CitizenKind(j.get("model").getAsString(),j.get("asset").getAsString(),Map.copyOf(clips),j.has("game")?j.get("game").getAsString():"jak2",j.has("shotMuzzle")?dev.jakmc.player.JakPlayers.vector(j.getAsJsonArray("shotMuzzle")):Vec3.ZERO));}}catch(java.io.IOException e){throw new java.io.UncheckedIOException(e);}}
  public static CitizenKind of(int kind){initialize();return ALL.get(Math.floorMod(kind,ALL.size()));}
- public Path root(){return game.equals("jak3")?RuntimeConfig.assets:RuntimeConfig.assets.getParent().getParent().getParent().getParent().resolve("jak2/data/decompiler_out/jak2");}
+ public Path root(){return game.equals("jak3")?RuntimeConfig.assets:game.equals("jak1")?RuntimeConfig.gameAssets("jak1"):RuntimeConfig.assets.getParent().getParent().getParent().getParent().resolve("jak2/data/decompiler_out/jak2");}
  public float duration(String suffix){Float value=clips.get(model+"-"+suffix);if(value==null)throw new IllegalArgumentException("Original citizen clip missing: "+model+"-"+suffix);return value;}
  public boolean wastelander(){return model.startsWith("wlander-");}
  public boolean monk(){return model.equals("monk");}
+ /** Rust: jak2_villagers.rs STILL (Jak 1's Sandover-style people, standing at their spots). */
+ public boolean jak1(){return game.equals("jak1");}
  public String rise(){return switch(model){
   case "wlander-male"->"getup-back";
   case "wlander-female"->"getup-forward";

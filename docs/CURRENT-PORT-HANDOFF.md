@@ -1,8 +1,8 @@
 # Jak → real Minecraft Java: current implementation
 
-Updated 2026-11-04. Continue the full Jak port from the read-only original Rust mashup. Do not repeat recon or the accepted enemy/weapon takes without a relevant change. No MW2 content or Skate 3; Jak's JET-Board remains in scope. The user wants complete mechanics, effects, sound and normal Minecraft interaction, not only models.
+Updated 2026-11-05. Latest continuation entry point: [HANDOFF-JAK-JAVA-2026-11-05.md](../HANDOFF-JAK-JAVA-2026-11-05.md). Continue the full Jak port from the read-only original Rust mashup. Do not repeat recon or the accepted enemy/weapon takes without a relevant change. No MW2 content or Skate 3; Jak's JET-Board remains in scope. The user wants complete mechanics, effects, sound and normal Minecraft interaction, not only models.
 
-The user withdrew custom lowpoly/far-terrain/far-tower work on 2026-11-05. F34–F36 are retired. Current actionable backlog: [FIXES-PENDIENTES.md](FIXES-PENDIENTES.md), 33 open work items, 11 targeted comparisons and 3 inherited incomplete systems. The newest user reports reopen water exit, mount/vehicle collisions, world damage and native item controls. This inventory changes no gameplay.
+The user withdrew custom lowpoly/far-terrain/far-tower work on 2026-11-05. F34–F36 are retired. Current actionable backlog: [FIXES-PENDIENTES.md](FIXES-PENDIENTES.md), 33 tracked items (32 open/partial and F28 resolved), 11 targeted comparisons and 3 inherited incomplete systems. The newest user reports reopen water exit, mount/vehicle collisions, world damage and native item controls. Use the per-item states and latest delivery receipts below; several reported bridges have since been corrected.
 
 ## Projects and ownership
 
@@ -22,7 +22,7 @@ Current source checkpoint: ABI 5, vehicle SAT/full Hellcat attitude plus native 
 ## Working checkpoint
 
 - Original Jak pure Rust core, JNI live Minecraft VoxelShapes and actor collision, server-owned health/ammo/powers/inventory, original animation timings, keyboard + real SDL controller controls, own saved board slot, 12 Morph Gun items, native eco pickups.
-- Native ABI **3**, **input_v3** adds right-stick axes; pose_v3 now carries ordered WeaponVisuals plus stable native-session/shot identifiers. Both Java and DLL must agree. Source-only checkpoint before weapon extension: `7d5bf09`.
+- Native ABI **5** (body dimensions, oriented hull callback and hurt bridge); the existing **input_v3** carries right-stick axes; pose_v3 now carries ordered WeaponVisuals plus stable native-session/shot identifiers. Both Java and DLL must agree. Source-only checkpoint before weapon extension: `7d5bf09`.
 - Original particle replay at 60 Hz, 588 parts/133 groups in selected libraries, original axes/UVs/blends, catch-up after asset-load stalls. 2695 unique original SFX clips / 7166 aliases imported locally, action/material cues and attached loops. This does not mean all game particle libraries, dialogue or music are integrated.
 - 17 registered native MC enemy types: babak, lurkerpuppy, lurkercrab, bonelurker, swamp-rat, baby-spider, snow-bunny, yeti, hopper, double-lurker, grunt, flitter, gekko, mantis, kg-grunt, spydroid, predator. Actual navigation, collision, water/air/drowning, original clip timing/cues/hit reactions, crab shell logic, leap windup/landing, Minecraft combat damage and death/loot lifecycle. Five Metal Head kinds drop skull gems, including gekko/predator without visible gem joints. Original merc segment masks switch empty/filled gems for grunt/flitter/mantis.
 - Original splash/foam/bubble effects attached to real MC water state. Body-bounds attack reach fixes whiffs after body separation. One-block chase/attack damages a real survival player.

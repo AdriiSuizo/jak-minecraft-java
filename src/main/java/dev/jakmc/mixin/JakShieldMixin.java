@@ -17,7 +17,12 @@ abstract class JakShieldMixin {
         if(amount>0&&!source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)
                 &&(Object)this instanceof ServerPlayer player&&JakPlayers.blockWithLightShield(player)){
             result.setReturnValue(false);
+            return;
         }
+        // Rust minecraft_world.rs lava_hurts (the soldier's only): Jak in lava or a fire block is set alight, not hurt by them.
+        if((Object)this instanceof ServerPlayer player&&JakPlayers.active(player)
+                &&(source.is(net.minecraft.world.damagesource.DamageTypes.LAVA)||source.is(net.minecraft.world.damagesource.DamageTypes.IN_FIRE)))
+            result.setReturnValue(false);
     }
     @Inject(method="hurtServer",at=@At("RETURN"))
     private void jakmc$reaction(ServerLevel level,DamageSource source,float amount,CallbackInfoReturnable<Boolean> result){

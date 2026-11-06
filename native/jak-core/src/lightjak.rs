@@ -13,7 +13,7 @@ pub const SWOOP_INC: f32 = 1.0;
 pub const ECO_MAX: f32 = 100.0;
 /// Adrii 22/10: light and dark eco last ten times as long. Every cost and
 /// threshold of Jak 3's (`*FACT-bank*`, `target-lightjak.gc`,
-/// `target-darkjak.gc`) times this; the Minecraft host also meters flight.
+/// `target-darkjak.gc`) times this; Light Jak's flight costs nothing.
 pub const ECO_COST: f32 = 0.1;
 const SWOOP_GRAVITY: f32 = 163840.0;
 const SWOOP_GRAVITY_MAX: f32 = 245760.0;
@@ -26,7 +26,7 @@ const SWOOP_GRAVITY_MAX: f32 = 245760.0;
 const GLIDE_FALL: f32 = 16384.0;
 /// Asking for the flight while changing.
 const LATCH_SWOOP: u32 = 16;
-const LONG_AGO: i64 = i64::MIN / 4;
+pub const LONG_AGO: i64 = i64::MIN / 4;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum LightPower {
@@ -265,7 +265,17 @@ pub struct LightJak {
     /// The shield up last frame (its opening's sparkles go once).
     pub shield_was: bool,
     pub shield_hit_time: i64,
+    /// When the shield's last kick began (`shield-start-time`), and since when
+    /// it has been up.
+    pub shield_started: i64,
+    pub shield_on_time: i64,
     pub freeze_until: i64,
+    /// The freeze asked for (`lightjak-stage freeze`), its clap still to come:
+    /// straight away as Light Jak, after the get-on otherwise.
+    pub freeze_wanted: bool,
+    /// When the clap's hands last met (aframe 20: its burst, the pad's buzz
+    /// and the camera's smush), `LONG_AGO` before any.
+    pub freeze_clap: i64,
     pub health_fraction: f32,
     pub heal_fraction: f32,
     /// Changed into Light Jak.
@@ -339,7 +349,11 @@ impl Default for LightJak {
             shield: false,
             shield_was: false,
             shield_hit_time: LONG_AGO,
+            shield_started: LONG_AGO,
+            shield_on_time: LONG_AGO,
             freeze_until: 0,
+            freeze_wanted: false,
+            freeze_clap: LONG_AGO,
             health_fraction: 1.0,
             heal_fraction: 0.0,
             on: false,
@@ -455,12 +469,12 @@ impl Jak {
     }
 
     /// Able to change into Light Jak for `power` now: with some light eco,
-    /// supplied by the host inventory, including flight.
-    fn want_to_lightjak_for(&self, _power: LightPower) -> bool {
+    /// but for the flight, which is free (Adrii 22/10).
+    fn want_to_lightjak_for(&self, power: LightPower) -> bool {
         !self.state.is_board()
             && !self.powers_blocked
             && self.time_elapsed(self.lightjak.start_time, seconds(0.05))
-            && 0.0 < self.lightjak.eco
+            && (0.0 < self.lightjak.eco || power == LightPower::Flight)
             && self.lightjak.latch_out_time == 0
     }
 
@@ -506,12 +520,13 @@ impl Jak {
     /// Every frame on foot: the power button's lock, the change back once
     /// the eco runs out, and the wings.
     pub(crate) fn lightjak_process(&mut self) {
-        let dt = crate::FRAME_TICKS as f32 / crate::TICKS_PER_SECOND as f32;
-        // The Minecraft port supplies eco from actual carried items, including flight.
-        if self.lightjak.on && self.lightjak.power == LightPower::Flight {
-            self.lightjak.eco = (self.lightjak.eco - ECO_COST * dt).max(0.0);
-            if self.lightjak.eco == 0.0 { self.lightjak_end_mode(true); }
+        // A freeze asked for waits for its get-on or its clap; one cut off asks for nothing.
+        if self.lightjak.freeze_wanted
+            && !matches!(self.state, State::LightJakGetOn { .. } | State::PowerJakGetOn | State::LightJakFreeze)
+        {
+            self.lightjak.freeze_wanted = false;
         }
+        let dt = crate::FRAME_TICKS as f32 / crate::TICKS_PER_SECOND as f32;
         let light = &mut self.lightjak;
         light.shield = light.on
             // Original shield process listens to Circle independently of flight.
@@ -522,6 +537,24 @@ impl Jak {
         if light.shield {
             light.eco = (light.eco - 3.0 * ECO_COST * dt).max(0.0);
         }
+        // The shield's post: up for 0.1 s, on his way into a standing, a jump, a fall
+        // or a landing, and on a surface since its last kick: `target-lightjak-shield`.
+        if !light.shield {
+            light.shield_on_time = LONG_AGO;
+        } else if light.shield_on_time == LONG_AGO {
+            light.shield_on_time = self.time;
+        }
+        if light.shield
+            && self.time - light.shield_on_time >= seconds(0.1)
+            && self.control.last_time_on_surface >= light.shield_started
+            && self.state_time == self.time
+            && matches!(self.state, State::Stance | State::Jump { .. } | State::Falling { .. } | State::HitGround { .. } | State::DoubleJump { .. })
+            && self.pending.is_none()
+        {
+            light.shield_started = self.time;
+            self.pending = Some(State::LightJakShield);
+        }
+
         if !self.pad.hold(button::L2) && self.state != State::PowerJakGetOn {
             self.lightjak.get_off_lock = false;
         }
@@ -537,8 +570,9 @@ impl Jak {
                     | State::LightJakSwoop { .. }
                     | State::LightJakSwoopFalling
             );
-            // Flight depletion is handled above, including while airborne.
-            let flying = self.lightjak.power == LightPower::Flight;
+            // Flying is free (Adrii 22/10): no eco never takes the wings off. The
+            // flight is its own stage bit (`lightjak-stage swoop`), kept whatever came after it.
+            let flying = self.lightjak.swoop;
             if self.lightjak.eco < ECO_COST && !changing && !flying && self.attack.danger.is_none() {
                 if matches!(self.state, State::Stance | State::HitGround { .. }) {
                     self.pending = Some(State::LightJakGetOff);
@@ -581,7 +615,7 @@ impl Jak {
                 self.spawn_wings(WingsStart::Open);
                 let l = &mut self.lightjak;
                 if first {
-                    // The host charges continuous flight above instead of charging twice here.
+                    // (Jak 3 takes `SWOOP_INC` a flight; Adrii 22/10: free.)
                     if let Some(w) = &mut l.wings {
                         w.open();
                     }
@@ -608,6 +642,7 @@ impl Jak {
                 self.lightjak.get_off_lock = true;
                 self.lightjak.healing = false;
             }
+            State::LightJakShield | State::LightJakFreeze => self.lightjak.get_off_lock = true,
             _ => {}
         }
     }
@@ -631,6 +666,11 @@ impl Jak {
                 self.lightjak.healing = false;
                 self.target_exit_light();
             }
+            State::LightJakShield => {
+                self.restore_gravity();
+                self.target_exit_light();
+            }
+            State::LightJakFreeze => self.target_exit_light(),
             State::LightJakSwoop { .. } | State::LightJakSwoopFalling => {
                 if !matches!(next, State::LightJakSwoop { .. }) {
                     self.restore_gravity();
@@ -730,6 +770,8 @@ impl Jak {
             State::LightJakGetOn { swoop } => self.lightjak_get_on_code(swoop),
             State::LightJakGetOff => self.lightjak_get_off_code(),
             State::LightJakRegen => self.regen_code(),
+            State::LightJakShield => self.shield_code(),
+            State::LightJakFreeze => self.freeze_code(),
             State::LightJakSwoop { first: true, .. } => self.swoop_code(),
             State::LightJakSwoop { first: false, .. } => self.swoop_again_code(),
             State::LightJakSwoopFalling => self.swoop_falling_code(),
@@ -739,7 +781,92 @@ impl Jak {
 
     /// After the change: the heal it was for (`lightjak-stage regen`), else
     /// standing.
+    /// `target-lightjak-freeze`'s code: light on both hands, the clap from aframe
+    /// 0 (9 once Light Jak for 2 s) to 20, where the burst goes from the left hand
+    /// and `freeze-control` starts slowing the world, then the rest of it.
+    fn freeze_code(&mut self) -> Option<State> {
+        loop {
+            match self.code.pc {
+                0 => {
+                    self.lightjak.fx.extend([
+                        ("group-lightjak-freeze-hands", LightFxAt::Follow(JOINT_LHAND)),
+                        ("group-lightjak-freeze-hands", LightFxAt::Follow(JOINT_RHAND)),
+                    ]);
+                    self.control.mod_surface = surface::foot::ROLL_FLIP;
+                    let from = if self.time_elapsed(self.lightjak.start_time, seconds(2.0)) { 9.0 } else { 0.0 };
+                    let (start, clap) = (self.aframe(anim::LIGHTJAK_FREEZE, from), self.aframe(anim::LIGHTJAK_FREEZE, 20.0));
+                    self.ja_push(seconds(0.1));
+                    self.ja_set(anim::LIGHTJAK_FREEZE, NumFunc::seek_to(clap, 1.0), start);
+                    self.goto(1);
+                }
+                1 => {
+                    if self.ja_wait() {
+                        self.lightjak.fx.push(("group-lightjak-freeze-burst", LightFxAt::Joint(JOINT_LHAND)));
+                        self.lightjak.freeze_clap = self.time;
+                        self.lightjak.freeze_wanted = false;
+                        // world_time_scale counts its 15 s back from here.
+                        self.lightjak.freeze_until = self.time + seconds(15.0);
+                        let frame = self.chan.frame;
+                        self.ja_set(anim::LIGHTJAK_FREEZE, NumFunc::seek(1.0), frame);
+                        self.goto(2);
+                        return None;
+                    }
+                    return None;
+                }
+                2 => {
+                    if self.ja_wait() {
+                        return Some(State::Stance);
+                    }
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+    }
+
+    /// `target-lightjak-shield`'s code: up 8.25 m/s off the ground (in the air,
+    /// enough to rise half a metre more), its own gravity, a turn of 7.5 degrees
+    /// either side of the kick, aligned to its animation.
+    fn shield_code(&mut self) -> Option<State> {
+        loop {
+            match self.code.pc {
+                0 => {
+                    let c = &mut self.control;
+                    c.mod_surface = if c.status & status::ON_GROUND != 0 { surface::foot::ATTACK } else { surface::foot::JUMP_ATTACK };
+                    let up = c.transv.y;
+                    c.transv.y = if up <= 0.0 {
+                        33775.48
+                    } else {
+                        let spf = crate::FRAME_TICKS as f32 / crate::TICKS_PER_SECOND as f32;
+                        let rise = up / (c.gravity_length * spf) / 2.0 * spf * up;
+                        1024.0 + (245760.0 * (2048.0 + rise)).sqrt()
+                    };
+                    c.gravity_length = 122880.0;
+                    c.last_trans_any_surf = c.trans;
+                    self.rotate_heading(-1365.3334);
+                    self.ja_push(seconds(0.05));
+                    let rate = self.control.current.align_speed;
+                    self.ja_play(anim::LIGHTJAK_SHIELD, rate);
+                    self.goto(1);
+                }
+                1 => {
+                    if self.ja_wait() {
+                        self.rotate_heading(-1365.3334);
+                        return Some(if self.control.on_surface() { State::Stance } else { State::Falling { uppercut: false } });
+                    }
+                    self.compute_delta_align();
+                    self.align(crate::align::opts::QUAT, 1.0, 1.0, 1.0);
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+    }
+
     fn after_get_on(&mut self) -> State {
+        if self.lightjak.freeze_wanted {
+            return State::LightJakFreeze;
+        }
         if self.lightjak.power == LightPower::Heal && self.lightjak.health_fraction < 1.0 {
             self.lightjak.before_regen = false;
             State::LightJakRegen
@@ -945,7 +1072,7 @@ impl Jak {
         }
         if !latched && self.pad.pressed(button::SQUARE) {
             self.lightjak.get_off_lock = true;
-            if self.lightjak.eco >= 2.0 * ECO_COST && self.time >= self.lightjak.freeze_until {
+            if self.lightjak.eco >= 2.0 * ECO_COST && self.time >= self.lightjak.freeze_until && !self.lightjak.freeze_wanted {
                 self.lightjak.power = LightPower::Freeze;
                 self.lightjak.get_on_latch = 32;
             }
@@ -965,14 +1092,13 @@ impl Jak {
             self.lightjak.power_started = self.time;
             if self.lightjak.power == LightPower::Freeze {
                 self.lightjak.eco -= (50.0 * ECO_COST).min(self.lightjak.eco - ECO_COST);
-                self.lightjak.freeze_until = self.time + seconds(15.0);
-                // `target-lightjak-freeze`: light on both hands, a burst
-                // from the left.
-                self.lightjak.fx.extend([
-                    ("group-lightjak-freeze-hands", LightFxAt::Follow(JOINT_LHAND)),
-                    ("group-lightjak-freeze-hands", LightFxAt::Follow(JOINT_RHAND)),
-                    ("group-lightjak-freeze-burst", LightFxAt::Joint(JOINT_LHAND)),
-                ]);
+                // Latch 32: Light Jak already, straight to the clap; else the get-on
+                // first (`lightjak-stage freeze`), the clap after it.
+                self.lightjak.freeze_wanted = true;
+                if light {
+                    self.lightjak.get_on_latch = 0;
+                    return Some(State::LightJakFreeze);
+                }
             }
             if light {
                 // Powers are concurrent stage bits in Jak 3, not exclusive modes.
@@ -1355,24 +1481,6 @@ impl Jak {
 #[cfg(test)]
 mod time_tests {
     use super::*;
-
-    #[test]
-    fn inventory_fuel_is_required_for_flight_too() {
-        let mut jak=Jak::new(crate::glam::Vec3::ZERO,0.0);
-        jak.lightjak.eco=0.0;
-        assert!(!jak.want_to_lightjak_for(LightPower::Flight));
-        jak.lightjak.eco=2.0;
-        assert!(jak.want_to_lightjak_for(LightPower::Flight));
-    }
-
-    #[test]
-    fn exhausted_flight_ends_even_while_airborne() {
-        let mut jak=Jak::new(crate::glam::Vec3::ZERO,0.0);
-        jak.lightjak.on=true;jak.lightjak.power=LightPower::Flight;jak.lightjak.eco=0.00001;
-        jak.lightjak_process();
-        assert_eq!(jak.lightjak.eco,0.0);
-        assert!(!jak.lightjak.on);
-    }
 
     #[test]
     fn the_freeze_slows_the_world_to_a_twentieth_and_back() {

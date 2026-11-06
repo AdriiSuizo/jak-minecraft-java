@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "pattern": [
+    "RRR"
+  ],
+  "key": {
+    "R": "jak:wasteland_rock"
+  },
+  "result": {
+    "id": "jak:wasteland_rock_layer",
+    "count": 6
+  }
+}

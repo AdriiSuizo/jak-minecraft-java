@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:tnt",
+    "minecraft:iron_ingot",
+    "minecraft:blaze_powder"
+  ],
+  "result": {
+    "id": "jakmc:dark_ammo",
+    "count": 2
+  }
+}

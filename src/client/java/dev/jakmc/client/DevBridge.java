@@ -102,6 +102,10 @@ public final class DevBridge {
                 case "flut_scene" -> {InputScene.startFlut(client);out.addProperty("scheduled",true);}
                 case "equipment_scene" -> {EquipmentScene.start(client);out.addProperty("scheduled",true);}
                 case "economy_scene" -> {EconomyScene.start(client);out.addProperty("scheduled",true);}
+                case "rules_scene" -> {RulesScene.start(client);out.addProperty("scheduled",true);}
+                case "lands_scene" -> {LandsScene.start(client);out.addProperty("scheduled",true);}
+                case "punch_scene" -> {PunchScene.start(client);out.addProperty("scheduled",true);}
+                case "wrecks_scene" -> {WreckScene.start(client);out.addProperty("scheduled",true);}
                 case "natural_cities_scene" -> {SitesScene.startCities(client);out.addProperty("scheduled",true);}
                 case "sites_scene" -> {SitesScene.start(client);out.addProperty("scheduled",true);}
                 case "new_sites_scene" -> {SitesScene.start(client,true);out.addProperty("scheduled",true);}
@@ -134,6 +138,7 @@ public final class DevBridge {
                 case "enemies_scene" -> {EnemyScene.start(client);out.addProperty("scheduled",true);}
                 case "systems_scene" -> {EnemyScene.startSystems(client);out.addProperty("scheduled",true);}
                 case "spydroid_scene" -> {SpydroidScene.start(client);out.addProperty("scheduled",true);}
+                case "kermit_scene" -> {KermitScene.start(client);out.addProperty("scheduled",true);}
                 case "combat_scene" -> {EnemyScene.startCombat(client);out.addProperty("scheduled",true);}
                 case "quit" -> {out.addProperty("stopping",true);client.stop();}
                 default -> throw new IllegalArgumentException("Unknown development operation: "+op);

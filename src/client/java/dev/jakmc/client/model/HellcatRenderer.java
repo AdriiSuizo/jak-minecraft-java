@@ -30,6 +30,7 @@ import org.joml.Vector3f;
 import net.minecraft.world.phys.Vec3;
 
 public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRenderer.State> {
+    private static final java.util.Map<net.minecraft.world.entity.Entity,Float> WRECKED=new java.util.WeakHashMap<>();
     private static final float MODEL_SCALE=.64f;
     // h-hellcat-constants in the original car.gc, converted from 6400 units per block.
     private static final float[][] HEAD={{5734.4f,1843.2f,15769.6f},{-5734.4f,1843.2f,15769.6f},{0,6963.2f,6922.24f}};
@@ -61,6 +62,8 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         float flame,lamps;
         int stage;
         boolean wrecked;
+        /** Seconds since it blew up (jak_entities.rs draw: craft.time - destroyed_at). */
+        float wreckSeconds;
         String beams="";
     }
     private static class Orientation {
@@ -100,6 +103,8 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         state.flame=craft.thrust();
         state.lamps=craft.lamps();
         state.wrecked=craft.wrecked();
+        if(state.wrecked)WRECKED.putIfAbsent(craft,craft.tickCount+partial);else WRECKED.remove(craft);
+        state.wreckSeconds=state.wrecked?(craft.tickCount+partial-WRECKED.get(craft))/20f:0;
         state.stage=Math.min(2,(int)((1-Math.clamp(craft.hullHealth(),0,1))*3));
         state.beams=craft.beamData();
     }
@@ -119,6 +124,8 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         stack.pushPose();
         stack.mulPose(new org.joml.Matrix4f().rotation(state.attitude));
         stack.scale(MODEL_SCALE,MODEL_SCALE,MODEL_SCALE);
+        // jak_entities.rs draw: darkened as a wreck (colour x 0.25), flickering while it burns.
+        if(state.wrecked){float t=state.wreckSeconds;GltfModel.colourNext(t<.6f?t%.1f<.05f?0xffeea4:0xff5b18:0x404040);}
         model.submit(rest,stack,collector,state.lightCoords,1,OverlayTexture.NO_OVERLAY,1L<<state.stage);
         stack.popPose();
         if(!state.wrecked)effects(state,stack,collector,camera);

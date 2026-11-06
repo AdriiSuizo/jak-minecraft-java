@@ -57,8 +57,13 @@ struct Session { jak:Jak, world:World, actors:Actors, audio:audio::JakSoundQueue
 #[derive(Default)]
 struct World { tris:Vec<Tri>,query:Option<GlobalRef>,error:Option<String> }
 static JVM:OnceLock<JavaVM>=OnceLock::new();
+/// JAKMC_LEDGE_TRACE=1: each step's per-frame trail and the ledge probe's verdict in the pose (diagnostics).
+static LEDGE_TRACE:std::sync::LazyLock<bool>=std::sync::LazyLock::new(||std::env::var_os("JAKMC_LEDGE_TRACE").is_some());
 #[derive(Default)]
-struct Actors { boxes:Vec<(u64,Vec3,Vec3)> }
+struct Actors { boxes:Vec<(u64,Vec3,Vec3)>, reacting:Vec<(u64,Vec3,Vec3)> }
+/// MinecraftCollision.actors' id bits: 61 the body still reacts to a blow (hurt or dying), 62 it is dying (not
+/// to be hit again); the entity id below.
+const ACTOR_REACTING:u64=1<<61;const ACTOR_DYING:u64=1<<62;const ACTOR_ID:u64=ACTOR_REACTING-1;
 impl World {
     fn block_aim(&self, start: Vec3, end: Vec3) -> Result<f32, String> {
         let Some(query) = &self.query else {
@@ -153,6 +158,7 @@ impl ActorWorld for Actors {
  fn actors_touching(&mut self,center:Vec3,radius:f32)->Vec<u64>{self.boxes.iter().filter(|(_,lo,hi)|closest(center,*lo,*hi).distance_squared(center)<=radius*radius).map(|(id,_,_)|*id).collect()}
  fn actor_contact(&mut self,key:u64,from:Vec3)->Option<Vec3>{self.boxes.iter().find(|(id,_,_)|*id==key).map(|(_,lo,hi)|closest(from,*lo,*hi))}
  fn actors_near(&mut self,center:Vec3,radius:f32)->Vec<(u64,Vec3)>{self.boxes.iter().filter(|(_,lo,hi)|closest(center,*lo,*hi).distance_squared(center)<=radius*radius).map(|(id,lo,hi)|(*id,(*lo+*hi)*0.5)).collect()}
+ fn actor_reacting(&mut self,key:u64)->Option<(Vec3,Vec3)>{self.reacting.iter().find(|(id,_,_)|*id==key).map(|(_,lo,hi)|(*lo,*hi))}
 }
 #[derive(Default)]
 struct Sessions { next:u64, live:HashMap<u64,Session> }
@@ -167,7 +173,8 @@ fn vec(b:&[u8],at:usize)->Vec3{Vec3::new(read_f(b,at),read_f(b,at+4),read_f(b,at
 fn pos(p:Vec3)->Value{json!([p.x/BLOCK,p.y/BLOCK,p.z/BLOCK])}
 fn event(e:Event)->Value {
  match e {
-  Event::Strike{actor,pos:p,dir,damage}=>json!({"kind":"strike","actor":actor,"pos":pos(p),"dir":pos(dir*BLOCK),"damage":damage}),
+  Event::Strike{actor,pos:p,dir,damage,sphere}=>{let mut v=json!({"kind":"strike","actor":actor,"pos":pos(p),"dir":pos(dir*BLOCK),"damage":damage});
+   if let Some((center,radius))=sphere{v["center"]=pos(center);v["radius"]=json!(radius/BLOCK);}v}
   Event::Impact(h)=>json!({"kind":"impact","actor":h.actor,"pos":pos(h.surface),"dir":pos(h.dir*BLOCK),"normal":pos(h.normal*BLOCK),"damage":h.damage}),
   Event::Hurt{mode,pos:p,buzz}=>json!({"kind":"hurt","mode":format!("{mode:?}"),"pos":pos(p),"buzz":buzz}),
   Event::WorldHit{surface,normal,damage}=>json!({"kind":"world_hit","pos":pos(surface),"normal":pos(normal*BLOCK),"damage":damage}),
@@ -178,6 +185,7 @@ fn event(e:Event)->Value {
   Event::Trace{kind,from,to}=>json!({"kind":"trace","gun":format!("{kind:?}"),"from":pos(from),"to":pos(to)}),
   Event::Explosion{kind,center,radius}=>json!({"kind":"explosion","gun":format!("{kind:?}"),"pos":pos(center),"radius":radius/BLOCK}),
   Event::Lift{actor,seconds}=>json!({"kind":"lift","actor":actor,"seconds":seconds}),
+  Event::GravityField{center}=>json!({"kind":"gravity_field","pos":pos(center)}),
   Event::FlutSlam{pos:p}=>json!({"kind":"flut_slam","pos":pos(p)}),
   Event::HardLanding{health}=>json!({"kind":"fall_damage","damage":health}),
   Event::Splash{pos:p,speed}=>json!({"kind":"splash","pos":pos(p),"speed":speed/BLOCK}),
@@ -200,6 +208,26 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_abi(_:JNIEnv,_:JCla
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_floor(mut env:JNIEnv,_:JClass,id:JString,step:JString)->jint {
  let id:Result<String,_>=env.get_string(&id).map(Into::into);let step:Result<String,_>=env.get_string(&step).map(Into::into);
  protect(&mut env,||Ok(jak_steps::floor_of_block(&id.map_err(|e|e.to_string())?,&step.map_err(|e|e.to_string())?) as jint))
+}
+/// JakPlayers: a swamp frog's tongue (JakKermit) on Jak, its base in blocks from the session origin.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_tongue(mut env:JNIEnv,_:JClass,id:jlong,x:f32,y:f32,z:f32){
+ protect(&mut env,||{
+  let from=Vec3::new(x,y,z)*BLOCK;
+  if !from.is_finite(){return Err("Nonfinite tongue origin".into());}
+  let mut sessions=lock_sessions()?;
+  let session=sessions.live.get_mut(&(id as u64)).ok_or("Stale tongue session")?;
+  session.jak.apply_tongue(from);Ok(())
+ });
+}
+/// JakPlayers: Jak stood on a skatepark jump pad (JakJumpPad), its spring height in metres; whether it took.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_padBounce(mut env:JNIEnv,_:JClass,id:jlong,metres:f32)->jni::sys::jboolean{
+ protect(&mut env,||{
+  let mut sessions=lock_sessions()?;
+  let session=sessions.live.get_mut(&(id as u64)).ok_or("Stale pad session")?;
+  Ok(if session.jak.request_pad_bounce(jak_core::math::meters(metres)){1u8}else{0u8})
+ })
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hurt(mut env:JNIEnv,_:JClass,id:jlong,mode:jint,positioned:jni::sys::jboolean,x:f32,y:f32,z:f32){
@@ -234,7 +262,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_create(mut env:JNIE
   jak.control.set_body_dimensions(0.3*BLOCK,1.8*BLOCK);
   jak.size=0.64;
   // Minecraft step sizes in the source host (render_anim/src/jak.rs).
-  jak.foot_smooth_step=Some(1.25*BLOCK);jak.board_smooth_step=Some(1.1*BLOCK);jak.flut_smooth_step=jak.board_smooth_step;
+  // On foot he steps a stair or a slab, not a whole block (Adrii 05/11: was 1.25).
+  jak.foot_smooth_step=Some(0.6*BLOCK);jak.board_smooth_step=Some(1.1*BLOCK);jak.flut_smooth_step=jak.board_smooth_step;
   jak.edge_grab_min_height=2.*BLOCK;
   let mut s=lock_sessions()?;s.next+=1;let id=s.next;
   s.live.insert(id,Session{jak,world:World::default(),actors:Actors::default(),audio:audio::JakSoundQueue::default(),power_held:false,dark_pending:false,joint_rotations:Vec::new(),board_started:None});Ok(id as jlong)
@@ -245,6 +274,13 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
  let path:Result<String,_>=env.get_string(&root).map(Into::into);
  protect(&mut env,||{
   let root=std::path::PathBuf::from(path.map_err(|e|e.to_string())?);
+  configure_root(&root)
+ })
+}
+/// The animation and effect exports under `root` (the JNI `configure`), also for tests.
+pub fn configure_root(root:&std::path::Path)->Result<jint,String>{
+ let root=root.to_path_buf();
+ {
   effects::configure(&root)?;
   wheeled_host::configure(&root)?;hover_host::configure(&root)?;
   if ANIMS.get().is_some(){return Ok(ANIMS.get().unwrap().timed as jint);}
@@ -286,7 +322,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_configure(mut env:J
   let joints=body_joints::BodyJoints::load(&root,&mut authored)?;
   BODY_JOINTS.set(joints).map_err(|_|"body joint configuration raced")?;
   let timed=anims.timed;ANIMS.set(Arc::new(anims)).map_err(|_|"animation configuration raced")?;Ok(timed as jint)
- })
+ }
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_rebase(mut env:JNIEnv,_:JClass,id:jlong,x:f32,y:f32,z:f32){
@@ -363,7 +399,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    Ok(unsafe{std::slice::from_raw_parts(ptr,len)})
   };
   let b=bytes(&input)?;let c=bytes(&collision)?;let a=bytes(&actors)?;
-  if b.len()!=64||c.len()%40!=0||a.len()%32!=0||c.len()>16_000_000||a.len()>262144{return Err("invalid ABI buffer size".into());}
+  if b.len()!=64&&b.len()!=68||c.len()%40!=0||a.len()%32!=0||c.len()>16_000_000||a.len()>262144{return Err("invalid ABI buffer size".into());}
   if b[8..48].chunks_exact(4).any(|v|!f32::from_le_bytes(v.try_into().unwrap()).is_finite()){return Err("nonfinite input".into());}
   let mut s=lock_sessions()?;let s=s.live.get_mut(&(id as u64)).ok_or("stale session")?;
   s.world.tris.clear();
@@ -375,13 +411,18 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    let event=match (flags>>4)&3{1=>PatEvent::Rail,2=>PatEvent::Slide,_=>PatEvent::None};
    s.world.tris.push(Tri{v,pat:Pat{mode,material,event}});
   }
-  s.actors.boxes.clear();
-  for a in a.chunks_exact(32){let lo=vec(a,8)*BLOCK;let hi=vec(a,20)*BLOCK;if !lo.is_finite()||!hi.is_finite()||!lo.cmple(hi).all(){return Err("invalid actor bounds".into());}s.actors.boxes.push((u64::from_le_bytes(a[0..8].try_into().unwrap()),lo,hi));}
+  s.actors.boxes.clear();s.actors.reacting.clear();
+  for a in a.chunks_exact(32){let lo=vec(a,8)*BLOCK;let hi=vec(a,20)*BLOCK;if !lo.is_finite()||!hi.is_finite()||!lo.cmple(hi).all(){return Err("invalid actor bounds".into());}
+   let raw=u64::from_le_bytes(a[0..8].try_into().unwrap());let id=raw&ACTOR_ID;
+   if raw&ACTOR_DYING==0{s.actors.boxes.push((id,lo,hi));}
+   if raw&ACTOR_REACTING!=0{s.actors.reacting.push((id,lo,hi));}}
   let flags=read_u(b,48);
   if s.jak.board_carried && flags&1==0 { s.jak.remove_carried_board(); }
   s.jak.board_carried=flags&1!=0;s.jak.powers_blocked=flags&2!=0;
-  s.jak.fire_resistant=flags&4!=0;s.jak.slow_falling=flags&8!=0;
+  s.jak.fire_resistant=flags&4!=0;s.jak.slow_falling=flags&8!=0&&!s.jak.state.is_flut();
   s.jak.water=if flags&16!=0 {Some(read_f(b,40)*BLOCK)}else{None};
+  // JakPlayers: Jump Boost's scale (Rust jak.rs 3023, minecraft_survival.rs jump scale).
+  s.jak.jump_scale=if b.len()>=68 {let v=read_f(b,64);if v.is_finite(){v}else{1.0}}else{1.0};
   s.jak.movement_scale=read_f(b,44).clamp(0.,4.);
   let dark=read_f(b,52);let light=read_f(b,56);
   if !dark.is_finite()||!light.is_finite(){return Err("nonfinite eco".into());}
@@ -463,6 +504,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   let before_clip=s.jak.chan.anim;let before_frame=s.jak.chan.frame;
   let before_wings=s.jak.lightjak.wings.map(|w|w.chan);
   s.world.error=None;
+  let mut trail:Vec<String>=Vec::new();
   for _ in 0..steps{
    if let Some(body)=BODY_JOINTS.get(){
        body.sample(&mut s.jak,&mut s.joint_rotations);
@@ -476,6 +518,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
        }
    }
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
+   if *LEDGE_TRACE {let c=&s.jak.control;let w=c.wall_contact_pt/BLOCK;let n=c.wall_contact_normal;
+   trail.push(format!("{:.3},{:.3},{:.3},{} w{:.3},{:.3},{:.3} n{:.2},{:.2},{:.2} x{:.3}",s.jak.trans().y/BLOCK,s.jak.trans().z/BLOCK,c.transv.z/BLOCK,c.status,w.x,w.y,w.z,n.x,n.y,n.z,s.jak.trans().x/BLOCK));}
    if s.jak.state.is_board() {
     s.board_started.get_or_insert(s.jak.time);
    } else {
@@ -519,6 +563,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    let forward=q*Vec3::Z;
    json!({"pos":pos(at),"yaw":(-forward.x).atan2(forward.z).to_degrees()})
   });
+  let ledge_why=if *LEDGE_TRACE && matches!(s.jak.state,jak_core::State::Jump{..}|jak_core::State::Falling{..}){s.jak.ledge_why(&mut s.world)}else{String::new()};
   let j=&s.jak;
   let ladder_cycle=j.chan.is_any(&[jak_core::anim::LADDER_UP,jak_core::anim::LADDER_DOWN]);
   let frame_period=if ladder_cycle||matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}) {
@@ -592,7 +637,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
    json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  Ok(json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"hurt":{"ticks":j.time,"invulnerableUntil":j.hurt_invulnerable_until(),"burnStart":j.hurt_fx.burn_start,"shockUntil":j.hurt_fx.shock_until},"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed}).to_string())
+  let mut out=json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"hurt":{"ticks":j.time,"invulnerableUntil":j.hurt_invulnerable_until(),"burnStart":j.hurt_fx.burn_start,"shockUntil":j.hurt_fx.shock_until},"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed});out["freezeClap"]=json!((j.lightjak.freeze_clap>jak_core::lightjak::LONG_AGO).then_some(j.lightjak.freeze_clap));out["nukeFlash"]=json!(j.weapons.flash.map(|at|(j.time-at) as f32/300.));out["darkVictims"]=json!(j.dark_shock.tints.iter().map(|(key,f)|json!([key,f])).collect::<Vec<_>>());if *LEDGE_TRACE {out["ledgeWhy"]=json!(ledge_why);out["trail"]=json!(trail);}Ok(out.to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
 }
@@ -654,5 +699,48 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_mountControl(
 mod tests{
  use super::*;
  #[test] fn segment_collision_finds_first_entry_and_rejects_parallel_outside(){assert_eq!(segment_aabb(Vec3::new(-2.,0.,0.),Vec3::X*4.,Vec3::splat(-1.),Vec3::ONE),Some(0.25));assert!(segment_aabb(Vec3::new(0.,2.,0.),Vec3::X,Vec3::splat(-1.),Vec3::ONE).is_none());}
- #[test] fn actor_sweep_chooses_nearest_entity_instead_of_iteration_order(){let mut a=Actors{boxes:vec![(2,Vec3::new(7.,-1.,-1.),Vec3::new(8.,1.,1.)),(1,Vec3::new(2.,-1.,-1.),Vec3::new(3.,1.,1.))]};assert_eq!(a.actor_hit(Vec3::ZERO,Vec3::X*10.,0.).unwrap().0,1);}
+ #[test] fn actor_sweep_chooses_nearest_entity_instead_of_iteration_order(){let mut a=Actors{boxes:vec![(2,Vec3::new(7.,-1.,-1.),Vec3::new(8.,1.,1.)),(1,Vec3::new(2.,-1.,-1.),Vec3::new(3.,1.,1.))],reacting:vec![]};assert_eq!(a.actor_hit(Vec3::ZERO,Vec3::X*10.,0.).unwrap().0,1);}
+}
+
+#[cfg(test)]
+mod ledge_with_real_animations {
+ use super::*;
+ use jak_core::collide::{Tri,Pat,PatMode,CollideWorld};
+ struct Cubes(Vec<Tri>);
+ impl CollideWorld for Cubes{fn fill(&mut self,_:Vec3,_:Vec3,out:&mut Vec<Tri>){out.extend_from_slice(&self.0);}}
+ /// The punch fixture's ledge phase with the exported animations
+ /// (`JAKMC_ASSETS`, the jakmc.properties `assets` path): a run and a jump
+ /// at a two-block wall of Minecraft cubes.
+ #[test]
+ fn running_jump_at_two_block_wall(){
+  let Ok(root)=std::env::var("JAKMC_ASSETS") else {eprintln!("JAKMC_ASSETS unset");return;};
+  configure_root(std::path::Path::new(&root)).unwrap();
+  let b=BLOCK;let mut tris=Vec::new();
+  let mut cube=|x:f32,y:f32,z:f32|{
+   let (x0,y0,z0,x1,y1,z1)=(x*b,y*b,z*b,(x+1.)*b,(y+1.)*b,(z+1.)*b);
+   let mut q=|v:[Vec3;4],mode|{let pat=Pat{mode,..Default::default()};tris.push(Tri{v:[v[0],v[1],v[2]],pat});tris.push(Tri{v:[v[0],v[2],v[3]],pat});};
+   q([Vec3::new(x0,y1,z0),Vec3::new(x0,y1,z1),Vec3::new(x1,y1,z1),Vec3::new(x1,y1,z0)],PatMode::Ground);
+   q([Vec3::new(x0,y0,z0),Vec3::new(x1,y0,z0),Vec3::new(x1,y0,z1),Vec3::new(x0,y0,z1)],PatMode::Wall);
+   q([Vec3::new(x0,y0,z0),Vec3::new(x0,y0,z1),Vec3::new(x0,y1,z1),Vec3::new(x0,y1,z0)],PatMode::Wall);
+   q([Vec3::new(x1,y0,z1),Vec3::new(x1,y0,z0),Vec3::new(x1,y1,z0),Vec3::new(x1,y1,z1)],PatMode::Wall);
+   q([Vec3::new(x1,y0,z0),Vec3::new(x0,y0,z0),Vec3::new(x0,y1,z0),Vec3::new(x1,y1,z0)],PatMode::Wall);
+   q([Vec3::new(x0,y0,z1),Vec3::new(x1,y0,z1),Vec3::new(x1,y1,z1),Vec3::new(x0,y1,z1)],PatMode::Wall);
+  };
+  for x in -5..=5 {for z in -5..=6 {cube(x as f32,-1.,z as f32);} for y in 0..std::env::var("JAKMC_WALL_H").ok().and_then(|v|v.parse().ok()).unwrap_or(2) {cube(x as f32,y as f32,4.);}}
+  let mut world=Cubes(tris);
+  let mut jak=Jak::new(Vec3::new(0.5*b,0.,-0.5*b),0.);
+  if let Some(anims)=ANIMS.get(){jak.anims=anims.clone();}
+  jak.control.set_body_dimensions(0.3*b,1.8*b);jak.size=0.64;
+  jak.foot_smooth_step=Some(1.25*b);jak.board_smooth_step=Some(1.1*b);jak.flut_smooth_step=jak.board_smooth_step;jak.edge_grab_min_height=2.*b;
+  let mut log=Vec::new();let mut rotations=Vec::new();let mut actors=Actors::default();
+  for f in 0..105 {
+   let x=f>=24&&f<60&&std::env::var("JAKMC_NOJUMP").is_err();
+   let input=PadInput{held:if x{1}else{0},pressed:if f==24{1}else{0},left:[0.,1.],..Default::default()};
+   if std::env::var("JAKMC_BODY").is_ok(){if let Some(body)=BODY_JOINTS.get(){body.sample(&mut jak,&mut rotations);}}
+   jak.movement_scale=std::env::var("JAKMC_SCALE").ok().and_then(|v|v.parse().ok()).unwrap_or(jak.movement_scale);
+   if std::env::var("JAKMC_ACTORS").is_ok(){jak.step(&input,&mut world,Some(&mut actors));}else{jak.step(&input,&mut world,None);}
+   if f>=40&&f<56 {{let c=&jak.control;let w=c.wall_contact_pt/b;let n=c.wall_contact_normal;log.push(format!("f{} {:.3},{:.3},{:.3},{} w{:.3},{:.3},{:.3} n{:.2},{:.2},{:.2}",f,jak.trans().y/b,jak.trans().z/b,c.transv.z/b,c.status,w.x,w.y,w.z,n.x,n.y,n.z));}}
+  }
+  eprintln!("real anims: {}",log.join(" "));
+ }
 }

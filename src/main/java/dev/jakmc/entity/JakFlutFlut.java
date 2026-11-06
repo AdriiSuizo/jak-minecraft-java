@@ -45,6 +45,10 @@ public final class JakFlutFlut extends JakLeaper {
     private int temper;
     private int lay=6000;
     private int rear;
+    // Rust flut_flut.rs: a panic's ticks left and whom it runs from; a failed taming's panic once the rear ends.
+    private int panic,panicAfterRear;private net.minecraft.world.phys.Vec3 panicFrom;
+    // Rust flut_flut.rs WALK, RUN (m/s; its metre is 25/36 of a block), LEASH_FOLLOW (blocks)
+    static final float WALK=5,RUN=16;static final double METRE=25/36.0,LEASH_FOLLOW=5;
 
     public JakFlutFlut(EntityType<? extends JakFlutFlut> type,Level level){super(type,level);}
 
@@ -68,8 +72,10 @@ public final class JakFlutFlut extends JakLeaper {
     @Override protected boolean canBeABaby(){return true;}
     @Override protected void registerGoals(){
         super.registerGoals();
+        goalSelector.addGoal(0,new Panic());
         goalSelector.addGoal(1,new BreedGoal(this,1));
         goalSelector.addGoal(2,new TemptGoal(this,1,this::isFood,false));
+        goalSelector.addGoal(3,new FollowAdult());
     }
     @Override protected void defineSynchedData(SynchedEntityData.Builder builder){
         super.defineSynchedData(builder);
@@ -102,9 +108,69 @@ public final class JakFlutFlut extends JakLeaper {
             finalizeSpawnChildFromBreeding(level,other,null);
         }
     }
+    /** Navigation's speed modifier for a pace in the Rust's m/s (ground travel settles at s·0.546/0.454 a tick). */
+    double pace(float metresPerSecond){return metresPerSecond*METRE/20/(.546/.454)/getAttributeValue(Attributes.MOVEMENT_SPEED);}
+    // Rust flut_flut.rs, hit: one that lives through it panics 5 s, thrown off the blow at 6 m/s and up at 5,
+    // its love gone.
+    @Override public boolean hurtServer(ServerLevel level,net.minecraft.world.damagesource.DamageSource source,float amount){
+        boolean hurt=super.hurtServer(level,source,amount);
+        if(hurt&&isAlive()&&riderId()<0){
+            var from=source.getEntity()!=null?source.getEntity().position():source.getSourcePosition()!=null?source.getSourcePosition():position().add(getViewVector(1));
+            startPanic(from,100);
+            var away=position().subtract(from).multiply(1,0,1);
+            away=away.lengthSqr()<1e-6?getViewVector(1).multiply(-1,0,-1):away.normalize();
+            setDeltaMovement(away.scale(6*METRE/20).add(0,5*METRE/20,0));
+            needsSync=true;
+            resetLove();
+        }
+        return hurt;
+    }
+    void startPanic(net.minecraft.world.phys.Vec3 from,int ticks){panic=ticks;panicFrom=from;getNavigation().stop();}
+    // Rust flut_flut.rs, death: an adult leaves 1 to 3 raw chicken, 0 to 2 feathers and its saddle; a chick nothing.
+    @Override protected void dropCustomDeathLoot(ServerLevel level,net.minecraft.world.damagesource.DamageSource source,boolean player){
+        super.dropCustomDeathLoot(level,source,player);
+        if(isBaby())return;
+        spawnAtLocation(level,new ItemStack(Items.CHICKEN,1+random.nextInt(3)));
+        int feathers=random.nextInt(3);if(feathers>0)spawnAtLocation(level,new ItemStack(Items.FEATHER,feathers));
+        if(saddled())spawnAtLocation(level,new ItemStack(Items.SADDLE));
+    }
+    // Rust flut_flut.rs LEASH_FOLLOW: on a lead it keeps within 5 blocks (12 snaps it, as vanilla).
+    @Override public double leashElasticDistance(){return LEASH_FOLLOW;}
+    /** Rust flut_flut.rs, State::Panic: runs at RUN·0.7 for a point 6 blocks off whoever it fears, weaving by sin(t·1.7 + id)·0.6. */
+    private final class Panic extends net.minecraft.world.entity.ai.goal.Goal{
+        Panic(){setFlags(java.util.EnumSet.of(Flag.MOVE));}
+        @Override public boolean canUse(){return panic>0&&panicFrom!=null&&riderId()<0;}
+        @Override public boolean canContinueToUse(){return canUse();}
+        @Override public boolean requiresUpdateEveryTick(){return true;}
+        @Override public void tick(){
+            var away=position().subtract(panicFrom).multiply(1,0,1);
+            away=away.lengthSqr()<1e-6?getViewVector(1).multiply(1,0,1):away.normalize();
+            double weave=Math.sin(tickCount/20.0*1.7+getId())*.6;
+            var turned=away.yRot((float)weave);
+            var to=position().add(turned.scale(6));
+            getNavigation().moveTo(to.x,to.y,to.z,pace(RUN*.7f));
+        }
+        @Override public void stop(){getNavigation().stop();}
+    }
+    /** Rust flut_flut.rs: a chick goes after the nearest grown bird when it is 3 to 16 blocks off, at WALK. */
+    private final class FollowAdult extends net.minecraft.world.entity.ai.goal.Goal{
+        private JakFlutFlut adult;
+        FollowAdult(){setFlags(java.util.EnumSet.of(Flag.MOVE));}
+        @Override public boolean canUse(){
+            if(!isBaby()||riderId()>=0||panic>0)return false;
+            adult=level().getEntitiesOfClass(JakFlutFlut.class,getBoundingBox().inflate(16),b->b!=JakFlutFlut.this&&!b.isBaby()&&b.isAlive())
+                .stream().min(java.util.Comparator.comparingDouble(b->b.distanceToSqr(JakFlutFlut.this))).orElse(null);
+            if(adult==null)return false;double d=distanceTo(adult);return d>3&&d<=16;
+        }
+        @Override public boolean canContinueToUse(){if(adult==null||!adult.isAlive()||!isBaby())return false;double d=distanceTo(adult);return d>3&&d<=16;}
+        @Override public void tick(){if(tickCount%10==0)getNavigation().moveTo(adult,pace(WALK));}
+        @Override public void stop(){adult=null;getNavigation().stop();}
+    }
     @Override public void aiStep(){
         super.aiStep();
         if(rear>0)rear--;
+        if(panic>0)panic--;
+        if(panicAfterRear>0&&rear==0){var player=level().getNearestPlayer(this,8);startPanic(player!=null?player.position():position().add(getViewVector(1)),panicAfterRear);panicAfterRear=0;}
         if(riderId()<0&&!onGround()&&!isInWater()&&getDeltaMovement().y<-.128){
             var velocity=getDeltaMovement();
             setDeltaMovement(velocity.x,-.128,velocity.z);
@@ -147,7 +213,7 @@ public final class JakFlutFlut extends JakLeaper {
                     if(success){
                         entityData.set(FLAGS,entityData.get(FLAGS)|TAMED);
                         setPersistenceRequired();
-                    }else temper=Math.min(100,temper+5);
+                    }else{temper=Math.min(100,temper+5);panicAfterRear=60;}
                     level().broadcastEntityEvent(this,(byte)(success?61:6));
                     makeSound(success?SoundEvents.HORSE_AMBIENT:SoundEvents.HORSE_ANGRY);
                     player.sendSystemMessage(Component.translatable(success?"message.jakmc.flut_saddle":"message.jakmc.flut_resists"));

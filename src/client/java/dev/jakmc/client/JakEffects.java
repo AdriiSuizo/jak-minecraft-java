@@ -26,7 +26,14 @@ public final class JakEffects {
  private record Decoration(BlockPos pos,int kind){}
  private static final Map<Decoration,Owner> DECORATIONS=new HashMap<>();
  private static final List<Owner> BURSTS=new ArrayList<>();
- private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18,SPYDROID=19;
+ private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18,SPYDROID=19,DARK_ECO_DEATH=20,KERMIT_PULSE=21,KERMIT_IMPACT=22;
+ /** kermit.gc: each frog's pulse on its tongue, where it was last drawn. */
+ private static final Map<Integer,Owner> PULSES=new HashMap<>();
+ private static final Map<Integer,Vec3> PULSE_AT=new HashMap<>();
+ /** For the scenes: frog pulses drawn and their impacts. */
+ public static int kermitPulses,kermitImpacts;
+ /** For the scenes: dark eco death bursts started. */
+ public static int darkEcoDeaths;
  private static Owner sandstorm;
  private static net.minecraft.client.multiplayer.ClientLevel weatherWorld;
  private static long lastDust;
@@ -67,12 +74,34 @@ public final class JakEffects {
     long handle=NativeJak.fxCreateDecor(SPYDROID);
     if(handle!=0){BURSTS.add(new Owner(packet.at(),handle));spydroidBursts++;}
    });
+  // dark_eco.rs died_in_it: group-dark-eco-death where the player died in it.
+  net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+   dev.jakmc.network.JakPackets.DarkEcoDeath.TYPE,(packet,context)->{
+    var level=context.client().level;
+    if(level==null||!level.dimension().identifier().equals(packet.dimension()))return;
+    long handle=NativeJak.fxCreateDecor(DARK_ECO_DEATH);
+    if(handle!=0){BURSTS.add(new Owner(packet.at(),handle));darkEcoDeaths++;}
+   });
+  // kermit-pulse-impact: group-kermit-pulse-impact where the pulse touched.
+  dev.jakmc.entity.JakEnemy.kermitImpact=frog->{
+   Vec3 at=PULSE_AT.remove(frog.getId());if(at==null)return;
+   long handle=NativeJak.fxCreateDecor(KERMIT_IMPACT);
+   if(handle!=0){BURSTS.add(new Owner(at,handle));kermitImpacts++;}
+  };
   ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->clear());
  }
  // Entity submits precede COLLECT_SUBMITS. Consume the same frame's visible joint once.
  public static void gunSocket(int entity,Vec3 muzzle,Vec3 laser,Vec3 end){
   var owner=OWNERS.get(entity);if(owner==null)return;
   owner.gunSocket=muzzle.subtract(owner.origin);owner.laserSocket=laser.subtract(owner.origin);owner.laserEnd=end.subtract(owner.origin);
+ }
+ /** A frog's pulse this frame (JakEnemyRenderer), at `at`. */
+ public static void kermitPulse(int frog,Vec3 at){
+  var owner=PULSES.get(frog);
+  if(owner!=null&&owner.origin.distanceToSqr(at)>64*64){owner.close();PULSES.remove(frog);owner=null;}
+  if(owner==null){long handle=NativeJak.fxCreateDecor(KERMIT_PULSE);if(handle==0)return;owner=new Owner(at,handle);PULSES.put(frog,owner);kermitPulses++;}
+  Vec3 d=at.subtract(owner.origin);NativeJak.fxDecorAt(owner.handle,(float)d.x,(float)d.y,(float)d.z);
+  owner.received=System.nanoTime();PULSE_AT.put(frog,at);
  }
  public static void boardSocket(int entity,Vec3 position){
   var owner=OWNERS.get(entity);
@@ -88,7 +117,7 @@ public final class JakEffects {
   fx.received=System.nanoTime();
  }
  public static void local(int entity,Vec3 origin,JsonArray commands){JsonObject packet=new JsonObject();packet.add("effects",commands);receive(entity,origin,packet);}
- public static void clear(){closeSandstorm();weatherWorld=null;for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
+ public static void clear(){for(var fx:PULSES.values())fx.close();PULSES.clear();PULSE_AT.clear();closeSandstorm();weatherWorld=null;for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
  private static Identifier texture(int index){
   if(TEXTURES.containsKey(index))return TEXTURES.get(index);if(MISSING.contains(index))return null;
   String name=names[index];
@@ -192,7 +221,7 @@ public final class JakEffects {
   var client=Minecraft.getInstance();
   if(client.level!=weatherWorld){closeSandstorm();weatherWorld=client.level;}
   float dust=JakAtmosphere.dust();
-  if(client.level==null||OWNERS.isEmpty()&&DECORATIONS.isEmpty()&&BURSTS.isEmpty()&&sandstorm==null&&dust<=.01f)return;
+  if(client.level==null||OWNERS.isEmpty()&&DECORATIONS.isEmpty()&&BURSTS.isEmpty()&&PULSES.isEmpty()&&sandstorm==null&&dust<=.01f)return;
   manifest();
   var camera=context.levelState().cameraRenderState;long now=System.nanoTime();drawnVertices=0;
   Vector3f forward=camera.orientation.transform(new Vector3f(0,0,-1)),up=camera.orientation.transform(new Vector3f(0,1,0));
@@ -236,6 +265,13 @@ public final class JakEffects {
    else if(kind==PROJECTOR)drawnProjectorVertices+=drawnVertices-before;
    else drawnVentVertices+=drawnVertices-before;
   }
+  // A pulse not placed this last tenth of a second has gone (its frog let go, or is out of view).
+  PULSES.entrySet().removeIf(entry->{
+   var fx=entry.getValue();
+   if(now-fx.received>100_000_000L){fx.close();return true;}
+   int before=drawnVertices;drawOwner(context,client,fx,forward,up,now);drawnBurstVertices+=drawnVertices-before;
+   return false;
+  });
   BURSTS.removeIf(fx->{
    if(now-fx.received>6_000_000_000L){fx.close();return true;}
    int before=drawnVertices;

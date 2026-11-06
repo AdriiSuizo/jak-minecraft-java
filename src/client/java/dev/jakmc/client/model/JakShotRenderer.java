@@ -60,6 +60,9 @@ public final class JakShotRenderer {
     stack.mulPose(new org.joml.Matrix4f().rotation(rotation));stack.scale((float)scale.x,(float)scale.y,(float)scale.z);
     var at=BlockPos.containing(position);int light=net.minecraft.util.LightCoordsUtil.pack(client.level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK,at),client.level.getBrightness(net.minecraft.world.level.LightLayer.SKY,at));
     if(interpolate)interpolatedModels++;drawnModels++;model.submit(skeleton,stack,context.submitNodeCollector(),light,interpolate?org.joml.Math.lerp(shot.get("alpha").getAsFloat(),next.raw.get("alpha").getAsFloat(),fraction):shot.get("alpha").getAsFloat());stack.popPose();
+    // The cap on the mushroom's top: the sphere is 1.7 times its curves, and its alpha the square of the strip's fade.
+    if(name.equals("gun-nuke-sphere")){float shown=interpolate?org.joml.Math.lerp(shot.get("alpha").getAsFloat(),next.raw.get("alpha").getAsFloat(),fraction):shot.get("alpha").getAsFloat();
+     NukeCap.submit(stack,context.submitNodeCollector(),camera.pos,position,(float)scale.x/1.7f,(float)scale.y/1.7f,(float)Math.sqrt(Math.max(0,shown)));}
    }
   }
  });}

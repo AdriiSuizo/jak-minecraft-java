@@ -19,6 +19,8 @@ public final class MinecraftCollision {
     /** Called synchronously on the Minecraft server thread, including distant shots. */
     public static final class Query {
         final Level level;final Entity actor;public Vec3 origin;
+        /** Liquid tops as ground (the HellCat's: Rust minecraft_interaction.rs liquid surfaces, CraftWorld::fill). */
+        public boolean liquids;
         long tick=Long.MIN_VALUE;
         final DirectBufferArena arena=new DirectBufferArena(16*1024*1024);
         final Boxes boxes=new Boxes();
@@ -88,7 +90,7 @@ public final class MinecraftCollision {
                     if(blockEntity instanceof JakAssemblies.RailAnchor anchor)anchors.add(anchor);
             }
             anchors.sort(java.util.Comparator.comparingLong(anchor->anchor.getBlockPos().asLong()));
-            return anchors.stream().flatMap(anchor->anchor.lines().stream()).limit(128).toList();
+            return dev.jakmc.content.JakGrindRail.lines(server,at,anchors.stream().flatMap(anchor->anchor.lines().stream()).limit(128).toList());
         }
 
         public ByteBuffer triangles(float x,float y,float z,float X,float Y,float Z){
@@ -98,7 +100,7 @@ public final class MinecraftCollision {
             return cache.computeIfAbsent(r,key->{
                 long volume=(long)(key.X-key.x+1)*(key.Y-key.y+1)*(key.Z-key.z+1);
                 if(volume<0||volume>262144)throw new IllegalArgumentException("Collision query volume exceeds native budget: "+volume);
-                return MinecraftCollision.triangles(level,actor,origin,new AABB(key.x,key.y,key.z,key.X,key.Y,key.Z),boxes,arena);
+                return MinecraftCollision.triangles(level,actor,origin,new AABB(key.x,key.y,key.z,key.X,key.Y,key.Z),boxes,arena,liquids);
             });
         }
     }
@@ -118,8 +120,12 @@ public final class MinecraftCollision {
             values[used++]=(float)X;values[used++]=(float)Y;values[used++]=(float)Z;
         }
     }
-    public static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region){return triangles(level,actor,origin,region,new Boxes(),null);}
-    private static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region,Boxes boxes,DirectBufferArena arena){
+    public static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region){return triangles(level,actor,origin,region,new Boxes(),null,false);}
+    /** Water, lava or dark eco: what a liquid top is made of. */
+    public static boolean craftLiquid(net.minecraft.world.level.material.FluidState f){
+        return f.is(net.minecraft.tags.FluidTags.WATER)||f.is(net.minecraft.tags.FluidTags.LAVA)||f.getType().isSame(dev.jakmc.content.darkeco.DarkEco.SOURCE);
+    }
+    private static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region,Boxes boxes,DirectBufferArena arena,boolean liquids){
         boxes.used=0;boxes.tracks.clear();
         int trackBytes=0;var context=CollisionContext.of(actor);
         for(BlockPos pos:BlockPos.betweenClosed(BlockPos.containing(region.minX,region.minY,region.minZ),BlockPos.containing(region.maxX,region.maxY,region.maxZ))){
@@ -127,6 +133,14 @@ public final class MinecraftCollision {
             // A missing column remains solid, never air beneath fast-moving actors.
             if(!level.hasChunkAt(pos)){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z,0);continue;}
             var state=level.getBlockState(pos);
+            // stand-in: Rust takes each column's top cell's fluid_top quad with its corner heights; here a flat top.
+            if(liquids){
+                var fluid=level.getFluidState(pos);
+                if(craftLiquid(fluid)&&!craftLiquid(level.getFluidState(pos.above()))){
+                    double top=y+fluid.getHeight(level,pos);
+                    boxes.add(x-origin.x,top-.02-origin.y,z-origin.z,x+1-origin.x,top-origin.y,z+1-origin.z,0);
+                }
+            }
             var track=JakAssemblies.trackMesh(state);
             if(track!=null){
                 trackBytes=Math.addExact(trackBytes,track.capacity());
@@ -167,9 +181,14 @@ public final class MinecraftCollision {
         return actors(level,owner,origin,region,arena,e->true);
     }
     public static ByteBuffer actors(Level level,Entity owner,Vec3 origin,AABB region,DirectBufferArena arena,java.util.function.Predicate<Entity> extra) {
-        var entities=level.getEntities(owner,region,e->e.isAlive()&&e.isPickable()&&extra.test(e)&&(!(e instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()!=owner.getId()));
+        // A dying body stays (flagged) for what still reacts to the blow: Dark Jak's lightning (ActorWorld::actor_reacting).
+        var entities=level.getEntities(owner,region,e->(e.isAlive()&&e.isPickable()||e instanceof net.minecraft.world.entity.LivingEntity l&&l.deathTime>0)&&extra.test(e)&&(!(e instanceof dev.jakmc.entity.JakLeaper mount)||mount.riderId()!=owner.getId()));
         ByteBuffer data=arena==null?NativeJak.buffer(entities.size()*32):arena.acquire(entities.size()*32);
-        for(Entity e:entities){AABB b=e.getBoundingBox().move(-origin.x,-origin.y,-origin.z);data.putLong(e.getId());
+        for(Entity e:entities){AABB b=e.getBoundingBox().move(-origin.x,-origin.y,-origin.z);
+            long id=e.getId();
+            // jak-jni ACTOR_REACTING (hurt or dying: "hasRedOverlay") and ACTOR_DYING.
+            if(e instanceof net.minecraft.world.entity.LivingEntity l){if(l.hurtTime>0||l.deathTime>0)id|=1L<<61;if(!l.isAlive())id|=1L<<62;}
+            data.putLong(id);
             data.putFloat((float)b.minX).putFloat((float)b.minY).putFloat((float)b.minZ);
             data.putFloat((float)b.maxX).putFloat((float)b.maxY).putFloat((float)b.maxZ);
         }

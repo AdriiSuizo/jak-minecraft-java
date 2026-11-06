@@ -1,0 +1,8 @@
+{
+  "type": "jakmc:city",
+  "city": "sandover_swamp",
+  "biomes": "#jakmc:has_sandover_swamp",
+  "step": "surface_structures",
+  "spawn_overrides": {},
+  "terrain_adaptation": "none"
+}

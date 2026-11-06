@@ -21,9 +21,10 @@ struct Vehicles {
 }
 static LIVE: OnceLock<Mutex<Vehicles>> = OnceLock::new();
 fn vehicles() -> Result<std::sync::MutexGuard<'static, Vehicles>, String> {
-    LIVE.get_or_init(Mutex::default)
-        .lock()
-        .map_err(|e| e.to_string())
+    // A panic in one vehicle's step poisons the lock; its Java owner closes that
+    // vehicle, so the others keep driving instead of failing forever.
+    let mutex = LIVE.get_or_init(Mutex::default);
+    match mutex.lock() { Ok(guard) => Ok(guard), Err(poison) => { mutex.clear_poison(); Ok(poison.into_inner()) } }
 }
 
 pub fn configure(root: &std::path::Path) -> Result<(), String> {

@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "pattern": [
+    "SS",
+    "SS"
+  ],
+  "key": {
+    "S": "jak:spargus_stucco"
+  },
+  "result": {
+    "id": "jak:spargus_bricks",
+    "count": 4
+  }
+}

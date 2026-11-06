@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:iron_nugget",
+    "minecraft:iron_nugget",
+    "minecraft:copper_ingot",
+    "minecraft:gunpowder"
+  ],
+  "result": {
+    "id": "jakmc:yellow_ammo",
+    "count": 10
+  }
+}

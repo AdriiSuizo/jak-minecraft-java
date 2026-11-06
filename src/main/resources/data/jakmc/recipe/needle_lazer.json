@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "jakmc:arc_wielder",
+    "jakmc:blue_ammo",
+    "jakmc:blue_ammo",
+    "minecraft:diamond",
+    "minecraft:diamond",
+    "minecraft:amethyst_shard"
+  ],
+  "result": {
+    "id": "jakmc:needle_lazer",
+    "count": 1
+  }
+}

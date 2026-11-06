@@ -160,6 +160,7 @@ impl Jak {
                         pos: center,
                         dir: forward,
                         damage: danger.damage(),
+                        sphere: None,
                     });
                 }
             }
@@ -173,6 +174,7 @@ impl Jak {
                         pos: center + forward * sphere.radius,
                         dir: forward,
                         damage: danger.damage(),
+                        sphere: Some((center, sphere.radius)),
                     });
                 }
             }

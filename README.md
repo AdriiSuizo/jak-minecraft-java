@@ -1,34 +1,84 @@
 # Jak Worlds for Minecraft Java
 
-## Installer / Instalador (Windows)
+**[Español](#español) · [English](#english)**
 
-Download the installer RAR from the [private releases](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
-Extract the whole archive and run `JakMod-Installer.exe`. Choose **es** or **en**,
-confirm the detected OpenGOAL folder and the Minecraft folder, then install.
-The official launcher will offer **26.3.jakmod**. The installer uses your own
-Jak 1, II and 3 installation to create all game resources locally.
+> **Requisito / Requirement:** OpenGOAL con **los tres juegos instalados**: Jak and Daxter: The Precursor Legacy, Jak II y Jak 3. Usa tus propias copias. / OpenGOAL with **all three games installed**: Jak and Daxter: The Precursor Legacy, Jak II and Jak 3, from your own copies.
 
-Descarga el RAR desde las [versiones privadas](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
-Extrae todo el archivo y ejecuta `JakMod-Installer.exe`. Elige **es** o **en**,
-confirma las carpetas detectadas e instala. El launcher oficial ofrecerá
-**26.3.jakmod**. Usa tus propios Jak 1, II y 3 instalados en OpenGOAL para
-generar los recursos localmente.
+---
 
-Launch vanilla Minecraft Java **26.3** once before installing; close the game
-and launcher while installing. Normal saves are preserved in their existing
-folder. JakMod uses `.minecraft/instances/jakmod`. Keep OpenGOAL installed.
-No game files are included in Git or the downloadable installer.
-See [Español](installer/README-ES.md) / [English](installer/README-EN.md).
+## Español
 
-Maintainers: `python tools/build_installer.py` builds a code-only mod,
-the standalone bilingual installer and a real RAR. The build-only construction
-source is included under `tools/content-source`; the old mashup checkout is
-not required. Run `python installer/test_install.py` and
-`python tools/audit_distribution.py --package dist/JakMod-Installer` before
-uploading. Generated assets and final locally merged game JARs stay private.
+Mod para **Minecraft Java 26.3** (Fabric) que convierte al jugador en Jak, con Daxter al hombro. Trae sus movimientos, armas, poderes, vehículos, enemigos y ciudades de la trilogía original, con los modelos, animaciones, partículas y sonidos originales.
 
-Pending gameplay fixes and parity work / Pendientes de jugabilidad y paridad:
-[FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). The installer does not certify complete gameplay parity.
+El mod no incluye **ningún archivo de los juegos**. Su instalador los genera en tu ordenador a partir de tu instalación de OpenGOAL. Sin los tres juegos instalados en OpenGOAL, el instalador no continúa.
+
+### Qué incluye
+- **Jak y Daxter:** el movimiento y el combate originales de Jak (saltos, doble salto, rodar, puñetazo, patada giratoria, agarrarse a bordes, nadar, escaleras), con Daxter al hombro.
+- **Poderes:** Jak oscuro (incluida la bomba) y Jak de luz (volar, escudo, parar el tiempo, curar).
+- **Armas:** las 12 armas Morph de Jak 3, con munición de eco que se gasta del inventario.
+- **Turbotabla (JET-Board)**, con barandillas para deslizarse y saltadores del skatepark.
+- **Vehículos:** HellCat, Helldog, zoomers de Villarefugio, coches del desierto, Leapers y Flut Flut, que se puede domar y criar.
+- **Enemigos:** 18 tipos de Jak 1 y Jak 3, más los guardias Krimson de Jak II. Cada uno vive en su bioma y tiene su nido.
+- **Lugares que se generan en mundos normales:** Villarefugio (Haven City) con su tráfico y ciudadanos, Spargus en el desierto, Sandover y la cueva del cráter.
+- **Ciudadanos** con comercio, recetas para todo lo de Jak, eco de colores y respiraderos de eco.
+- **Mando** (PlayStation/Xbox) y teclado. Los controles están en [CONTROLES.md](CONTROLES.md).
+
+### Requisitos
+- Windows 10/11 de 64 bits.
+- Minecraft Java **26.3** (launcher oficial), abierto al menos una vez antes de instalar.
+- **OpenGOAL con Jak 1, Jak II y Jak 3 instalados**, sin moverlos después de instalar el mod.
+- Internet durante la instalación (para descargar Fabric y Fabric API).
+
+### Instalación
+1. Descarga el RAR de la última versión en [Releases](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
+2. Extrae **todo** el RAR en una carpeta.
+3. Cierra Minecraft y su launcher y ejecuta `JakMod-Installer.exe`.
+4. Elige **es**, comprueba la carpeta de OpenGOAL y la de Minecraft y pulsa **Instalar JakMod**. La primera vez tarda varios minutos.
+5. En el launcher, elige la instalación **26.3.jakmod**.
+
+Tus mundos normales no se tocan: JakMod guarda los suyos en `.minecraft\instances\jakmod`. La guía completa está en [installer/README-ES.md](installer/README-ES.md).
+
+### Estado
+Versión de desarrollo (`0.1.0-dev`). Los pendientes están en [PENDIENTE-PORT.md](PENDIENTE-PORT.md) y [docs/FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). No es un producto oficial de Naughty Dog, Sony, Mojang, Microsoft ni OpenGOAL.
+
+---
+
+## English
+
+A **Minecraft Java 26.3** (Fabric) mod that turns the player into Jak, with Daxter on his shoulder. It brings the original trilogy's moves, guns, powers, vehicles, enemies and cities, using the original models, animations, particles and sounds.
+
+The mod ships **no game files at all**. Its installer builds them on your PC from your OpenGOAL installation. Without all three games installed in OpenGOAL, the installer will not continue.
+
+### What's included
+- **Jak and Daxter:** Jak's original movement and combat (jumps, double jump, roll, punch, spin kick, ledge grab, swimming, ladders), with Daxter on his shoulder.
+- **Powers:** Dark Jak (including the bomb) and Light Jak (flight, shield, time freeze, healing).
+- **Guns:** all 12 Jak 3 Morph Guns, with eco ammo taken from your inventory.
+- **JET-Board**, with grind rails and the skatepark jump pads.
+- **Vehicles:** HellCat, Helldog, Haven zoomers, desert cars, Leapers and the Flut Flut, which can be tamed and bred.
+- **Enemies:** 18 types from Jak 1 and Jak 3, plus Jak II's Krimson Guards. Each lives in its own biome and has its own nests.
+- **Places generated in normal worlds:** Haven City with its traffic and citizens, Spargus in the desert, Sandover and the crater cave.
+- **Citizens** with trades, recipes for all of Jak's gear, coloured eco and eco vents.
+- **Controller** (PlayStation/Xbox) and keyboard. Controls are in [CONTROLES.md](CONTROLES.md).
+
+### Requirements
+- Windows 10/11, 64-bit.
+- Minecraft Java **26.3** (official launcher), launched at least once before installing.
+- **OpenGOAL with Jak 1, Jak II and Jak 3 installed**. Do not move them after installing the mod.
+- Internet during installation (to download Fabric and Fabric API).
+
+### Installation
+1. Download the RAR of the latest version from [Releases](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
+2. Extract the **whole** RAR into a folder.
+3. Close Minecraft and its launcher, then run `JakMod-Installer.exe`.
+4. Choose **en**, check the OpenGOAL and Minecraft folders and click **Install JakMod**. The first install takes several minutes.
+5. In the launcher, pick the **26.3.jakmod** installation.
+
+Your normal worlds are left alone: JakMod keeps its own in `.minecraft\instances\jakmod`. The full guide is in [installer/README-EN.md](installer/README-EN.md).
+
+### Status
+Development build (`0.1.0-dev`). Open work is listed in [PENDIENTE-PORT.md](PENDIENTE-PORT.md) and [docs/FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). Not an official Naughty Dog, Sony, Mojang, Microsoft or OpenGOAL product.
+
+---
 
 ## Development port
 
@@ -36,7 +86,7 @@ Development port of the Jak systems from the Rust mashup into actual Minecraft J
 
 Minecraft owns registries, inventories, screens, entities, saves and collision shapes. A small versioned JNI library runs the existing pure Rust Jak simulation. Owned OpenGOAL exports provide the original models, animations, particle definitions and SFX; generated assets and all development saves are ignored by Git.
 
-Current integration includes the cinematic Jak/Daxter models, cloth, original movement and combat, Morph Guns, Dark/Light powers, original particles/audio, inventory-owned eco/ammunition, durable JET-Board equipment, native citizens/trades and 17 enemy types. Haven, desert-only Spargus, Sandover and the crater cave generate in normal worlds. Rideable Leapers/Flut Fluts, HellCat/Helldog, zoomers and two Jak 3 wheeled cars use the source simulation. The port is still in development; [docs/CURRENT-PORT-HANDOFF.md](docs/CURRENT-PORT-HANDOFF.md) records current evidence and remaining limits, and [docs/PORTING-SCOPE.md](docs/PORTING-SCOPE.md) retains the feature inventory.
+Current integration includes the cinematic Jak/Daxter models, cloth, original movement and combat, Morph Guns, Dark/Light powers, original particles/audio, inventory-owned eco/ammunition, durable JET-Board equipment, native citizens/trades and 18 enemy types plus Krimson Guards. Haven, desert-only Spargus, Sandover and the crater cave generate in normal worlds. Rideable Leapers/Flut Fluts, HellCat/Helldog, zoomers and two Jak 3 wheeled cars use the source simulation. The port is still in development; [docs/CURRENT-PORT-HANDOFF.md](docs/CURRENT-PORT-HANDOFF.md) records current evidence and remaining limits, and [docs/PORTING-SCOPE.md](docs/PORTING-SCOPE.md) retains the feature inventory.
 
 Build with Java 25, Cargo and Gradle 9.8 (`gradlew build`). `buildNative` compiles the JNI library into the mod. The current native package is Windows x86-64. `RuntimeConfig` reads `config/jakmc.properties` (`assets=` points to the owned Jak 3 decompiler export; sibling Jak 1 exports are used for its creatures). Optional development overrides are `-Djakmc.assets` and `-Djakmc.native`.
 

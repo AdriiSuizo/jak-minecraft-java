@@ -52,6 +52,8 @@ public class JakLeaper extends Animal {
     private boolean patrolReturn;
     private int patrolRetry;
     public void patrol(BlockPos start,BlockPos end){patrolStart=start;patrolEnd=end;}
+    /** Rust: leapers.rs Beast.patrol_origin, a monk's patrol mount (not one of the town's loose leapers). */
+    public boolean patrolling(){return patrolStart!=null;}
 
     public JakLeaper(EntityType<? extends JakLeaper> type,Level level){
         super(type,level);

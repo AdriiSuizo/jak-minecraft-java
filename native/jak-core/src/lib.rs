@@ -188,6 +188,10 @@ pub enum State {
     /// `target-lightjak-regen`: the heal, Jak lifted and slowed, its light
     /// from the sky, a point of health each half second.
     LightJakRegen,
+    /// `target-lightjak-shield`: the shield coming up, a hop and a kick down.
+    LightJakShield,
+    /// `target-lightjak-freeze`: the clap that slows the world.
+    LightJakFreeze,
     /// A flap of Light Jak's wings: the first of a flight, or another
     /// `held` seconds after the last.
     LightJakSwoop {
@@ -313,6 +317,8 @@ impl State {
             State::LightJakGetOn { .. } => "lightjak-get-on",
             State::LightJakGetOff => "lightjak-get-off",
             State::LightJakRegen => "lightjak-regen",
+            State::LightJakShield => "lightjak-shield",
+            State::LightJakFreeze => "lightjak-freeze",
             State::LightJakSwoop { first: true, .. } => "lightjak-swoop",
             State::LightJakSwoop { first: false, .. } => "lightjak-swoop-again",
             State::LightJakSwoopFalling => "lightjak-swoop-falling",
@@ -415,6 +421,10 @@ pub enum Event {
         pos: Vec3,
         dir: Vec3,
         damage: f32,
+        /// The attack's danger sphere that touched the world (center and
+        /// radius), for the host to find the blocks it met; none for a slam
+        /// or a blow on an actor. (Java port addition, 05/11.)
+        sphere: Option<(Vec3, f32)>,
     },
     /// The punch's fist met a wall and Jak bounced back.
     PunchWall,
@@ -479,6 +489,11 @@ pub enum Event {
     Lift {
         actor: u64,
         seconds: f32,
+    },
+    /// The Mass Inverter's field opened at `center`: the host lifts what the
+    /// actor world does not hold (Minecraft's objects), as its field grows.
+    GravityField {
+        center: Vec3,
     },
     /// A sound by its game's name (Jak 1's as `jak1:` and its name), at
     /// Jak: `sound-play`'s volume (1 full) and pitch (octaves).
@@ -789,7 +804,13 @@ impl Jak {
         self.ladder=None;
         let board = self.state.is_board();
         let yaw = math::y_angle(self.orientation() * Vec3::Z);
+        // The host's body (set_body_dimensions) outlives a teleport; a fresh
+        // Control would put back the original 0.7 m body (Java port, 05/11).
+        let (radius, standing) = (self.control.body_radius, self.control.standing_heights);
         self.control = Control::new(position, yaw, self.time);
+        self.control.body_radius = radius;
+        self.control.standing_heights = standing;
+        self.control.sphere_heights = standing;
         self.cache = CollideCache::default();
         self.probe_cache = CollideCache::default();
         self.foot = FootInfo::default();
@@ -1020,5 +1041,18 @@ impl Jak {
         let mut j=Jak::new(Vec3::ZERO,0.0);j.state=State::FlutStance;j.chan.frame=7.0;
         j.displace(Vec3::X);assert_eq!(j.state,State::FlutStance);assert_eq!(j.chan.frame,7.0);
         j.relocate(Vec3::Y);assert!(!j.state.is_flut());assert_eq!(j.trans(),Vec3::Y);
+    }
+}
+
+#[cfg(test)]
+mod relocate_tests {
+    use super::*;
+    #[test]
+    fn relocate_keeps_the_host_body() {
+        let mut jak = Jak::new(Vec3::ZERO, 0.0);
+        jak.control.set_body_dimensions(1920.0, 11520.0);
+        jak.relocate(Vec3::new(100.0, 0.0, 0.0));
+        assert_eq!(jak.control.body_radius, 1920.0);
+        assert_eq!(jak.control.sphere_heights, [1920.0, 5760.0, 9600.0]);
     }
 }

@@ -98,6 +98,20 @@ public final class JakPoses {
     public static Quaternionf flightRotation(){return motionFrame==null||motionFrame.rotation()==null?null:new Quaternionf(motionFrame.rotation());}
     public static Vec3 flightOffset(){return motionFrame==null?Vec3.ZERO:motionFrame.offset();}
     private static final Map<Integer,Pose> POSES=new HashMap<>();
+    /** Bodies Dark Jak's lightning is on (jak-core dark_shock tints), till when (nanoTime). */
+    private static final java.util.Map<Integer,Long> DARK_VICTIMS=new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * Jak 3 enemy.gc's dark colour effect this frame, as GltfModel.colourNext takes it: colour-mult (1, 1-f, 1)
+     * with f a fresh 0.2..1 each frame; white for a body it is not on. stand-in: the colour-emissive
+     * (0.3f, 0, 0.3f) is not drawn (the Rust did not either).
+     */
+    public static int darkTint(int entityId){
+        Long until=DARK_VICTIMS.get(entityId);
+        if(until==null)return 0xffffff;
+        if(until<System.nanoTime()){DARK_VICTIMS.remove(entityId);return 0xffffff;}
+        float f=.2f+.8f*java.util.concurrent.ThreadLocalRandom.current().nextFloat();
+        return 0xff00ff|Math.round((1-f)*255)<<8;
+    }
     public static void receive(JakPackets.Pose p){
         var client=Minecraft.getInstance();if(client.level==null)return;
         JsonObject json=JsonParser.parseString(p.json()).getAsJsonObject();
@@ -115,6 +129,7 @@ public final class JakPoses {
         var pose=new Pose(position,yaw,json.get("clip").getAsString(),json.get("frame").getAsFloat(),
             json.get("board").getAsBoolean(),json.get("dark").getAsBoolean(),json.get("light").getAsBoolean(),json,now,board,boardFrom,root,rootFrom,yawFrom);
         POSES.put(p.entityId(),pose);
+        if(json.get("darkVictims") instanceof com.google.gson.JsonArray victims)for(var v:victims)DARK_VICTIMS.put(v.getAsJsonArray().get(0).getAsInt(),now+150_000_000L);
         if(client.player!=null&&client.player.getId()==p.entityId()){
             Vec3 offset=Vec3.ZERO;
             Quaternionf rotation=null;

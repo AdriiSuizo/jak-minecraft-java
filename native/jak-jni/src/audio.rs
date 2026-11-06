@@ -329,7 +329,7 @@ pub fn emit_jak_sounds_for(
             }
             Event::Sound { name, volume, pitch } => (name, at, volume, 2f32.powf(pitch)),
             Event::SoundAt { name, pos } => (name, map_position(pos), 1.0, 1.0),
-            Event::GroundPound { .. } | Event::Lift { .. } | Event::Build { .. } | Event::Trace { .. } | Event::FlutSlam { .. } | Event::Hurt { .. } => continue,
+            Event::GroundPound { .. } | Event::Lift { .. } | Event::GravityField { .. } | Event::Build { .. } | Event::Trace { .. } | Event::FlutSlam { .. } | Event::Hurt { .. } => continue,
         };
         queue.cue(name, position, jak.time, gain, pitch);
     }
@@ -340,7 +340,7 @@ pub fn emit_jak_sounds_for(
             Some("UPPERCUT_SWIRL")
         } else if matches!(jak.state, State::RunningAttack) {
             Some(if jak.dark { "DJAK_PNCH_SWING" } else { "PUNCH" })
-        } else if matches!(jak.state, State::Attack | State::AttackAir { .. }) {
+        } else if matches!(jak.state, State::Attack | State::AttackAir { .. } | State::LightJakShield) {
             Some(if jak.dark { "DJAK_CLAW" } else { "SPIN_KICK" })
         } else if name.contains("flop-air") || name.contains("flop-forward") {
             Some("FLOP_SWISH")

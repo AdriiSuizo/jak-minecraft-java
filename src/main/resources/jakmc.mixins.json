@@ -15,9 +15,15 @@
     "JakWorldClockMixin",
     "JakFreezeTickMixin",
     "CitizenTradesMixin",
+    "CitizenLifeMixin",
+    "CitizenDeathMixin",
+    "CitizenBellMixin",
     "BoardInventoryMixin",
     "BoardDeathMixin",
-    "BoardCreativeMixin"
+    "BoardCreativeMixin",
+    "JakStepSoundMixin",
+    "JakLandSurfaceMixin",
+    "JakLandDecorationMixin"
   ],
   "injectors": {
     "defaultRequire": 1

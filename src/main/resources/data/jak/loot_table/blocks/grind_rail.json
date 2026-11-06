@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "jak:grind_rail"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "random_sequence": "jak:blocks/grind_rail"
+}

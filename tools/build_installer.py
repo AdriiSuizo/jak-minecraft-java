@@ -43,7 +43,7 @@ def main():
     (payload/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
     # Keep a runnable source bundle for headless verification of exactly the
     # payload that PyInstaller packages.
-    converters=['import_content','import_facades','import_flut_eyes','import_hellcat_deck','import_audio','extract_skate_tower_support']
+    converters=['import_content','nombres_es','import_facades','import_facade_parts','import_flut_eyes','import_hellcat_deck','import_audio','extract_skate_tower_support']
     for name in converters:copy(ROOT/'tools'/f'{name}.py',STAGE/'converters'/f'{name}.py')
     catalog='content-source/terrain/src/spargus_city_blocks.rs'
     copy(ROOT/'tools'/catalog,STAGE/'converters'/catalog)
@@ -69,6 +69,8 @@ def main():
     python_license=Path(sys.base_prefix)/'LICENSE.txt'
     if python_license.is_file():copy(python_license,notices/'Python-LICENSE.txt')
     copy(ROOT/'LICENSE',package/'LICENSE')
+    for name in ('opengoal','jak-enhanced-trilogy'):
+        for notice in ('LICENSE','revision.txt'):copy(ROOT/'third_party'/name/notice,notices/name/notice)
     copy(ROOT/'CONTROLES.md',package/'CONTROLES.md')
     rar=Path(os.environ.get('ProgramFiles','C:/Program Files'))/'WinRAR/Rar.exe'
     if not rar.is_file():raise SystemExit('WinRAR is required to create a real RAR archive')

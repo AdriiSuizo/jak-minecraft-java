@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/eco_vent",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "skatea/skatea-jump-pad-lod0.glb",
+      "game": "jak2",
+      "scale": 0.3
+    }
+  }
+}

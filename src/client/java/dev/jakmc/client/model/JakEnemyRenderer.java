@@ -14,7 +14,7 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.util.Mth;
 
 public final class JakEnemyRenderer extends EntityRenderer<JakEnemy,JakEnemyRenderer.State> {
- public static class State extends EntityRenderState {GltfModel.Posed pose;float yaw,tilt;boolean hurt,gem;}
+ public static class State extends EntityRenderState {GltfModel.Posed pose;float yaw,tilt;boolean hurt,gem;int tint=0xffffff;}
  private static final class Blend {String clip;GltfModel.Posed last,from;float start;}
  private final Map<Integer,Blend> blends=new HashMap<>();
  private final JakEnemyKind kind;
@@ -35,17 +35,32 @@ public final class JakEnemyRenderer extends EntityRenderer<JakEnemy,JakEnemyRend
   var posed=kind.guard()&&entity.isInWater()&&entity.isAlive()?JakCitizenRenderer.tread(model,resting,state.ageInTicks/40f):model.pose(clip,frame);var blend=blends.computeIfAbsent(entity.getId(),id->new Blend());
   if(!clip.equals(blend.clip)){blend.from=blend.last;blend.start=state.ageInTicks;blend.clip=clip;}
   if(blend.from!=null){float transition=entity.state()==JakEnemy.State.HURT?.035f:.15f;float t=(state.ageInTicks-blend.start)/(20*transition);if(t<1)posed=model.blend(blend.from,posed,t);else blend.from=null;}
-  blend.last=posed;state.pose=posed;state.yaw=Mth.rotLerp(partial,entity.yBodyRotO,entity.yBodyRot);state.hurt=entity.hurtTime>0||entity.deathTime>0;
+  blend.last=posed;
+  if(kind.model.equals("kermit")){
+   float yaw=Mth.rotLerp(partial,entity.yBodyRotO,entity.yBodyRot);
+   posed=KermitTongue.pose(model,posed,entity,partial,yaw);
+   float pulse=entity.tonguePulse();var prey=entity.tongueTarget()<0?null:entity.level().getEntity(entity.tongueTarget());
+   if(pulse>=0&&prey!=null){
+    // kermit-tongue-stuck :trans: the pulse at its fraction from the tongue's base to the prey.
+    var base=KermitTongue.base(model,posed,entity.getPosition(partial),yaw);
+    if(base!=null)dev.jakmc.client.JakEffects.kermitPulse(entity.getId(),base.lerp(prey.getPosition(partial).add(0,prey.getBbHeight()*.5,0),pulse));
+   }
+  }
+  state.pose=posed;state.tint=dev.jakmc.client.JakPoses.darkTint(entity.getId());state.yaw=Mth.rotLerp(partial,entity.yBodyRotO,entity.yBodyRot);state.hurt=entity.hurtTime>0||entity.deathTime>0;
   state.gem=!entity.isDeadOrDying();
   if(dev.jakmc.client.EnemyScene.active())seenClips.computeIfAbsent(entity.getId(),id->new HashSet<>()).add(clip);
   // A static ragdoll/standing death needs a physical fall, never a standing despawn.
   state.tilt=0;
   if(entity.deathTime>0&&(duration<.6f||clip.contains("in-place")||clip.contains("standing")||clip.contains("ragdoll")))state.tilt=Math.min(1,(float)Math.sqrt(Math.max(0,(entity.deathTime+partial-1)/20f*1.6f)))*90;
+  {double[] at={state.x,state.y,state.z};var knock=dev.jakmc.client.ragdoll.GruntRagdolls.knocked(entity,kind,model,state.pose,at,state.yaw);
+   if(knock!=null){state.pose=knock;state.x=at[0];state.y=at[1];state.z=at[2];}}
+  {var fall=dev.jakmc.client.ragdoll.GruntRagdolls.pose(entity,model,state.pose,state.x,state.y,state.z,state.yaw);if(fall!=null){state.tilt=0;state.pose=fall==dev.jakmc.client.ragdoll.GruntRagdolls.HIDDEN?null:fall;if(state.pose==null){state.shadowPieces.clear();state.shadowRadius=0;}}}
   if(blends.size()>256)blends.keySet().removeIf(id->entity.level().getEntity(id)==null);
  }
  @Override public void submit(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){
   super.submit(state,stack,collector,camera);if(state.isInvisible||state.pose==null)return;
   stack.pushPose();stack.rotateDegrees(Axis.YP,-state.yaw);stack.rotateDegrees(Axis.ZP,state.tilt);stack.scale(JakEnemyKind.SCALE,JakEnemyKind.SCALE,JakEnemyKind.SCALE);
+  if(state.tint!=0xffffff)GltfModel.colourNext(state.tint);
   model.submit(state.pose,stack,collector,state.lightCoords,1,OverlayTexture.pack(0,state.hurt),state.gem);
   if(state.gem){int joint=switch(kind.model){case "grunt"->5;case "flitter"->27;case "mantis"->6;default->-1;};if(joint>=0){var offset=switch(kind.model){case "grunt"->new org.joml.Vector3f(0,614.4f,-3276.8f).div(4096);case "flitter"->new org.joml.Vector3f(0,696.32f,1843.2f).div(4096);default->new org.joml.Vector3f(0,1286.144f,122.88f).div(4096);};var at=model.jointAt(state.pose,joint).transformPosition(offset);stack.pushPose();stack.translate(at.x,at.y,at.z);SkullGemRenderer.carrier(stack,collector);stack.popPose();}}
   stack.popPose();rendered++;seen.add(kind.model);

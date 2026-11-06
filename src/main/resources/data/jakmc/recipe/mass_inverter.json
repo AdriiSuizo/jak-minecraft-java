@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "jakmc:peace_maker",
+    "jakmc:dark_ammo",
+    "jakmc:dark_ammo",
+    "minecraft:gold_ingot",
+    "minecraft:gold_ingot",
+    "minecraft:redstone"
+  ],
+  "result": {
+    "id": "jakmc:mass_inverter",
+    "count": 1
+  }
+}

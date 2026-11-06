@@ -18,20 +18,38 @@ JAK1_BANKS = ('COMMON COMMONJ VILLAGE1 VILLAGE2 VILLAGE3 BEACH JUNGLE JUNGLEB '
               'MISTY TRAINING FIRECANY ROLLING SWAMP OGRE SNOW SUNKEN MAINCAVE '
               'DARKCAVE ROBOCAVE LAVATUBE CITADEL FINALBOS').split()
 
+# The Rust host's mix (crates/audio/src/jak.rs mix_gain, Adrii 19/10: Jak's
+# steps and effects sounded faint). The exported banks play far quieter than
+# Minecraft's own files; Minecraft clamps a sound's volume at 1, so the gain is
+# baked into each clip instead of applied at playback. Jak 1 x1.6, Jak 2/3 x4.5,
+# Jak 2/3 footsteps (walk, run, land, roll, slide) four times that again.
+STEP_PREFIXES = ('walk_', 'run_', 'land_', 'roll_', 'slide_')
+def mix_gain(game, name):
+    if game == 'jak1':
+        return 1.6
+    return 4.5 * 4.0 if name.startswith(STEP_PREFIXES) else 4.5
+
+def resource(digest, gain):
+    return f'sfx/{digest}' if gain == 1 else f'sfx/{digest}_g{round(gain * 10)}'
+
 def key(s):
     return re.sub('[^a-z0-9_.-]', '_', s.lower()).replace('-', '_')
 
 def named_banks(root, decoder, clips, sounds):
-    banks = root/'jak3/data/iso_data/jak3/SBK'
     local = P/'.local/vehicle-audio'
     local.mkdir(parents=True, exist_ok=True)
     def run(*args):
         return subprocess.check_output([decoder, *map(str, args)], text=True,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     imported = []
-    for bank_name, prefixes in [('WASTOAD', ('toad_',)), ('WASSNAKE', ('snake_',)),
-                                ('WASCITY1', ('wlander_', 'was_', 'wasf_'))]:
-        bank = banks/f'{bank_name}.SBK'
+    # The zoomer hop (vehicle-util.gc `sound-play "bike-hop"`) is Jak 2's
+    # CTYWIDE2 stream, which the decompiler's SFX export leaves out.
+    for game, bank_name, prefixes in [('jak3', 'WASTOAD', ('toad_',)), ('jak3', 'WASSNAKE', ('snake_',)),
+                                ('jak3', 'WASCITY1', ('wlander_', 'was_', 'wasf_')),
+                                ('jak2', 'CTYWIDE2', ('bike_hop',))]:
+        bank = root/f'{game}/data/iso_data/{game}/SBK/{bank_name}.SBK'
+        if not bank.is_file():
+            continue
         bank_hash = hashlib.sha256(bank.read_bytes()).hexdigest()
         total = json.loads(run('-I', '-s', 1, bank))['streamInfo']['total']
         events = {}
@@ -55,9 +73,10 @@ def named_banks(root, decoder, clips, sounds):
                 else:
                     decoded.replace(clip)
             digest = hashlib.sha256(clip.read_bytes()).hexdigest()
-            clips.setdefault(digest, clip)
-            events.setdefault(name, {})[digest] = bool(loop)
-            imported.append({'name':name, 'bank':str(bank), 'bank_sha256':bank_hash, 'stream':index,
+            gain = mix_gain(game, name)
+            clips.setdefault((digest, gain), clip)
+            events.setdefault(name, {})[resource(digest, gain)] = bool(loop)
+            imported.append({'name':name, 'game':game, 'bank':str(bank), 'bank_sha256':bank_hash, 'stream':index,
                 'loop':loop, 'wav_sha256':digest})
         if bank_name == 'WASCITY1':
             # WLANDER_FIRE is an authored bank-level random cue with individual shot streams.
@@ -67,12 +86,14 @@ def named_banks(root, decoder, clips, sounds):
                 events['wlander_fire'] = shots
         for name, variants in events.items():
             prefer_loop = any(variants.values())
-            files = [{'name':f'jakmc:sfx/{digest}', 'attenuation_distance':32}
-                for digest,looped in variants.items() if looped or not prefer_loop]
+            files = [{'name':f'jakmc:{res}', 'attenuation_distance':32}
+                for res,looped in variants.items() if looped or not prefer_loop]
             event = {'sounds':files}
-            sounds[f'sfx/jak3/{key(bank_name)}/{name}'] = event
-            sounds[f'sfx/jak3/{name}'] = event
+            sounds[f'sfx/{game}/{key(bank_name)}/{name}'] = event
+            sounds[f'sfx/{game}/{name}'] = event
             sounds[f'sfx/{name}'] = event
+            # Jak 3's zoomers are Jak 2's bikes: their cues look the hop up there.
+            sounds.setdefault(f'sfx/jak3/{name}', event)
     return imported
 
 
@@ -99,12 +120,12 @@ def main():
             name = key(src.stem)
             chosen.setdefault(name, src)
             digest = hashlib.sha256(src.read_bytes()).hexdigest()
-            clips.setdefault(digest, src)
-            resource = f'sfx/{digest}'
-            sounds[f'sfx/{game}/{key(src.parent.name)}/{name}'] = {'sounds': [{'name': f'jakmc:{resource}', 'attenuation_distance': 32}]}
+            gain = mix_gain(game, name)
+            clips.setdefault((digest, gain), src)
+            sounds[f'sfx/{game}/{key(src.parent.name)}/{name}'] = {'sounds': [{'name': f'jakmc:{resource(digest, gain)}', 'attenuation_distance': 32}]}
         for name, src in chosen.items():
             digest = hashlib.sha256(src.read_bytes()).hexdigest()
-            event = {'sounds': [{'name': f'jakmc:sfx/{digest}', 'attenuation_distance': 32}]}
+            event = {'sounds': [{'name': f'jakmc:{resource(digest, mix_gain(game, name))}', 'attenuation_distance': 32}]}
             sounds[f'sfx/{game}/{name}'] = event
             if game in ('jak3', 'jak2'):
                 defaults.setdefault(name, event)
@@ -114,17 +135,19 @@ def main():
     target = out/'sounds/sfx'
     target.mkdir(parents=True, exist_ok=True)
     def convert(pair):
-        digest, src = pair
-        dest = target/f'{digest}.ogg'
+        (digest, gain), src = pair
+        dest = out/'sounds'/f'{resource(digest, gain)}.ogg'
         if not dest.exists():
             temp = dest.with_suffix('.tmp.ogg')
+            # A limiter that only acts above full scale keeps the loudest clips from clipping.
+            mix = [] if gain == 1 else ['-af', f'volume={gain},alimiter=limit=0.98:level=disabled']
             result = subprocess.run([ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
-                '-i', str(src), '-vn', '-ac', '1', '-c:a', 'libvorbis', '-q:a', '5', str(temp)],
+                '-i', str(src), '-vn', '-ac', '1', *mix, '-c:a', 'libvorbis', '-q:a', '5', str(temp)],
                 capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             if result.returncode:
                 raise RuntimeError(f'{src}: {result.stderr}')
             temp.replace(dest)
-        return {'sha256': digest, 'source': str(src), 'output': str(dest.relative_to(P)), 'bytes': dest.stat().st_size}
+        return {'sha256': digest, 'gain': gain, 'source': str(src), 'output': str(dest.relative_to(P)), 'bytes': dest.stat().st_size}
     receipt = []
     with ThreadPoolExecutor(max_workers=4) as pool:
         for i, row in enumerate(pool.map(convert, clips.items()), 1):

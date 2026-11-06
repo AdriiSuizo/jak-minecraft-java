@@ -26,9 +26,7 @@ public final class KrimsonGuard {
     private boolean toEnd;
     private long hostileUntil;
     private int hidden,ticks,shotIndex;
-    private int pause,pathRetry,civilianWarnings;
-    private long lastCivilianHit;
-    private java.util.UUID lastOffender;
+    private int pause,pathRetry;
     private boolean kneeling;
     private double miss,side;
     private Vec3 lastFoePosition,foeVelocity=Vec3.ZERO;
@@ -142,17 +140,14 @@ public final class KrimsonGuard {
             for(var guard:level.getEntitiesOfClass(JakEnemy.class,body.getBoundingBox().inflate(32),e->e.guardController()!=null&&e.isAlive()))
                 guard.guardController().alert(level,attacker);
     }
-    public static void witness(ServerLevel level,Villager villager,Player player){
-        for(var entity:level.getEntitiesOfClass(JakEnemy.class,villager.getBoundingBox().inflate(24),
-            e->e.guardController()!=null&&e.isAlive()&&e.getSensing().hasLineOfSight(villager))){
-            var guard=entity.guardController();
-            long now=level.getGameTime();
-            if(now-guard.lastCivilianHit>160||!player.getUUID().equals(guard.lastOffender))guard.civilianWarnings=0;
-            guard.lastOffender=player.getUUID();
-            guard.lastCivilianHit=now;
-            if(++guard.civilianWarnings>=2)guard.alert(level,player);
-        }
+    /** Rust: jak_entities.rs guards while the city's alert is on: one with Jak in sight goes after him. */
+    void alerted(ServerLevel level,Player offender){
+        if(body.getTarget()==null&&body.distanceToSqr(offender)<Math.pow(110*.64,2)&&body.getSensing().hasLineOfSight(offender))alert(level,offender);
+        else if(body.getTarget()==offender)hostileUntil=Math.max(hostileUntil,level.getGameTime()+600);
     }
+    /** Rust: the alert over, the guards calm (their own grudge too). */
+    void calm(Player offender){if(body.getTarget()==offender){body.setTarget(null);hostileUntil=0;}}
+    boolean pursuing(){return body.getTarget()!=null;}
 
     private void shoot(ServerLevel level,LivingEntity foe){
         Vec3 forward=Vec3.directionFromRotation(0,body.getYRot());

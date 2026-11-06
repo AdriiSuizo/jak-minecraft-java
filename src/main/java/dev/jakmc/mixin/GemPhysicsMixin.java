@@ -25,7 +25,9 @@ abstract class GemPhysicsMixin implements GemState {
  private void jakmc$begin(CallbackInfo ci){var item=(ItemEntity)(Object)this;if(!item.getItem().is(JakItems.SKULL_GEM))return;var m=jakmc$motion();m.tick();if(item.level().isClientSide())return;item.setYRot((float)m.angle);item.getEntityData().set(JAK_GEM_MOTION,new org.joml.Vector3f((float)m.seconds,(float)m.angle,(float)m.spin));
   if(item.getAge()==0){GemPhysics.sound(item,"gem_spawn",1);GemPhysics.spawnCues++;}
   if(item.hasPickUpDelay()||item.isInWater()||item.isInLava())return;
-  ServerPlayer best=null;double distance=7.5*GemPhysics.UNIT;for(var candidate:item.level().players())if(candidate instanceof ServerPlayer p&&GemPhysics.accepts(p)&&(target==null||target.equals(p.getUUID()))){Vec3 at=p.position().add(0,.81,0);double d=item.position().distanceTo(at);if(d<distance&&item.level().clip(new net.minecraft.world.level.ClipContext(item.position().add(0,.125,0),at,net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,item)).getType()==HitResult.Type.MISS){distance=d;best=p;}}
+  // collectables.gc: once sucked in (`suck-in`) it keeps going for its collector at any distance (Rust entity.rs
+  // motion.suction.is_some() ||), losing them only for a wall between, a full inventory or their going.
+  ServerPlayer best=null;double distance=7.5*GemPhysics.UNIT;for(var candidate:item.level().players())if(candidate instanceof ServerPlayer p&&GemPhysics.accepts(p)&&(target==null||target.equals(p.getUUID()))){Vec3 at=p.position().add(0,.81,0);double d=item.position().distanceTo(at);if(p.getUUID().equals(jakmc$sucking))d=Math.min(d,0);if(d<distance&&item.level().clip(new net.minecraft.world.level.ClipContext(item.position().add(0,.125,0),at,net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,item)).getType()==HitResult.Type.MISS){distance=d;best=p;}}
   if(best==null){jakmc$sucking=null;m.suckSeconds=m.speed=m.turn=0;return;}
   if(!best.getUUID().equals(jakmc$sucking)){GemPhysics.sound(item,"pickup_suck",1);GemPhysics.suckCues++;jakmc$sucking=best.getUUID();m.suckSeconds=m.speed=m.turn=0;}
   var p=item.position();var q=best.position().add(0,.81,0);double[] delta=m.suck(new double[]{p.x,p.y,p.z},new double[]{q.x,q.y,q.z},GemPhysics.UNIT);item.setDeltaMovement(delta[0],delta[1]+item.getGravity(),delta[2]);item.needsSync=true;
@@ -47,7 +49,10 @@ abstract class GemPhysicsMixin implements GemState {
   }item.setDeltaMovement(velocity);
  }
  @Inject(method="addAdditionalSaveData",at=@At("TAIL"))
- private void jakmc$save(ValueOutput out,CallbackInfo ci){if(jakmc$motion!=null){var m=jakmc$motion;out.putDouble("JakGemSeconds",m.seconds);out.putDouble("JakGemAngle",m.angle);out.putDouble("JakGemSpin",m.spin);out.putBoolean("JakGemSettled",m.settled);}}
+ private void jakmc$save(ValueOutput out,CallbackInfo ci){if(jakmc$motion!=null){var m=jakmc$motion;out.putDouble("JakGemSeconds",m.seconds);
+   // Rust saves the suction too (speed, turn, time and whom).
+   if(jakmc$sucking!=null){out.putString("JakGemSucking",jakmc$sucking.toString());out.putDouble("JakGemSuck",m.suckSeconds);out.putDouble("JakGemSpeed",m.speed);out.putDouble("JakGemTurn",m.turn);}out.putDouble("JakGemAngle",m.angle);out.putDouble("JakGemSpin",m.spin);out.putBoolean("JakGemSettled",m.settled);}}
  @Inject(method="readAdditionalSaveData",at=@At("TAIL"))
- private void jakmc$load(ValueInput in,CallbackInfo ci){if(((ItemEntity)(Object)this).getItem().is(JakItems.SKULL_GEM)){var m=jakmc$motion();m.seconds=in.getDoubleOr("JakGemSeconds",0);m.angle=in.getDoubleOr("JakGemAngle",0);m.spin=in.getDoubleOr("JakGemSpin",1024);m.settled=in.getBooleanOr("JakGemSettled",false);}}
+ private void jakmc$load(ValueInput in,CallbackInfo ci){if(((ItemEntity)(Object)this).getItem().is(JakItems.SKULL_GEM)){var m=jakmc$motion();m.seconds=in.getDoubleOr("JakGemSeconds",0);m.angle=in.getDoubleOr("JakGemAngle",0);m.spin=in.getDoubleOr("JakGemSpin",1024);m.settled=in.getBooleanOr("JakGemSettled",false);
+   var who=in.getStringOr("JakGemSucking","");if(!who.isEmpty())try{jakmc$sucking=UUID.fromString(who);m.suckSeconds=in.getDoubleOr("JakGemSuck",0);m.speed=in.getDoubleOr("JakGemSpeed",0);m.turn=in.getDoubleOr("JakGemTurn",0);}catch(IllegalArgumentException e){jakmc$sucking=null;}}}
 }

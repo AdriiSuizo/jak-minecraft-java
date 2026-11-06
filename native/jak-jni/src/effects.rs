@@ -10,11 +10,18 @@ const BARREL_FIRE:&str="group-ctysluma-barrel-fire";
 const PROPAGANDA:&str="group-ctywide-baron-propoganda-holo";
 const DISMANTLE:&str="group-vehicle-explosion";
 #[derive(Clone,Copy,PartialEq)]
-enum Decor { Barrel, Projector, Dismantle, DroidExplosion, Vent(u8), Sandstorm }
+enum Decor { Barrel, Projector, Dismantle, DroidExplosion, Vent(u8), Sandstorm, DarkEcoDeath, KermitPulse, KermitImpact }
+/// kermit.gc: the pulse running down the swamp frog's tongue (kermit-pulse-idle spawns it every frame) and its touch (kermit-pulse-impact).
+const KERMIT_PULSE:&str="group-kermit-pulse";
+const KERMIT_IMPACT:&str="group-kermit-pulse-impact";
+/// JakEnemyKind.SCALE in Jak units: the creatures' metre, not Jak's.
+const CREATURE:f32=1.94/(2.5138981*1.4)*BLOCK/jak_core::METER;
+/// dark_eco.rs DEATH: Jak 1's death in dark eco (`target-death` 'dark-eco-pool).
+const DARK_ECO_DEATH:&str="group-dark-eco-death";
 impl Decor {
- fn one_shot(self)->bool{matches!(self,Self::Dismantle|Self::DroidExplosion)}
- fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::DroidExplosion=>"group-kg-small-explosion",Self::Vent(index)=>VENT_GROUPS[index as usize],Self::Sandstorm=>unreachable!()}}
- fn scale(self)->f32{match self{Self::Barrel=>0.20,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion=>1.94/(2.5138981*1.4)*BLOCK/jak_core::METER,Self::Vent(0..=3)|Self::Sandstorm=>1.,Self::Vent(_)=>0.62}}
+ fn one_shot(self)->bool{matches!(self,Self::Dismantle|Self::DroidExplosion|Self::DarkEcoDeath|Self::KermitImpact)}
+ fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::DroidExplosion=>"group-kg-small-explosion",Self::Vent(index)=>VENT_GROUPS[index as usize],Self::DarkEcoDeath=>DARK_ECO_DEATH,Self::KermitPulse=>KERMIT_PULSE,Self::KermitImpact=>KERMIT_IMPACT,Self::Sandstorm=>unreachable!()}}
+ fn scale(self)->f32{match self{Self::Barrel=>0.20,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion|Self::KermitPulse|Self::KermitImpact=>CREATURE,Self::Vent(0..=3)|Self::Sandstorm|Self::DarkEcoDeath=>1.,Self::Vent(_)=>0.62}}
 }
 
 const VENT_GROUPS:[&str;8]=[
@@ -37,10 +44,11 @@ pub struct WeaponCommand {#[serde(rename="WeaponVisuals")]pub visual:jak_core::w
 impl WireCommand {fn is_step(&self)->bool{matches!(self,Self::Particle(Command::Step(_)))}}
 #[derive(Default)]
 struct Sandstorm { strength:f32, carry:[f32;2], rng:u64 }
-struct Fx {particles:Particles,weapons:jak_core::weapons::presentation::Presentation,queue:VecDeque<WireCommand>,carry:f64,decor:Option<Decor>,yaw:f32,sandstorm:Sandstorm}
+struct Fx {particles:Particles,weapons:jak_core::weapons::presentation::Presentation,queue:VecDeque<WireCommand>,carry:f64,decor:Option<Decor>,yaw:f32,sandstorm:Sandstorm,at:Vec3}
 #[derive(Default)]struct Effects {next:u64,live:HashMap<u64,Fx>}
 static EFFECTS:OnceLock<Mutex<Effects>>=OnceLock::new();
 fn effects()->&'static Mutex<Effects>{EFFECTS.get_or_init(||Mutex::new(Effects::default()))}
+fn lock_fx()->Result<std::sync::MutexGuard<'static,Effects>,String>{let m=effects();match m.lock(){Ok(g)=>Ok(g),Err(p)=>{m.clear_poison();Ok(p.into_inner())}}}
 
 pub fn configure(root:&std::path::Path)->Result<(),String>{
  if LIBRARY.get().is_some(){return Ok(());}
@@ -74,6 +82,13 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
    let mut jak1=Library::default();
    let groups:Vec<_>=VENT_GROUPS[..4].iter().copied().chain(JAK1_VENT_PICKUPS.into_iter().flatten()).collect();
    jak1.read_jak1(&crate::particle_subset::particle_subset(&text,&groups,&[],&[]));
+   // dark_eco.rs particle_library: the death burst from Jak 1's target-part.gc (its own part ids).
+   if let Ok(kermit)=std::fs::read_to_string(active.join("jak1/data/goal_src/jak1/levels/swamp/kermit.gc")){
+    jak1.read_jak1(&crate::particle_subset::particle_subset(&kermit,&[KERMIT_PULSE,KERMIT_IMPACT],&[],&[]));
+   }
+   if let Ok(target)=std::fs::read_to_string(active.join("jak1/data/goal_src/jak1/engine/target/target-part.gc")){
+    jak1.read_jak1(&crate::particle_subset::particle_subset(&target,&[DARK_ECO_DEATH],&[],&[]));
+   }
    if VENT_GROUPS[..4].iter().all(|g|jak1.group(g).is_some()){
     JAK1_VENTS.set(Arc::new(jak1)).map_err(|_|"Jak I vent configuration raced")?;
    }
@@ -111,12 +126,12 @@ fn translate(c:&mut Command,offset:Vec3){
 }
 fn create(library:&OnceLock<Arc<Library>>,decor:Option<Decor>)->Result<jlong,String>{
  let library=library.get().ok_or("Original particle library is not configured")?.clone();
- let mut e=effects().lock().map_err(|e|e.to_string())?;
+ let mut e=lock_fx()?;
  e.next+=1;
  let id=e.next;
  let mut particles=Particles::new(library);
  if let Some(effect)=decor.filter(|d|d.one_shot()){particles.spawn(effect.group(),Vec3::ZERO,Mat3::IDENTITY);}
- e.live.insert(id,Fx{particles,weapons:Default::default(),queue:VecDeque::new(),carry:0.,decor,yaw:0.,sandstorm:Sandstorm{rng:id,..Default::default()}});
+ e.live.insert(id,Fx{particles,weapons:Default::default(),queue:VecDeque::new(),carry:0.,decor,yaw:0.,sandstorm:Sandstorm{rng:id,..Default::default()},at:Vec3::ZERO});
  Ok(id as jlong)
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxCreate(mut env:JNIEnv,_:JClass)->jlong{
@@ -128,17 +143,30 @@ fn create(library:&OnceLock<Arc<Library>>,decor:Option<Decor>)->Result<jlong,Str
    0=>(&HAVEN,Decor::Barrel),1=>(&HAVEN,Decor::Projector),2=>(&HAVEN,Decor::Dismantle),
    10..=13=>(&JAK1_VENTS,Decor::Vent((kind-10)as u8)),
    14..=17=>(&LIBRARY,Decor::Vent((kind-10)as u8)),
-   18=>(&LIBRARY,Decor::Sandstorm),19=>(&LIBRARY,Decor::DroidExplosion),
+   18=>(&LIBRARY,Decor::Sandstorm),19=>(&LIBRARY,Decor::DroidExplosion),20=>(&JAK1_VENTS,Decor::DarkEcoDeath),
+   21=>(&JAK1_VENTS,Decor::KermitPulse),22=>(&JAK1_VENTS,Decor::KermitImpact),
    _=>return Err("Unknown world effect".into())
   };
   if library.get().is_none(){return Ok(0);}
   create(library,Some(decor))
  })
 }
+/// A lasting world effect's launch point, in blocks from its owner's origin (the frog's pulse along its tongue).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxDecorAt(mut env:JNIEnv,_:JClass,id:jlong,x:f32,y:f32,z:f32){
+ protect(&mut env,||{
+  let mut e=lock_fx()?;
+  let f=e.live.get_mut(&(id as u64)).ok_or("Stale world FX session")?;
+  let scale=f.decor.ok_or("Not a world effect")?.scale();
+  let at=Vec3::new(x,y,z)*BLOCK/scale;
+  if !at.is_finite(){return Err("Nonfinite world effect point".into());}
+  f.at=at;Ok(())
+ })
+}
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxSandstorm(mut env:JNIEnv,_:JClass,id:jlong,strength:f32){
  protect(&mut env,||{
-  let mut e=effects().lock().map_err(|e|e.to_string())?;
+  let mut e=lock_fx()?;
   let f=e.live.get_mut(&(id as u64)).ok_or("Stale sandstorm FX session")?;
   if f.decor!=Some(Decor::Sandstorm)||!strength.is_finite(){return Err("Invalid sandstorm FX session".into());}
   f.sandstorm.strength=strength.clamp(0.,1.);
@@ -165,7 +193,7 @@ impl Sandstorm {
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut env:JNIEnv,_:JClass,id:jlong,x:f32,y:f32,z:f32,color:jint,start:jni::sys::jboolean){
  protect(&mut env,||{
-  let mut e=effects().lock().map_err(|e|e.to_string())?;
+  let mut e=lock_fx()?;
   let f=e.live.get_mut(&(id as u64)).ok_or("Stale vent FX session")?;
   let groups=JAK1_VENT_PICKUPS.get(color as usize).ok_or("Unknown Jak I eco color")?;
   let target=Vec3::new(x,y,z)*BLOCK;
@@ -180,9 +208,9 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
   Ok(())
  });
 }
-#[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxDestroy(mut env:JNIEnv,_:JClass,id:jlong){protect(&mut env,||{effects().lock().map_err(|e|e.to_string())?.live.remove(&(id as u64));Ok(())});}
+#[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxDestroy(mut env:JNIEnv,_:JClass,id:jlong){protect(&mut env,||{lock_fx()?.live.remove(&(id as u64));Ok(())});}
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxBacklog(mut env:JNIEnv,_:JClass,id:jlong)->jint{
- protect(&mut env,||{let e=effects().lock().map_err(|e|e.to_string())?;let f=e.live.get(&(id as u64)).ok_or("Stale FX session")?;Ok(f.queue.iter().filter(|c|c.is_step()).count()as jint)})
+ protect(&mut env,||{let e=lock_fx()?;let f=e.live.get(&(id as u64)).ok_or("Stale FX session")?;Ok(f.queue.iter().filter(|c|c.is_step()).count()as jint)})
 }
 #[unsafe(no_mangle)]pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxPush(mut env:JNIEnv,_:JClass,id:jlong,data:JString,x:f32,y:f32,z:f32){
  let data:Result<String,_>=env.get_string(&data).map(Into::into);
@@ -190,7 +218,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
   let mut commands:Vec<WireCommand>=serde_json::from_str(&data).map_err(|e|e.to_string())?;
   let offset=Vec3::new(x,y,z)*BLOCK;if !offset.is_finite(){return Err("Nonfinite effect origin".into());}
   for c in &mut commands{match c{WireCommand::Particle(c)=>translate(c,offset),WireCommand::Weapon(c)=>{c.visual.validate()?;c.visual.translate(offset);}}}
-  let mut e=effects().lock().map_err(|e|e.to_string())?;let f=e.live.get_mut(&(id as u64)).ok_or("Stale FX session")?;
+  let mut e=lock_fx()?;let f=e.live.get_mut(&(id as u64)).ok_or("Stale FX session")?;
   if f.queue.len()+commands.len()>20000{return Err("Particle launch queue overflow".into());}f.queue.extend(commands);Ok(())
  });
 }
@@ -203,7 +231,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
   let view=unsafe{std::slice::from_raw_parts(v,n)};
   let(a,n)=bytes(&sprites)?;let(b,m)=bytes(&bolts)?;if n%44!=0||m%44!=0{return Err("Invalid particle draw buffers".into());}
   let out=unsafe{std::slice::from_raw_parts_mut(a,n)};let bolt_out=unsafe{std::slice::from_raw_parts_mut(b,m)};
-  let mut e=effects().lock().map_err(|e|e.to_string())?;let f=e.live.get_mut(&(id as u64)).ok_or("Stale FX session")?;
+  let mut e=lock_fx()?;let f=e.live.get_mut(&(id as u64)).ok_or("Stale FX session")?;
   let scale=f.decor.map_or(1.,Decor::scale);
  let eye=vec(view,0)*BLOCK;
  if f.decor==Some(Decor::Projector){
@@ -222,7 +250,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
   for _ in 0..steps {
    match f.decor {
     Some(Decor::Sandstorm)=>f.sandstorm.launch(&mut f.particles,eye),
-    Some(decor) if !decor.one_shot()=>f.particles.keep(0,decor.group(),Vec3::ZERO,Mat3::IDENTITY),
+    Some(decor) if !decor.one_shot()=>f.particles.keep(0,decor.group(),f.at,Mat3::IDENTITY),
     _=>{}
    }
    let mut stepped=false;

@@ -251,7 +251,7 @@ impl Jak {
                     Some((key, u, _)) if u <= 1.0 => {
                         let center = start + motion * u;
                         b.trans = center - Vec3::Y * RADIUS;
-                        self.events.push(Event::Strike { actor: Some(key), pos: center, dir: b.base_vector, damage: punch });
+                        self.events.push(Event::Strike { actor: Some(key), pos: center, dir: b.base_vector, damage: punch, sphere: None });
                         ended = Some(BlastEvent::Burst { id: b.id, pos: center, actor: Some(key) });
                     }
                     _ => {

@@ -1,0 +1,8 @@
+{
+  "type": "jakmc:city",
+  "city": "sandover_snow",
+  "biomes": "#jakmc:has_sandover_snow",
+  "step": "surface_structures",
+  "spawn_overrides": {},
+  "terrain_adaptation": "none"
+}

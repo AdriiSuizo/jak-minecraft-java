@@ -92,9 +92,72 @@ final class SitesScene {
             var p=server.getPlayerList().getPlayer(owner);
             if(p!=null)inspect(p);
         });
+        // jak2_villagers.rs peopling: the town's residents (and Spargus's loose leapers) once Jak is near.
+        boolean city=sites[index].equals("haven")||sites[index].equals("spargus");
+        if(city&&t==(sites[index].equals("haven")?280:196))server.execute(()->{
+            var p=server.getPlayerList().getPlayer(owner);
+            if(p==null)return;
+            var level=p.level();
+            var box=net.minecraft.world.phys.AABB.of(bounds);
+            var info=result.getAsJsonObject(sites[index]);
+            info.addProperty("population_residents",level.getEntitiesOfClass(net.minecraft.world.entity.npc.villager.Villager.class,box,dev.jakmc.worldgen.CityPopulation::resident).size());
+            info.addProperty("population_peopled",dev.jakmc.worldgen.CityPopulation.peopled(level).stream().anyMatch(bounds::isInside));
+            info.addProperty("population_loose_leapers",level.getEntitiesOfClass(dev.jakmc.entity.JakLeaper.class,box,l->l.isAlive()&&!l.patrolling()).size());
+        });
+        // jak2_villagers.rs struck: Jak's second blow on one citizen raises the city's alert.
+        boolean alarm=sites[index].equals("haven");
+        if(alarm&&t==290)server.execute(()->{
+            var p=server.getPlayerList().getPlayer(owner);
+            if(p==null)return;
+            p.setGameMode(GameType.SURVIVAL);
+            p.getAbilities().invulnerable=true;p.getAbilities().mayfly=true;p.getAbilities().flying=true;p.onUpdateAbilities();
+        });
+        if(alarm&&(t==300||t==315))server.execute(()->{
+            var p=server.getPlayerList().getPlayer(owner);
+            if(p==null)return;
+            var level=p.level();
+            var v=level.getEntitiesOfClass(net.minecraft.world.entity.npc.villager.Villager.class,net.minecraft.world.phys.AABB.of(bounds),dev.jakmc.worldgen.CityPopulation::resident)
+                .stream().min(java.util.Comparator.comparingInt(net.minecraft.world.entity.Entity::getId)).orElse(null);
+            var info=result.getAsJsonObject("haven");
+            if(v==null){info.addProperty("alarm_citizen",false);return;}
+            info.addProperty("alarm_citizen",true);
+            info.addProperty("alarm_before_"+ticks,dev.jakmc.entity.CityAlert.on(level));
+            v.hurtServer(level,level.damageSources().playerAttack(p),.5f);
+            v.setHealth(v.getMaxHealth());
+        });
+        if(alarm&&t==345)server.execute(()->{
+            var p=server.getPlayerList().getPlayer(owner);
+            if(p==null)return;
+            var level=p.level();
+            var info=result.getAsJsonObject("haven");
+            info.addProperty("alarm_on",dev.jakmc.entity.CityAlert.on(level));
+            info.addProperty("alarm_guards_after_jak",level.getEntitiesOfClass(dev.jakmc.entity.JakEnemy.class,net.minecraft.world.phys.AABB.of(bounds),g->g.kind.guard()&&g.getTarget()==p).size());
+            info.addProperty("alarm_guards",level.getEntitiesOfClass(dev.jakmc.entity.JakEnemy.class,net.minecraft.world.phys.AABB.of(bounds),g->g.kind.guard()&&g.isAlive()).size());
+            dev.jakmc.entity.CityAlert.clear();
+            for(var g:level.getEntitiesOfClass(dev.jakmc.entity.JakEnemy.class,net.minecraft.world.phys.AABB.of(bounds),g->g.getTarget()==p))g.setTarget(null);
+            p.setGameMode(GameType.CREATIVE);p.getAbilities().flying=true;p.onUpdateAbilities();
+        });
+        // The barrio's people seen from the street: the citizens round the one nearest its middle.
+        if(alarm&&t==282&&client.level!=null){
+            var middle=Vec3.atCenterOf(bounds.getCenter());
+            var near=client.level.getEntitiesOfClass(net.minecraft.world.entity.npc.villager.Villager.class,net.minecraft.world.phys.AABB.of(bounds),v->!v.isPassenger())
+                .stream().min(java.util.Comparator.comparingDouble(v->v.position().distanceToSqr(middle))).orElse(null);
+            if(near!=null)look(near.position().add(5,4,5),near.position().add(0,1,0));
+        }
+        if(alarm&&t==288)Screenshot.grab(client.gameDirectory,"sites-haven-citizens.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
         if(t==100&&view!=null)Screenshot.grab(client.gameDirectory,"sites-"+sites[index]+".png",
             client.gameRenderer.mainRenderTarget(),1,_-> {});
-        if(t==104){
+        // Haven's traffic: where the zoomers are, and again after a while, then one seen from the street.
+        boolean traffic=sites[index].equals("haven");
+        if(traffic&&(t==200||t==380))server.execute(()->{
+            var list=new com.google.gson.JsonArray();for(var v:dev.jakmc.entity.ZoomerTraffic.report())list.add(v);
+            result.getAsJsonObject("haven").add("traffic_at_"+ticks,list);
+        });
+        if(traffic&&t>=385&&t<=398){var at=dev.jakmc.entity.ZoomerTraffic.positions();
+            if(!at.isEmpty()){var car=at.getFirst();var eye=car.add(3,9,3);var d=car.subtract(eye);
+                view=new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-d.x,d.z)),(float)Math.toDegrees(Math.atan2(-d.y,d.horizontalDistance())));}}
+        if(traffic&&t==398)Screenshot.grab(client.gameDirectory,"sites-haven-traffic.png",client.gameRenderer.mainRenderTarget(),1,_-> {});
+        if(t==(traffic?404:sites[index].equals("spargus")?204:104)){
             active=false;view=null;
             server.execute(()->{
                 var p=server.getPlayerList().getPlayer(owner);
@@ -204,6 +267,21 @@ final class SitesScene {
                 view=new InputScene.CameraView(eye,(float)Math.toDegrees(Math.atan2(-look.x,look.z)),
                     (float)-Math.toDegrees(Math.atan2(look.y,look.horizontalDistance())));
             }
+        }
+        if(site.equals("haven")){
+            var start=level.structureManager().startsForStructure(bounds.getCenter().getX()>>4,bounds.getCenter().getZ()>>4,
+                level.registryAccess().lookupOrThrow(Registries.STRUCTURE).getValue(JakData.id("haven")));
+            if(!start.isEmpty()){
+                var streets=dev.jakmc.worldgen.JakCityStructure.streets(start.getFirst());
+                info.addProperty("traffic_streets",streets.size());
+                var each=new com.google.gson.JsonArray();
+                for(var street:streets)each.add(street.from().getX()+","+street.from().getZ()+">"+street.to().getX()+","+street.to().getZ()+" "+dev.jakmc.entity.ZoomerTraffic.clear(level,street.points())+" "+dev.jakmc.entity.ZoomerTraffic.blocker(level,street.points()));
+                info.add("traffic_street_state",each);
+                var net=dev.jakmc.entity.ZoomerTraffic.network(level,streets);
+                info.addProperty("traffic_open_streets",net==null?-1:net.streets().size());
+                if(net!=null){var ends=new com.google.gson.JsonArray();net.ways().forEach((k,v)->ends.add(k.getX()+","+k.getZ()+":"+v.size()));info.add("traffic_junctions",ends);}
+            }
+            info.addProperty("traffic_going",dev.jakmc.entity.ZoomerTraffic.going());
         }
         result.add(site,info);
     }

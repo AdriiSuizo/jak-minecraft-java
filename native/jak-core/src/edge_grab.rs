@@ -102,6 +102,23 @@ impl Jak {
         })
     }
 
+    /// Why [`Self::find_ledge`] finds no ledge now, step by step (host diagnostics).
+    pub fn ledge_why(&self, world: &mut dyn CollideWorld) -> String {
+        let s = self.size;
+        let ahead = self.control.quat * Vec3::Z;
+        let ahead = Vec3::new(ahead.x, 0.0, ahead.z).normalize_or_zero();
+        let feet = self.control.trans;
+        let hands = feet.y + HANG * s;
+        let low = Vec3::new(feet.x, hands - meters(0.35) * s, feet.z);
+        let Some(wall) = Self::probe(world, low, ahead * meters(0.9) * s, meters(0.1)) else { return format!("no wall ahead from {:.0},{:.0},{:.0} dir {:.2},{:.2}", low.x, low.y, low.z, ahead.x, ahead.z) };
+        if wall.normal.y.abs() > 0.3 { return format!("wall normal {:.2}", wall.normal.y); }
+        let normal = Vec3::new(wall.normal.x, 0.0, wall.normal.z).normalize_or_zero();
+        let over = Vec3::new(wall.intersect.x, hands + meters(0.6) * s, wall.intersect.z) - normal * meters(0.25) * s;
+        let Some(top) = Self::probe(world, over, Vec3::new(0.0, -meters(1.2) * s, 0.0), meters(0.1)) else { return "no top".into() };
+        if top.u <= 0.0 || top.normal.y < 0.7 { return format!("top u {:.2} ny {:.2}", top.u, top.normal.y); }
+        format!("top {:.0} hands {:.0} vy {:.0} wall z {:.0}", top.intersect.y, hands, self.control.transv.y, wall.intersect.z)
+    }
+
     /// Hanging from `ledge` at once (a host's test).
     pub fn hang_from(&mut self, ledge: Ledge) {
         self.ledge = Some(ledge);
@@ -322,5 +339,60 @@ mod tests {
         jak.edge_grab_code();
         let moved = (jak.control.trans - before).length();
         assert!((moved - HOLD_STEP).abs() < 1.0, "moved {moved}");
+    }
+
+    /// A run and a jump at a Minecraft wall, as the host plays it: which
+    /// jumps (X frame after the start) end hanging from its top.
+    #[test]
+    fn running_jump_at_minecraft_wall_reports(){
+        for height in [2.,3.] {
+            let mut caught=Vec::new();let mut peaks=Vec::new();
+            for press in (0..60).step_by(3) {
+                let mut world=minecraft_ledge(height);
+                let mut jak=Jak::new(Vec3::new(0.,0.,-3.*6400.),0.);
+                jak.control.set_body_dimensions(0.3*6400.,1.8*6400.);jak.size=0.64;
+                jak.foot_smooth_step=Some(1.25*6400.);jak.edge_grab_min_height=2.*6400.;
+                let mut grabbed=false;let mut peak=0f32;
+                for f in 0..150 {
+                    let x=f>=press&&f<press+12;
+                    let input=crate::pad::PadInput{held:if x{button::X}else{0},pressed:if f==press{button::X}else{0},left:[0.,1.],..Default::default()};
+                    jak.step(&input,&mut world,None);
+                    peak=peak.max(jak.trans().y/6400.);
+                    if matches!(jak.state,State::EdgeGrab){grabbed=true;}
+                }
+                if grabbed{caught.push(press);}peaks.push((press,(peak*100.).round()/100.,jak.trans().z/6400.));
+            }
+            eprintln!("height {height}: caught at presses {caught:?}; (press, peak y, final z) {peaks:?}");
+        }
+    }
+
+    /// The in-game fixture: Minecraft cubes (six faces each, the host's own
+    /// layout), a wall two high four blocks ahead, X at frame 24.
+    #[test]
+    fn cube_wall_like_the_host_reports(){
+        use crate::collide::{Tri,Pat,PatMode};
+        let b=6400.;let mut tris=Vec::new();
+        let mut cube=|x:f32,y:f32,z:f32|{
+            let (x0,y0,z0,x1,y1,z1)=(x*b,y*b,z*b,(x+1.)*b,(y+1.)*b,(z+1.)*b);
+            let mut q=|v:[Vec3;4],mode|{let pat=Pat{mode,..Default::default()};tris.push(Tri{v:[v[0],v[1],v[2]],pat});tris.push(Tri{v:[v[0],v[2],v[3]],pat});};
+            q([Vec3::new(x0,y1,z0),Vec3::new(x0,y1,z1),Vec3::new(x1,y1,z1),Vec3::new(x1,y1,z0)],PatMode::Ground);
+            q([Vec3::new(x0,y0,z0),Vec3::new(x1,y0,z0),Vec3::new(x1,y0,z1),Vec3::new(x0,y0,z1)],PatMode::Wall);
+            q([Vec3::new(x0,y0,z0),Vec3::new(x0,y0,z1),Vec3::new(x0,y1,z1),Vec3::new(x0,y1,z0)],PatMode::Wall);
+            q([Vec3::new(x1,y0,z1),Vec3::new(x1,y0,z0),Vec3::new(x1,y1,z0),Vec3::new(x1,y1,z1)],PatMode::Wall);
+            q([Vec3::new(x1,y0,z0),Vec3::new(x0,y0,z0),Vec3::new(x0,y1,z0),Vec3::new(x1,y1,z0)],PatMode::Wall);
+            q([Vec3::new(x0,y0,z1),Vec3::new(x1,y0,z1),Vec3::new(x1,y1,z1),Vec3::new(x0,y1,z1)],PatMode::Wall);
+        };
+        for x in -5..=5 {for z in -5..=6 {cube(x as f32,-1.,z as f32);} for y in 0..2 {cube(x as f32,y as f32,4.);}}
+        let mut world=Blocks(tris);
+        let mut jak=Jak::new(Vec3::new(0.5*b,0.,-0.5*b),0.);
+        jak.control.set_body_dimensions(0.3*b,1.8*b);jak.size=0.64;jak.foot_smooth_step=Some(1.25*b);jak.edge_grab_min_height=2.*b;
+        let mut log=Vec::new();
+        for f in 0..105 {
+            let x=f>=24&&f<60;
+            let input=crate::pad::PadInput{held:if x{button::X}else{0},pressed:if f==24{button::X}else{0},left:[0.,1.],..Default::default()};
+            jak.step(&input,&mut world,None);
+            if f%3==2 {log.push(format!("{}:{}:{:.2},{:.2}",f/3,jak.state.name(),jak.trans().y/b,jak.trans().z/b));}
+        }
+        eprintln!("cube wall: {}",log.join(" "));
     }
 }

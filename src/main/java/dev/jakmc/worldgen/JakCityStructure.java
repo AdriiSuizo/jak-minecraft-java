@@ -42,10 +42,28 @@ import net.minecraft.world.phys.Vec3;
 
 /** Native discoverable city starts with chunk-local placement and seed-stable orientation. */
 public final class JakCityStructure extends Structure {
+    /** A street between two junctions in world blocks, its floor points from one to the other: see CityBlueprint.stretches. */
+    public record Street(BlockPos from,BlockPos to,java.util.List<Vec3> points){}
+    public static java.util.List<Street> streets(net.minecraft.world.level.levelgen.structure.StructureStart start){
+        for(var piece:start.getPieces())if(piece instanceof CityPiece city){
+            var out=new java.util.ArrayList<Street>();
+            for(var stretch:city.site.plan().stretches()){
+                var points=new java.util.ArrayList<Vec3>();
+                for(var point:stretch.points())points.add(Vec3.atBottomCenterOf(CityBlueprint.rotate(point,city.turns).offset(city.origin)));
+                out.add(new Street(CityBlueprint.rotate(stretch.from(),city.turns).offset(city.origin),
+                    CityBlueprint.rotate(stretch.to(),city.turns).offset(city.origin),points));
+            }
+            return out;
+        }
+        return java.util.List.of();
+    }
     private enum Site {
         HAVEN("haven","haven",0), SPARGUS("spargus","spargus",0),
         SWAMP_HUT("swamp_hut","jak1",4), SNOW_FORT("snow_fort","jak1",8),
-        SANDOVER("sandover","jak1",26), CRATER_CAVE("crater_cave","crater_cave",10);
+        SANDOVER("sandover","jak1",26), CRATER_CAVE("crater_cave","crater_cave",10),
+        // jak_structures.rs decorate: Style::Sandover with teja/cumbrera nevada and pantano.
+        SANDOVER_SNOW("sandover_snow","jak1",26), SANDOVER_SWAMP("sandover_swamp","jak1",26);
+        boolean sandover(){return this==SANDOVER||this==SANDOVER_SNOW||this==SANDOVER_SWAMP;}
         final String id;
         final ResourceKey<LootTable> loot;
         final int reach;
@@ -89,6 +107,12 @@ public final class JakCityStructure extends Structure {
         if(site==Site.CRATER_CAVE){
             base=craterBase(context,x,z,y,turns);
             if(base==Integer.MIN_VALUE)return Optional.empty();
+        }else if(site.sandover()){
+            base=sandoverBase(context,x,z,y);
+            if(base==Integer.MIN_VALUE)return Optional.empty();
+        }else if(site==Site.SPARGUS){
+            base=spargusBase(context,x,z,y);
+            if(base==Integer.MIN_VALUE)return Optional.empty();
         }else if(site.reach>0){
             base=compactBase(context,x,z,y);
             if(base==Integer.MIN_VALUE)return Optional.empty();
@@ -106,10 +130,6 @@ public final class JakCityStructure extends Structure {
             int median=elevations[24];
             if(elevations[43]-elevations[5]>26||Math.abs(y-median)>15)return Optional.empty();
             base=Math.max(sea+3,median);
-            if(site==Site.SPARGUS){
-                for(int dx=-56;dx<=56;dx+=56)for(int dz=-56;dz<=56;dz+=56)
-                    if(!valid(context,x+dx,base,z+dz))return Optional.empty();
-            }
         }
         var plan=site.plan();
         if(base+plan.maxY>=context.heightAccessor().getMaxY()-4
@@ -146,6 +166,38 @@ public final class JakCityStructure extends Structure {
         if(hi-lo>(swamp?3:site==Site.SANDOVER?7:5))return Integer.MIN_VALUE;
         if(swamp)return hi;
         return ground>context.chunkGenerator().getSeaLevel()&&hi-ground<=(site==Site.SANDOVER?7:5)?ground:Integer.MIN_VALUE;
+    }
+
+    // jak_facades.rs spargus_village: nine probes 16 apart, all dry Wasteland, their ground within 16.
+    private static int spargusBase(GenerationContext context,int x,int z,int ground){
+        int lo=Integer.MAX_VALUE,hi=Integer.MIN_VALUE;
+        for(int[] p:new int[][]{{0,0},{16,0},{-16,0},{0,16},{0,-16},{16,16},{-16,-16},{16,-16},{-16,16}}){
+            int floor=height(context,x+p[0],z+p[1]);
+            if(surface(context,x+p[0],z+p[1])>floor||!valid(context,x+p[0],floor,z+p[1]))return Integer.MIN_VALUE;
+            lo=Math.min(lo,floor);hi=Math.max(hi,floor);
+        }
+        return hi-lo>16?Integer.MIN_VALUE:ground;
+    }
+
+    // jak_structures.rs village_roofed: the plaza's 21x21 under the land's roofs, nine dry probes, ground within 7.
+    private static int sandoverBase(GenerationContext context,int x,int z,int ground){
+        // stand-in: roof_allowed tests all 441 columns; one column per biome quart gives the same biomes.
+        for(int qx=(x-10)>>2;qx<=(x+10)>>2;qx++)for(int qz=(z-10)>>2;qz<=(z+10)>>2;qz++){
+            int cx=Math.clamp(qx*4+2,x-10,x+10),cz=Math.clamp(qz*4+2,z-10,z+10);
+            if(!valid(context,cx,height(context,cx,cz),cz))return Integer.MIN_VALUE;
+        }
+        int lo=Integer.MAX_VALUE,hi=Integer.MIN_VALUE;
+        for(int[] p:new int[][]{{0,0},{12,0},{-12,0},{0,12},{0,-12},{18,18},{-18,-18},{18,-18},{-18,18}}){
+            int floor=height(context,x+p[0],z+p[1]);
+            if(surface(context,x+p[0],z+p[1])>floor)return Integer.MIN_VALUE;
+            lo=Math.min(lo,floor);hi=Math.max(hi,floor);
+        }
+        return hi-lo>7?Integer.MIN_VALUE:ground;
+    }
+
+    private static int surface(GenerationContext context,int x,int z){
+        return context.chunkGenerator().getBaseHeight(x,z,Heightmap.Types.WORLD_SURFACE_WG,
+            context.heightAccessor(),context.randomState());
     }
 
     private static boolean valid(GenerationContext context,int x,int y,int z){
@@ -244,16 +296,14 @@ public final class JakCityStructure extends Structure {
                     level.setBlock(at,fill,Block.UPDATE_KNOWN_SHAPE);
                 }
             }
-            if(site==Site.CRATER_CAVE){
-                spawnCraterBand(level,chunkBounds);
-                return;
-            }
-            if(site==Site.SANDOVER){
+            // The crater cave's band: JakEcology's nest at its CAVE_MARK (Rust: jak_enemies.rs cave_band).
+            if(site==Site.CRATER_CAVE)return;
+            if(site.sandover()){
                 spawnResident(level,chunk,random,cells);
                 return;
             }
             if(site.reach>0)return;
-            spawnResident(level,chunk,random,cells);
+            // Haven's and Spargus's residents: CityPopulation, as jak2_villagers.rs peoples a town Jak comes near.
             if(site==Site.HAVEN){
                 for(var patrol:plan.patrols)spawnGuard(level,chunkBounds,patrol);
             }else{
@@ -284,27 +334,6 @@ public final class JakCityStructure extends Structure {
         private static long lootCoordinate(long seed,int coordinate){
             long value=(seed^Integer.toUnsignedLong(coordinate))*0xff51afd7ed558ccdL;
             return value^(value>>>33);
-        }
-
-        private void spawnCraterBand(WorldGenLevel level,BoundingBox chunk){
-            if(level.getLevel().getDifficulty()==net.minecraft.world.Difficulty.PEACEFUL)return;
-            var center=CityBlueprint.rotate(new BlockPos(40,-25,0),turns).offset(origin);
-            var roster=switch((int)Math.floorMod(lootSeed(level.getSeed(),center),3)){
-                case 0 -> new String[]{"baby-spider","baby-spider","babak"};
-                case 1 -> new String[]{"grunt","gekko","gekko"};
-                default -> new String[]{"kg-grunt","spydroid","spydroid"};
-            };
-            var spots=new BlockPos[]{new BlockPos(40,-25,0),new BlockPos(43,-25,2),new BlockPos(37,-25,2)};
-            for(int i=0;i<spots.length;i++){
-                var point=CityBlueprint.rotate(spots[i],turns).offset(origin);
-                if(!chunk.isInside(point)||!level.isEmptyBlock(point)||!level.isEmptyBlock(point.above()))continue;
-                var enemy=JakEntities.TYPES.get(roster[i]).create(level.getLevel(),EntitySpawnReason.STRUCTURE);
-                if(enemy==null)continue;
-                var feet=Vec3.atBottomCenterOf(point);
-                enemy.snapTo(feet.x,feet.y,feet.z,0,0);
-                enemy.setPersistenceRequired();
-                level.addFreshEntity(enemy);
-            }
         }
 
         private void spawnLeaper(WorldGenLevel level,BoundingBox chunk,BlockPos start,BlockPos end){
@@ -359,7 +388,7 @@ public final class JakCityStructure extends Structure {
                         ||!level.getBlockState(point.below()).isSolidRender())continue;
                     var resident=EntityTypes.VILLAGER.create(level.getLevel(),EntitySpawnReason.STRUCTURE);
                     if(resident==null)return;
-                    int variant=site==Site.HAVEN||site==Site.SANDOVER?random.nextInt(CitizenKind.HAVEN_VARIANTS)
+                    int variant=site==Site.HAVEN||site.sandover()?random.nextInt(CitizenKind.HAVEN_VARIANTS)
                         :random.nextFloat()<.65f?CitizenKind.SPARGUS_MALE:CitizenKind.SPARGUS_FEMALE;
                     ((CitizenState)resident).citizenVariant(variant);
                     var at=Vec3.atBottomCenterOf(point);

@@ -466,11 +466,47 @@ public final class GltfModel {
     boolean hasJoint(String name){return namedNodes.containsKey(name);}
     Vector3f localTranslation(Posed pose,String joint){return new Vector3f(pose.translations[namedNodes.get(joint)]);}
     public Matrix4f jointAt(Posed pose,int originalIndex){return pose.globals[joints[originalIndex]];}
+    // Rig::joints[i].parent: the nearest skin joint above a joint (-1 at the root). Used by client.ragdoll.
+    public int jointCount(){return joints.length;}
+    public int jointParent(int originalIndex){for(int p=nodes[joints[originalIndex]].parent;p>=0;p=nodes[p].parent)for(int i=0;i<joints.length;i++)if(joints[i]==p)return i;return -1;}
+    public Posed withJointGlobals(Posed base,Matrix4f[] jointGlobals){Matrix4f[] globals=base.globals.clone(),skin=new Matrix4f[joints.length];for(int i=0;i<joints.length;i++){globals[joints[i]]=jointGlobals[i];skin[i]=new Matrix4f(jointGlobals[i]).mul(inverseBind[i]);}return new Posed(globals,skin,base.morphs,base.translations,base.rotations,base.scales);}
+    /**
+     * One joint's local rotation (null: kept) and scale replaced, the pose composed again (Jak 1 joint-mod
+     * callbacks). Its descendants take its whole transform, scale and all, as the original's do once a
+     * callback leaves the bone's own scale at one (kermit.gc joint-mod-tracker-callback).
+     */
+    public Posed withLocal(Posed base,String joint,Quaternionf rotation,Vector3f scale){
+        Integer node=namedNodes.get(joint);if(node==null||base.translations==null)return base;
+        Quaternionf[] r=base.rotations.clone();Vector3f[] s=base.scales.clone();
+        if(rotation!=null)r[node]=rotation;if(scale!=null)s[node]=scale;
+        var composed=compose(base.translations,r,s,base.morphs);
+        Matrix4f[] globals=composed.globals.clone();boolean[] done=new boolean[nodes.length];
+        for(int i=0;i<nodes.length;i++)inherit(i,node,globals,done,base.translations,r,s);
+        Matrix4f[] skin=new Matrix4f[joints.length];
+        for(int i=0;i<joints.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
+        return new Posed(globals,skin,composed.morphs,composed.translations,composed.rotations,composed.scales);
+    }
+    /** Whether `i` lies under `root`; if so its global again, from its parent's whole matrix. */
+    private boolean inherit(int i,int root,Matrix4f[] g,boolean[] done,Vector3f[] t,Quaternionf[] r,Vector3f[] s){
+        int parent=nodes[i].parent;
+        if(i==root||parent<0)return i==root;
+        if(done[i])return true;
+        if(!inherit(parent,root,g,done,t,r,s))return false;
+        g[i]=new Matrix4f(g[parent]).mul(new Matrix4f().translationRotateScale(t[i],r[i],s[i]));done[i]=true;
+        return true;
+    }
+    /** The joint's place in its parent and its parent's global, as `global` composes them; null if absent. */
+    public Matrix4f[] parented(Posed pose,String joint){
+        Integer node=namedNodes.get(joint);if(node==null||nodes[node].parent<0||pose.translations==null)return null;
+        return new Matrix4f[]{new Matrix4f().translationRotateScale(pose.translations[node],pose.rotations[node],pose.scales[node]),pose.globals[nodes[node].parent]};
+    }
     public Matrix4f joint(Posed pose,String name){Integer node=namedNodes.get(name);if(node==null)throw new IllegalArgumentException("Required original joint missing: "+name);return pose.globals[node];}
     public Posed poseAtTime(String name,float seconds){Clip clip=clips.get(name);if(clip==null)throw new IllegalArgumentException("Required original clip missing: "+name);if(seconds==Float.MAX_VALUE)return terminalPoses.computeIfAbsent(name,k->{Posed p=pose(k,frames(k)-1);prepare(p);return p;});int frames=clip.frames;return pose(name,clip.duration>0?Math.clamp(seconds/clip.duration,0,1)*(frames-1):0);}
     public Posed overlayUpper(Posed base,String name,float seconds){
         Posed upper=poseAtTime(name,seconds);Integer root=namedNodes.get("upper_body");if(root==null)throw new IllegalArgumentException("Original upper_body joint missing");
-        for(int i=0;i<nodes.length;i++)for(int ancestor=i;ancestor>=0;ancestor=nodes[ancestor].parent)if(ancestor==root){base.translations[i].set(upper.translations[i]);base.rotations[i].set(upper.rotations[i]);base.scales[i].set(upper.scales[i]);break;}
+        // The board on Jak's back hangs from the waist, not upper_body; it is the clip's too, or it parts from the torso.
+        Integer board=namedNodes.get("board");
+        for(int i=0;i<nodes.length;i++)for(int ancestor=i;ancestor>=0;ancestor=nodes[ancestor].parent)if(ancestor==root||board!=null&&ancestor==board){base.translations[i].set(upper.translations[i]);base.rotations[i].set(upper.rotations[i]);base.scales[i].set(upper.scales[i]);break;}
         Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,base.translations,base.rotations,base.scales);
         Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,base.morphs,base.translations,base.rotations,base.scales);
@@ -551,6 +587,8 @@ public final class GltfModel {
         return armSurfaces.stream().mapToInt(s->s.indices.length/3).sum();
     }
     public boolean hasClip(String name){return clips.containsKey(name);}
+    /** Some clip of this model (null with none). */
+    public String anyClip(){return clips.isEmpty()?null:clips.keySet().stream().sorted().findFirst().get();}
     public float duration(String name){Clip clip=clips.get(name);return clip==null?0:clip.duration;}
     public int frames(String name){Clip clip=clips.get(name);return clip==null?1:clip.frames;}
     public float height(Posed posed){
@@ -589,7 +627,8 @@ public final class GltfModel {
     private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut,boolean closedEyes){
         submit(posed,stack,collector,light,alpha,overlay,shownMask,dark,rim,effect,flut,closedEyes,surfaces);
     }
-    private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut,boolean closedEyes,List<Surface> selected){
+    /** Its images into Minecraft's textures, ahead of its first draw (or at it). */
+    void uploadTextures(){
         if(!pendingTextures.isEmpty()){
             var manager=Minecraft.getInstance().getTextureManager();
             for(var entry:pendingTextures.entrySet()){
@@ -614,6 +653,13 @@ public final class GltfModel {
             }
             pendingTextures.clear();
         }
+    }
+    /** jak_pose.rs skin_model's colour for the next submit only (0xRRGGBB, 255 a channel = as drawn): a wreck's darkening. */
+    private static int nextColour=0xffffff;
+    public static void colourNext(int rgb){nextColour=rgb&0xffffff;}
+    private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut,boolean closedEyes,List<Surface> selected){
+        final int colour=nextColour;nextColour=0xffffff;
+        uploadTextures();
         var hurt=JakHurtVisuals.current(); // Capture before deferred submission.
         int surfaceNumber=0;var ready=selected==surfaces?prepared.get(posed):null;
         float seconds=materialSeconds();
@@ -623,7 +669,7 @@ public final class GltfModel {
         var viewUp=effect==LightFormTexture.Form.SHIELD?new Vector3f(camera.upVector()):null;
         for(Surface surface:selected){
             int index=surfaceNumber++;if(segments!=null&&!segments.shown(index,shownMask))continue;
-            float[] skinned=ready==null?skin(surface,posed):ready.get(surfaceNumber-1);
+            float[] skinned=ready==null?skin(surface,posed,frameBuffer(surface.positions.length*2)):ready.get(surfaceNumber-1);
             Identifier eye=null;
             if(surface.material.startsWith("programmer_eye")){
                 if(flut!=null)eye=flut.eyes();
@@ -632,7 +678,7 @@ public final class GltfModel {
                     eye=closedEyes?channel.closed():channel.open();
                 }
             }
-            int tint=flut==null?0xffffff:flut.tint(surface.material);
+            int tint=flut==null?colour:flut.tint(surface.material);
             Identifier texture=eye!=null?eye:effect!=null?effect.texture():surface.skullGem?gemAtlas():rim!=null?lightTextures.get(surface.texture):
                 dark?darkTextures.getOrDefault(surface.texture,surface.texture):surface.texture;
             int gemFrame=Math.floorMod((int)Math.floor(seconds*60),60);
@@ -689,8 +735,24 @@ public final class GltfModel {
         }
         return buffer;
     }
-    private float[] skin(Surface surface,Posed posed){
-        int count=surface.positions.length/3;skinnedVertices+=count;float[] skinned=new float[count*6];
+    // The frame's skinned vertices: drawn later in the same frame, so a buffer
+    // is reused only from the next frame on (05/11: a new array per surface a
+    // frame was ~40 MB/s of garbage, the collector running every few seconds).
+    private final Map<Integer,List<float[]>> skinPool=new HashMap<>();
+    private final Map<Integer,Integer> skinTaken=new HashMap<>();
+    private long skinFrame=Long.MIN_VALUE;
+    private float[] frameBuffer(int length){
+        long frame=Minecraft.getInstance().getFrameTimeNs();
+        if(frame!=skinFrame){skinFrame=frame;skinTaken.clear();}
+        var pool=skinPool.computeIfAbsent(length,k->new ArrayList<>());
+        int taken=skinTaken.merge(length,1,Integer::sum)-1;
+        if(taken<pool.size())return pool.get(taken);
+        var buffer=new float[length];if(pool.size()<32)pool.add(buffer);
+        return buffer;
+    }
+    private float[] skin(Surface surface,Posed posed){return skin(surface,posed,new float[surface.positions.length*2]);}
+    private float[] skin(Surface surface,Posed posed,float[] skinned){
+        int count=surface.positions.length/3;skinnedVertices+=count;
         Vector3f p=new Vector3f(),n=new Vector3f(),temp=new Vector3f();
         for(int i=0;i<count;i++){
             float px=surface.positions[i*3],py=surface.positions[i*3+1],pz=surface.positions[i*3+2];

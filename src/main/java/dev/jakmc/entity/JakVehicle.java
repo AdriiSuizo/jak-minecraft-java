@@ -76,9 +76,17 @@ public final class JakVehicle extends Entity {
     private Vec3 nativePosition, velocity=Vec3.ZERO, seat=new Vec3(0,.5,0), boardingFrom;
     private float boardingProgress=1;
     private float pitch,roll,health;
+    private int strikes;
+    /** A town's traffic: the ring it drives round, none once a player rides it (Rust zoomers.rs route). */
+    ZoomerTraffic.Route route;
+    private long lastStrike=Long.MIN_VALUE/2;
+    /** Ticks between blows that still count as in a row (Rust zoomers STRIKE_GAP 1.6 s). */
+    private static final int STRIKE_GAP=32;
     private boolean high;
     private JakPackets.Input controls;
     private JsonObject currentFrame,previousFrame;
+    private final float[] trafficNote=new float[4];
+    String trafficFrame(){return String.format("steer%.2f thr%.0f brk%.0f v%.2f",trafficNote[0],trafficNote[1],trafficNote[2],trafficNote[3]);}
     private int press;
     // The hull, suspension, rider and camera sample these same timestamped snapshots.
     private record DisplayFrame(long tick,JsonObject frame){}
@@ -146,13 +154,15 @@ public final class JakVehicle extends Entity {
     }
 
     public static void initialize() {
+        VehicleWreck.initialize();
+        ZoomerTraffic.initialize();
         for(var model:Model.values()) {
             var type=ResourceKey.create(Registries.ENTITY_TYPE,JakData.id(model.id));
             model.type=Registry.register(BuiltInRegistries.ENTITY_TYPE,type,EntityType.Builder
                 .<JakVehicle>of((entityType,level)->new JakVehicle(entityType,level,model),MobCategory.MISC)
                 .sized(model.length,model.height).clientTrackingRange(12).updateInterval(1).build(type));
             var item=ResourceKey.create(Registries.ITEM,JakData.id(model.id));
-            model.item=Registry.register(BuiltInRegistries.ITEM,item,new Item(new Item.Properties().setId(item).stacksTo(1)) {
+            model.item=Registry.register(BuiltInRegistries.ITEM,item,new VehicleItem(new Item.Properties().setId(item).stacksTo(1)) {
                 @Override public InteractionResult useOn(UseOnContext context) {
                     if(context.getClickedFace()!=Direction.UP)return InteractionResult.PASS;
                     if(context.getLevel() instanceof ServerLevel server) {
@@ -160,6 +170,8 @@ public final class JakVehicle extends Entity {
                         if(car==null)return InteractionResult.FAIL;
                         Vec3 point=Vec3.atBottomCenterOf(context.getClickedPos().above()).add(0,model.parkingClearance(),0);
                         car.snapTo(point.x,point.y,point.z,context.getRotation(),0);
+                        // Its hull as its item kept it.
+                        car.health=VehicleItem.health(context.getItemInHand())*model.hitPoints;
                         if(!server.noCollision(car)||!server.addFreshEntity(car))return InteractionResult.FAIL;
                         context.getItemInHand().consume(1,context.getPlayer());
                     }
@@ -196,14 +208,26 @@ public final class JakVehicle extends Entity {
     public JsonObject frame(){return currentFrame;}
     public JsonObject previousFrame(){return previousFrame==null?currentFrame:previousFrame;}
     @Override public boolean isPickable(){return !isRemoved();}
-    @Override protected boolean canAddPassenger(Entity passenger){return getPassengers().isEmpty()&&passenger instanceof Player;}
+    @Override protected boolean canAddPassenger(Entity passenger){
+        return getPassengers().isEmpty()&&(passenger instanceof Player||route!=null&&passenger instanceof net.minecraft.world.entity.npc.villager.Villager);
+    }
+    @Override public boolean shouldBeSaved(){return route==null&&super.shouldBeSaved();}
+    /** The traffic's NPC driver at the controls, if any. */
+    Entity driver(){return getFirstPassenger() instanceof net.minecraft.world.entity.npc.villager.Villager v?v:null;}
+    /** Rust zoomers.rs manage_traffic: gone with its zoomer. */
+    void dropDriver(){var d=driver();if(d!=null){d.stopRiding();d.discard();}}
+    /** Rust zoomers.rs eject_driver. */
+    private void ejectDriver(){var d=driver();if(d!=null)ZoomerTraffic.eject(this,d,velocity);}
     public boolean canBoard(Player player,Vec3 point) {
-        return JakPlayers.active(player)&&getPassengers().isEmpty()&&!player.isSpectator()
+        return JakPlayers.active(player)&&(getPassengers().isEmpty()||driver()!=null)&&!player.isSpectator()
             &&!player.isSleeping()&&player.getEyePosition().distanceToSqr(point)<=2.9*2.9;
     }
     @Override public InteractionResult interact(Player player,InteractionHand hand,Vec3 offset) {
         if(hand!=InteractionHand.MAIN_HAND||!canBoard(player,position().add(offset)))return InteractionResult.PASS;
         Vec3 approach=player.position();
+        // Ridden by a player it is theirs, off its route (Rust zoomers.rs). stand-in:
+        // the original leaves its driver drawn in the seat; one seat here, so he is thrown off.
+        if(player instanceof ServerPlayer&&driver()!=null){ejectDriver();route=null;ZoomerTraffic.forget(this);}
         if(player instanceof ServerPlayer&&player.startRiding(this)){
             boardingFrom=approach;
             boardingProgress=0;
@@ -248,6 +272,13 @@ public final class JakVehicle extends Entity {
     @Override public void tick() {
         super.tick();
         if(!(level() instanceof ServerLevel server)||server.getGameTime()<retryAt)return;
+        // Under water (sunk, put down in it, flooded) it is taken apart into
+        // its item, which floats up where it was (Rust zoomers.rs, 15/10).
+        if(getFluidHeight(net.minecraft.tags.FluidTags.WATER)>model.height*.5+.1){
+            playCue("bike-down");
+            takeApart(server);
+            return;
+        }
         var rider=getFirstPassenger() instanceof ServerPlayer player?player:null;
         boolean fresh=rider!=null&&controls!=null&&server.getGameTime()-lastInput<7;
         int held=fresh?controls.held()|press:0;
@@ -261,8 +292,9 @@ public final class JakVehicle extends Entity {
         int edges=fresh?press:0;
         press=0;
         if(rider==null){controls=null;boardingFrom=null;}
+        if(rider!=null&&route!=null){route=null;ZoomerTraffic.forget(this);}
         boardingProgress=boardingFrom==null?1:Math.clamp((server.getGameTime()-boardingAt)/11f,0,1);
-        if(rider==null&&tickCount>20&&velocity.lengthSqr()<.00001&&tickCount%10!=0
+        if(rider==null&&route==null&&tickCount>20&&velocity.lengthSqr()<.00001&&tickCount%10!=0
             &&(!model.hover()||currentFrame==null||currentFrame.get("lamps").getAsFloat()<.01f))return;
         // A FULL collision chunk is not necessarily ready to tick/retain
         // entities. Do not move the hull into a section that can unload it.
@@ -286,12 +318,18 @@ public final class JakVehicle extends Entity {
             if((held&64)!=0)actions|=8;
             float steer=fresh?-controls.strafe():0,lean=fresh?controls.forward():0;
             float throttle=fresh?controls.throttle():0,brake=fresh?controls.brake():0;
+            boolean traffic=rider==null&&route!=null&&model.hover();
+            if(traffic){
+                var auto=ZoomerTraffic.autopilot(this,velocity);
+                steer=auto.steer();lean=0;throttle=auto.throttle();brake=auto.brake();
+                trafficNote[0]=steer;trafficNote[1]=throttle;trafficNote[2]=brake;trafficNote[3]=(float)velocity.horizontalDistance();
+            }
             String encoded;
             if(model.hover()){
                 int zoomer=(edges&1)|(held&6);
                 float hour=(server.getDefaultClockTime()%24000+6000)%24000/1000f;
                 encoded=NativeJak.hoverStep(handle,steer,lean,throttle,brake,zoomer,
-                    (float)moved.x,(float)moved.y,(float)moved.z,hour%24,health/model.hitPoints,rider!=null);
+                    (float)moved.x,(float)moved.y,(float)moved.z,hour%24,health/model.hitPoints,rider!=null||traffic);
             }else{
                 encoded=NativeJak.carStep(handle,steer,lean,throttle,brake,actions,
                     (float)moved.x,(float)moved.y,(float)moved.z,3);
@@ -357,13 +395,61 @@ public final class JakVehicle extends Entity {
     }
     @Override public boolean hurtServer(ServerLevel server,DamageSource source,float amount){
         if(amount<=0||isInvulnerableToBase(source))return false;
-        health-=amount;
+        // Jak's fists and feet do it no harm (Adrii 15/10, Rust zoomers.rs):
+        // each blow cracks it as a block cracks; the third in a row takes it
+        // apart into its item, which falls where it stood.
+        if(source.is(net.minecraft.world.damagesource.DamageTypes.PLAYER_ATTACK)&&source.getEntity() instanceof net.minecraft.world.entity.player.Player){
+            if(getFirstPassenger()!=null)return false;
+            long now=server.getGameTime();
+            if(now-lastStrike>STRIKE_GAP)strikes=0;
+            lastStrike=now;
+            strikes++;
+            Vec3 at=position().add(0,model.height*.5,0);
+            if(strikes>=3){
+                server.playSound(null,at.x,at.y,at.z,net.minecraft.sounds.SoundEvents.METAL_BREAK,SoundSource.NEUTRAL,1,.8f);
+                takeApart(server);
+            }else server.playSound(null,at.x,at.y,at.z,net.minecraft.sounds.SoundEvents.METAL_HIT,SoundSource.NEUTRAL,1,.6f+.2f*strikes);
+            return true;
+        }
+        // Jak's shots take two hit points, as the Rust fleet's did; the rest
+        // of Minecraft's harm (lava, creepers) as it comes.
+        boolean jakShot=source.typeHolder().unwrapKey().map(k->k.identifier().getNamespace().equals(dev.jakmc.JakMod.ID)).orElse(false);
+        health-=jakShot?2:amount;
         if(health<=0)wreck();
         return true;
     }
-    private void wreck(){
+    /** Back into its item where it stands, keeping its hull. */
+    private void takeApart(ServerLevel server){
+        ejectDriver();
         ejectPassengers();
-        playCue(model.bike()?"bike-explode":"car-explode");
+        var stack=new net.minecraft.world.item.ItemStack(model.item);
+        VehicleItem.setHealth(stack,health/model.hitPoints);
+        spawnAtLocation(server,stack);
+        discard();
+    }
+    /**
+     * Rust zoomers.rs Fleet step, "No hit points left: it blows up": its
+     * carcass and pieces (VehicleWreck), its driver thrown off, its rider set
+     * down 2.5 m to its side and a metre up.
+     */
+    private void wreck(){
+        if(isRemoved())return;
+        ejectDriver();
+        var rider=getFirstPassenger() instanceof ServerPlayer player?player:null;
+        ejectPassengers();
+        if(level() instanceof ServerLevel server){
+            var attitude=currentFrame==null?new org.joml.Quaternionf().rotationY((float)-Math.toRadians(getYRot())):displayRotation(currentFrame);
+            long mask=model==Model.TOAD?-1L:model==Model.SNAKE?5L:currentFrame!=null&&currentFrame.has("mask")?currentFrame.get("mask").getAsLong():-1L;
+            String wheels=!model.hover()&&currentFrame!=null&&currentFrame.has("wheels")?currentFrame.getAsJsonArray("wheels").toString():"";
+            VehicleWreck.zoomer(server,this,attitude,mask,wheels);
+            if(rider!=null){
+                double yaw=Math.toRadians(getYRot());
+                Vec3 side=new Vec3(Math.cos(yaw),0,Math.sin(yaw));
+                Vec3 to=position().add(side.scale(2.5*VehicleWreck.METRE)).add(0,VehicleWreck.METRE,0);
+                rider.teleportTo(to.x,to.y,to.z);
+            }
+        }
+        ZoomerTraffic.forget(this);
         discard();
     }
     private void closeNative(){

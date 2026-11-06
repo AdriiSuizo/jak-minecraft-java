@@ -1,6 +1,7 @@
 """Build private Minecraft resources from the source export. No retail assets are tracked."""
 from pathlib import Path
 from import_facades import export_facades
+from nombres_es import nombre_es
 import gzip,hashlib,json,math,shutil,struct
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -188,8 +189,10 @@ def material_resources(definitions):
         (target/(tool+'.json')).write_text(json.dumps(content,separators=(',',':')),encoding='utf-8')
     languages=DEST/'assets/jak/lang'
     languages.mkdir(parents=True,exist_ok=True)
-    for language in ('es_es','en_us'):
-        (languages/(language+'.json')).write_text(json.dumps(translations,ensure_ascii=False),encoding='utf-8')
+    # en_us keeps the catalogue titles; es_es takes the Spanish table in nombres_es.py.
+    spanish={key:nombre_es(key[len('block.jak.'):],title) for key,title in translations.items()}
+    for language,table in (('es_es',spanish),('en_us',translations)):
+        (languages/(language+'.json')).write_text(json.dumps(table,ensure_ascii=False),encoding='utf-8')
 
 def seal_track_meshes(catalog):
     for index in (105,106):
@@ -302,6 +305,7 @@ def main():
     material_resources(definitions+decorations(catalog))
     seal_track_meshes(catalog)
     import_blueprints(('haven','spargus','palace')+SITES)
+    import import_facade_parts;import_facade_parts.export(SOURCE,DEST)
     receipts=[]
     for path in sorted(DEST.rglob('*')):
         if path.is_file():receipts.append(dict(path=str(path.relative_to(DEST)).replace('\\','/'),sha256=hashlib.sha256(path.read_bytes()).hexdigest(),size=path.stat().st_size))

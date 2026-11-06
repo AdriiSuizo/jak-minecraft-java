@@ -25,11 +25,18 @@ public final class JakPlayers {
         if(!CONTROLLED.contains(player.getUUID()))throw new IllegalStateException("Only a controlled development fixture can select its input route");
         HOST_CONTROLLED.add(player.getUUID());
     }
-    public static void probeInput(ServerPlayer p,int held,int pressed,float forward){PROBE_INPUT.put(p.getUUID(),new JakPackets.Input(0,held,pressed,0,forward,0,0,p.getYRot(),p.getXRot(),0,0));}
+    // An edge waits for the native step that reads it, even when two fixture ticks land before one server tick.
+    public static void probeInput(ServerPlayer p,int held,int pressed,float forward){var old=PROBE_INPUT.get(p.getUUID());probeSet(p,held,pressed|(old==null?0:old.pressed()),forward);}
+    private static void probeSet(ServerPlayer p,int held,int pressed,float forward){PROBE_INPUT.put(p.getUUID(),new JakPackets.Input(0,held,pressed,0,forward,0,0,p.getYRot(),p.getXRot(),0,0));}
     private static final Map<UUID,Session> LIVE=new HashMap<>();
     public static void resetForProbe(ServerPlayer player){
         if(!CONTROLLED.contains(player.getUUID()))throw new IllegalStateException("Only a controlled development fixture can reset its native session");
         var old=LIVE.remove(player.getUUID());if(old!=null)old.close();
+    }
+    /** The native session a controlled fixture's Jak runs in (0: none), to check it survives host moves. */
+    public static long probeSession(ServerPlayer player){
+        if(!CONTROLLED.contains(player.getUUID()))throw new IllegalStateException("Only a controlled development fixture can inspect its native session");
+        var s=LIVE.get(player.getUUID());return s==null?0:s.nativeId;
     }
     private static final int BOARD_BUTTON=1<<7;
     private static final net.minecraft.resources.Identifier VANILLA_SPRINT=
@@ -38,15 +45,20 @@ public final class JakPlayers {
     private record Hurt(int mode,Vec3 from){}
     private static final class Session implements AutoCloseable {
         final long nativeId;
-        final MinecraftCollision.Query collision;
-        final ByteBuffer controls=NativeJak.buffer(64),noTriangles=NativeJak.buffer(0);
+        MinecraftCollision.Query collision;
+        /** The Minecraft body this session was made for; a respawn is a new one. */
+        final ServerPlayer owner;
+        final ByteBuffer controls=NativeJak.buffer(68),noTriangles=NativeJak.buffer(0);
         final DirectBufferArena actorBuffers=new DirectBufferArena(1024*1024);
         Vec3 origin;
         String dimension;
         Vec3 last;
+        /** The native state last step (minecraft_survival.rs: a jump's hunger as Jak goes into "jump"). */
+        String lastState="";
         JakPackets.Input input=new JakPackets.Input(0,0,0,0,0,0,0,0,0,0,0);
         int pressed;
         final ArrayList<Hurt> hurts=new ArrayList<>();
+        final ArrayList<Vec3> tongues=new ArrayList<>();
         int boardUseTicks;
         boolean shield,shieldHit,altarMount,usingBoard,grinding,hostMoved;
         List<List<Vec3>> rails=List.of();
@@ -67,14 +79,35 @@ public final class JakPlayers {
             mount=null;
             mountReleased=false;
         }
-        Session(ServerPlayer player){nativeId=NativeJak.create(player.getYRot());origin=player.position();last=origin;dimension=player.level().dimension().identifier().toString();collision=new MinecraftCollision.Query(player.level(),player,origin);NativeJak.bindWorld(nativeId,collision);}
+        Session(ServerPlayer player){owner=player;nativeId=NativeJak.create(player.getYRot());origin=player.position();last=origin;dimension=player.level().dimension().identifier().toString();collision=new MinecraftCollision.Query(player.level(),player,origin);NativeJak.bindWorld(nativeId,collision);}
         public void close(){releaseMount();releaseCraft();NativeJak.destroy(nativeId);}
+        /**
+         * The host moved Jak (a portal, /tp, an ender pearl): carry the same Jak
+         * there, keeping his form, eco, gun and board, instead of starting a new
+         * one. A new dimension is a new world to collide with.
+         */
+        void carry(ServerPlayer player){
+            String now=player.level().dimension().identifier().toString();
+            if(!now.equals(dimension)){
+                collision=new MinecraftCollision.Query(player.level(),player,player.position());
+                NativeJak.bindWorld(nativeId,collision);
+                dimension=now;
+            }
+            origin=player.position();
+            collision.origin=origin;
+            NativeJak.relocate(nativeId,0,0,0,0,0,0);
+            last=origin;
+            hostMoved=false;
+            hurts.clear();
+            rails=null;
+        }
     }
     public static boolean active(Entity player){return player.getAttachedOrCreate(JakData.ENABLED)&&!player.isPassenger()&&player.isAlive();}
     public static void chooseMode(ServerPlayer player,boolean enabled){
         player.setAttached(JakData.ENABLED,enabled);
         player.setAttached(JakData.MODE_SELECTED,true);
     }
+    /** The rescue (K): a fresh Jak next tick, off mount and craft (render_anim/src/jak.rs update, `Jak::new`). */ public static void rescue(ServerPlayer player){var s=LIVE.remove(player.getUUID());if(s!=null)s.close();}
     public static void hostTeleport(ServerPlayer player){
         Session session=LIVE.get(player.getUUID());
         if(session!=null&&player.position().distanceToSqr(session.last)>1e-10)session.hostMoved=true;
@@ -103,6 +136,13 @@ public final class JakPlayers {
         else mode=4;
         if(session.craft!=null&&mode!=5)mode=4;
         session.hurts.add(new Hurt(mode,source.getSourcePosition()));
+    }
+    /** kermit.gc kermit-tongue-stuck: a frog's tongue, its base at `from`, on this Jak this tick. */
+    /** For the scenes: frog tongue pulls queued. */
+    public static int tonguePulls;
+    public static void tongue(ServerPlayer player,Vec3 from){
+        if(!active(player))return;
+        Session session=LIVE.get(player.getUUID());if(session!=null&&session.tongues.size()<8){session.tongues.add(from);tonguePulls++;}
     }
     public static boolean mount(ServerPlayer player,JakLeaper mount){
         if(!active(player)||player.isSleeping()||player.isSpectator()||mount.riderId()>=0||
@@ -169,7 +209,10 @@ public final class JakPlayers {
                 present.add(p.getUUID());
                 Session s=LIVE.get(p.getUUID());
                 String dimension=p.level().dimension().identifier().toString();
-                if(s!=null&&(s.hostMoved||!s.dimension.equals(dimension)||p.position().distanceToSqr(s.last)>16||s.mount!=null&&(s.mount.isRemoved()||s.mount.isDeadOrDying()||s.mount.level()!=p.level()))) {s.close();LIVE.remove(p.getUUID());s=null;}
+                boolean moved=s!=null&&(s.hostMoved||!s.dimension.equals(dimension)||p.position().distanceToSqr(s.last)>16);
+                boolean mountLost=s!=null&&s.mount!=null&&(s.mount.isRemoved()||s.mount.isDeadOrDying()||s.mount.level()!=p.level());
+                if(s!=null&&(s.owner!=p||mountLost||moved&&(s.mount!=null||s.craft!=null))) {s.close();LIVE.remove(p.getUUID());s=null;}
+                else if(moved)s.carry(p);
                 if(s==null){s=new Session(p);LIVE.put(p.getUUID(),s);}
                 try{step(p,s);}catch(RuntimeException failure){s.close();LIVE.remove(p.getUUID());p.setDeltaMovement(Vec3.ZERO);JakMod.LOG.error("Jak session stopped at last safe Minecraft pose for {}",p.getScoreboardName(),failure);}
             }
@@ -210,8 +253,11 @@ public final class JakPlayers {
             boolean leaving=forced||((edges&8)!=0&&s.boardingTicks>=14);
             Vec3 exit=leaving&&!missing?s.craft.exit(p.level()):null;
             if(forced||exit!=null){
+                // jak_entities.rs control_vehicle: an exploding craft throws him off (blownOff).
+                Vec3[] thrown=!missing&&s.craft.wrecked()?s.craft.blownOff():null;
                 s.releaseCraft();
-                relocate(s,exit==null?p.position():exit,new Vec3(0,1.92,0));
+                if(thrown!=null)relocate(s,thrown[0],thrown[1]);
+                else relocate(s,exit==null?p.position():exit,new Vec3(0,1.92,0));
             }else{
                 ++s.boardingTicks;
                 flight=s.craft.advance(p.level(),p,fresh?input:null,edges,s.boardingTicks==14);
@@ -236,7 +282,7 @@ public final class JakPlayers {
         b.putFloat(fresh&&flight==null?input.strafe():0).putFloat(fresh&&flight==null?input.forward():0);
         b.putFloat(fresh?input.rightX():0).putFloat(fresh?input.rightY():0).putFloat(fresh?input.brake():0).putFloat(fresh?input.throttle():0);
         b.putFloat(input.yaw()).putFloat(input.pitch());
-        float water=waterSurface(p,s.origin);
+        float water=waterSurface(p,s.origin,s.usingBoard);
         var movement=p.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
         var vanillaSprint=movement.getModifier(VANILLA_SPRINT);
         double speed=movement.getValue();
@@ -246,7 +292,7 @@ public final class JakPlayers {
         b.putFloat(Float.isFinite(water)?water:0).putFloat((float)(speed/.1));
         int flags=p.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD)?1:0;
         if(Float.isFinite(water))flags|=16;
-        if(p.hasInfiniteMaterials())flags|=32;
+        // Creative is the item menu only (Adrii 22/10): rounds still count.
         if(flight!=null)flags|=2;
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE))flags|=4;
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.SLOW_FALLING))flags|=8;
@@ -262,6 +308,8 @@ public final class JakPlayers {
         }
         b.putInt(flags).putFloat(Math.min(100,resources[0])).putFloat(Math.min(100,resources[1]));
         b.putInt(s.mount!=null||flight!=null?-1:JakItems.GUNS.indexOf(p.getMainHandItem().getItem()));
+        // Rust minecraft_survival.rs: Jump Boost scales Jak's jump as it does a player's, (0.42 + 0.1·level) / 0.42.
+        b.putFloat((float)((.42+p.getJumpBoostPower())/.42));
         AABB region=p.getBoundingBox().inflate(6,5,6);
         var triangles=s.noTriangles; // Queries use the live Minecraft shape callback.
         s.actorBuffers.reset();var actors=flight!=null?s.noTriangles:MinecraftCollision.actors(p.level(),p,s.origin,region.inflate(256),s.actorBuffers);
@@ -278,6 +326,8 @@ public final class JakPlayers {
             NativeJak.hurt(s.nativeId,hurt.mode(),hurt.from()!=null,(float)from.x,(float)from.y,(float)from.z);
         }
         s.hurts.clear();
+        for(var tongue:s.tongues){Vec3 from=tongue.subtract(s.origin);NativeJak.tongue(s.nativeId,(float)from.x,(float)from.y,(float)from.z);}
+        s.tongues.clear();
         JsonObject pose=JsonParser.parseString(NativeJak.step(s.nativeId,b,triangles,actors,3)).getAsJsonObject();
         s.shield=pose.get("shield").getAsBoolean();
         s.entityRate=pose.get("entityRate").getAsFloat();
@@ -353,8 +403,22 @@ public final class JakPlayers {
             p.level().getChunkSource().move(p);
         }
         p.setDeltaMovement(Vec3.ZERO);p.setOnGround((pose.get("status").getAsInt()&2)!=0);p.resetFallDistance();
+        // Rust minecraft_game survival.rs: on foot (the board too) every block run costs 0.05 of exhaustion,
+        // a jump 0.05 (minecraft_world.rs, under 4 blocks a step: no teleports).
+        if(s.last!=null&&flight==null&&s.mount==null){
+            double run=Math.hypot(position.x-s.last.x,position.z-s.last.z);
+            if(run<4)p.causeFoodExhaustion((float)(.05*run));
+        }
+        String nativeState=pose.get("state").getAsString();
+        if(nativeState.equals("jump")&&!s.lastState.equals("jump"))p.causeFoodExhaustion(.05f);
+        s.lastState=nativeState;strikeState=nativeState;
+        burn(p,s);
+        // Rust native_skate.rs pad_contact (stand-in: the block under the feet): grounded on a pad, its spring.
+        if(flight==null&&s.mount==null&&(pose.get("status").getAsInt()&2)!=0
+            &&p.level().getBlockState(net.minecraft.core.BlockPos.containing(position.x,position.y-.05,position.z)).is(dev.jakmc.content.JakJumpPad.BLOCK))
+            NativeJak.padBounce(s.nativeId,dev.jakmc.content.JakJumpPad.SPRING_METRES);
         p.setYRot(input.yaw());p.setXRot(input.pitch());p.setYBodyRot(pose.get("yaw").getAsFloat());s.last=position;s.pressed=0;
-        if(controlled)probeInput(p,input.held(),0,input.forward());
+        if(controlled)probeSet(p,input.held(),0,input.forward());
         JakResources.consume(p,0,Math.max(0,Math.min(100,resources[0])-pose.get("darkEco").getAsFloat()));
         JakResources.consume(p,1,Math.max(0,Math.min(100,resources[1])-pose.get("lightEco").getAsFloat()));
         float[] caps={50,100,100,20};
@@ -385,6 +449,14 @@ public final class JakPlayers {
         session.rails=lines;
     }
 
+    /** A game metre in blocks (Jak at 0.64). */
+    public static final double METRE=.64;
+    /** Jak set down at `at` moving at `velocity` (blocks a second): thrown by a blast. */
+    public static void blownOff(ServerPlayer p,Vec3 at,Vec3 velocity){
+        Session s=LIVE.get(p.getUUID());
+        if(s==null||!active(p)||s.craft!=null||s.mount!=null)return;
+        relocate(s,at,velocity);
+    }
     private static void relocate(Session s,Vec3 at,Vec3 velocity){
         Vec3 pos=at.subtract(s.origin);
         NativeJak.relocate(s.nativeId,(float)pos.x,(float)pos.y,(float)pos.z,
@@ -405,14 +477,40 @@ public final class JakPlayers {
         mount.setOnGround(ground);
         return mount.position();
     }
-    private static float waterSurface(ServerPlayer p,Vec3 origin){
+    /** The liquid's top under Jak; on the board dark eco's too, which it rides as water (Rust minecraft_world board water + dark_eco::board_triangles). */
+    /**
+     * Rust minecraft_world.rs, Jak alight: standing on lava burns him too (feet 0.35 under), as in it for 15 s;
+     * alight he loses a point a second, in lava as well (vanilla skips it there, Jak only burns in it); the
+     * shield puts it out (water does in vanilla). Lava's and a fire block's own hurt is not his (JakShieldMixin).
+     */
+    private static void burn(ServerPlayer p,Session s){
+        if(s.shield){if(p.getRemainingFireTicks()>0)p.clearFire();return;}
+        if(p.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE))return;
+        var under=net.minecraft.core.BlockPos.containing(p.getX(),p.getY()-.35,p.getZ());
+        if(p.level().getFluidState(under).is(net.minecraft.tags.FluidTags.LAVA))p.setRemainingFireTicks(Math.max(p.getRemainingFireTicks(),300));
+        if(p.isInLava()&&p.getRemainingFireTicks()>0&&p.getRemainingFireTicks()%20==0)p.hurtServer(p.level(),p.damageSources().onFire(),1);
+    }
+    /** Rust minecraft_world.rs LAVA_SURFACE: the top lava cell from the feet + 3 down to the feet − 1, for Jak to swim in. */
+    private static float lavaSurface(ServerPlayer p,Vec3 origin){
+        var level=p.level();var feet=p.blockPosition();
+        for(int dy=3;dy>=-1;dy--){
+            var at=feet.above(dy);var fluid=level.getFluidState(at);
+            if(fluid.is(net.minecraft.tags.FluidTags.LAVA))return (float)(at.getY()-origin.y+fluid.getHeight(level,at));
+        }
+        return Float.NaN;
+    }
+    private static float waterSurface(ServerPlayer p,Vec3 origin,boolean board){
         var level=p.level();
         var surface=p.blockPosition().mutable();
         var fluid=level.getFluidState(surface);
-        if(!fluid.is(net.minecraft.tags.FluidTags.WATER))return Float.NaN;
+        java.util.function.Predicate<net.minecraft.world.level.material.FluidState> liquid=f->f.is(net.minecraft.tags.FluidTags.WATER)
+            ||board&&f.getType().isSame(dev.jakmc.content.darkeco.DarkEco.SOURCE);
+        if(!liquid.test(fluid)&&board){surface.move(net.minecraft.core.Direction.DOWN);fluid=level.getFluidState(surface);
+            if(!fluid.getType().isSame(dev.jakmc.content.darkeco.DarkEco.SOURCE)){surface.move(net.minecraft.core.Direction.UP);fluid=level.getFluidState(surface);}}
+        if(!liquid.test(fluid))return board?Float.NaN:lavaSurface(p,origin);
         while(surface.getY()<level.getMaxY()){
             var above=level.getFluidState(surface.above());
-            if(!above.is(net.minecraft.tags.FluidTags.WATER))break;
+            if(!liquid.test(above))break;
             surface.move(net.minecraft.core.Direction.UP);
             fluid=above;
         }
@@ -424,6 +522,47 @@ public final class JakPlayers {
         return FLOOR_SOUNDS.computeIfAbsent(state,s->NativeJak.floor(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(s.getBlock()).getPath(),s.getSoundType().getStepSound().location().toString()));
     }
     public static Vec3 vector(JsonArray a){return new Vec3(a.get(0).getAsDouble(),a.get(1).getAsDouble(),a.get(2).getAsDouble());}
+    /** The block each player's blows last took from Minecraft's outline. */
+    private static final java.util.Map<java.util.UUID,net.minecraft.core.BlockPos> MARKED=new java.util.HashMap<>();
+    /** Fixture diagnostics: blows on the world, and those that found their block. */
+    public static final java.util.concurrent.atomic.AtomicInteger WORLD_STRIKES=new java.util.concurrent.atomic.AtomicInteger(),
+        WORLD_STRIKES_FOUND=new java.util.concurrent.atomic.AtomicInteger();
+    private static net.minecraft.world.phys.BlockHitResult clip(ServerPlayer p,Vec3 from,Vec3 to){
+        var hit=p.level().clip(new net.minecraft.world.level.ClipContext(from,to,
+            net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,p));
+        return hit.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK&&!hit.isInside()?hit:null;
+    }
+    /** The native state of the step whose events are being applied (what kind of blow a strike is). */
+    private static String strikeState="";
+    // Rust jak.rs 3454-3472: the kicks and the pounds among the blows (the rest are punches).
+    private static final java.util.Set<String> KICKS=java.util.Set.of("attack","attack-air","board-jump-kick","board-wall-kick"),
+        POUNDS=java.util.Set.of("flop","flop-hit-ground");
+    /**
+     * Rust minecraft_world.rs, a blow on a block: a bell rings to a kick (and calls the villagers, CitizenBellMixin)
+     * and breaks to a pound, a punch leaves it; a kick works a block that is used by hand (minecraft_game
+     * interaction.rs: lever, repeater, comparator, note block, buttons, wooden doors, trapdoors and gates)
+     * and does not damage it. Kicks only, not punches (Adrii 06/11; the Rust's punches worked them too).
+     */
+    private static void strikeBlock(ServerPlayer p,net.minecraft.core.BlockPos at,float damage){
+        var level=p.level();var state=level.getBlockState(at);
+        boolean kick=KICKS.contains(strikeState),pound=POUNDS.contains(strikeState);
+        if(state.getBlock() instanceof net.minecraft.world.level.block.BellBlock bell){
+            if(kick)bell.attemptToRing(p,level,at,null);
+            else if(pound)level.destroyBlock(at,true,p);
+            return;
+        }
+        if(kick&&workedByHand(state)){
+            state.useWithoutItem(level,p,new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(at),net.minecraft.core.Direction.UP,at,false));
+            return;
+        }
+        JakWorldDamage.hit(p,at,damage);
+    }
+    // minecraft_game interaction.rs uses_by_hand
+    private static boolean workedByHand(net.minecraft.world.level.block.state.BlockState state){
+        String id=net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
+        return id.equals("lever")||id.equals("repeater")||id.equals("comparator")||id.equals("note_block")||id.endsWith("_button")
+            ||id.endsWith("_door")&&!id.equals("iron_door")||id.endsWith("_trapdoor")&&!id.equals("iron_trapdoor")||id.endsWith("_fence_gate");
+    }
     private static void applyEvent(ServerPlayer p,Vec3 origin,JsonObject e){
         String kind=e.get("kind").getAsString();
         if(kind.equals("world_hit")){
@@ -434,7 +573,7 @@ public final class JakPlayers {
         }
         if(kind.equals("explosion")){
             float power=switch(e.get("gun").getAsString()){
-                case "Red3" -> 4;case "Dark1" -> 3;case "Dark3" -> 9;case "Yellow3" -> 1.5f;default -> 0;
+                case "Red3" -> 4;case "Dark1" -> 3;case "Dark3" -> JakWorldDamage.NUKE_POWER;case "Yellow3" -> 1.5f;default -> 0;
             };
             JakWorldDamage.explosion(p.level(),p,p,vector(e.getAsJsonArray("pos")).add(origin),power);
             return;
@@ -449,6 +588,22 @@ public final class JakPlayers {
                 boolean heavy=e.has("heavy")&&e.get("heavy").getAsBoolean();
                 var source=kind.equals("impact")?JakDamage.shot(p,heavy):p.damageSources().playerAttack(p);
                 float damage=e.get("damage").getAsFloat()*2.5f;
+                // Rust jak.rs Strike: + 5·attack_bonus in MW2 points (5 to a health point), with minecraftoss
+                // effects.rs attack_bonus = 3·(Strength level) − 4·(Weakness level); melee only, never below 0.
+                if(kind.equals("strike")){
+                    var strength=p.getEffect(net.minecraft.world.effect.MobEffects.STRENGTH);
+                    var weakness=p.getEffect(net.minecraft.world.effect.MobEffects.WEAKNESS);
+                    if(strength!=null)damage+=3*(strength.getAmplifier()+1);
+                    if(weakness!=null)damage-=4*(weakness.getAmplifier()+1);
+                    damage=Math.max(0,damage);
+                }
+                // mobs.rs 661: the blow spins a floating (or tumbling) creature along it.
+                if(victim instanceof net.minecraft.world.entity.LivingEntity living){
+                    Vec3 along=e.has("dir")?vector(e.getAsJsonArray("dir")):victim.position().subtract(p.position());
+                    dev.jakmc.entity.MassInverter.hit(living,along,e.get("damage").getAsFloat());
+                }
+                // survival.rs: a blow that lands on a creature costs 0.1 of exhaustion.
+                if(kind.equals("strike"))p.causeFoodExhaustion(.1f);
                 if(victim instanceof dev.jakmc.entity.JakEnemy enemy)enemy.hurtFromJak(p.level(),source,damage,heavy);else victim.hurtServer(p.level(),source,damage);
             }
         }else if(kind.equals("impact")||kind.equals("strike")){
@@ -458,17 +613,33 @@ public final class JakPlayers {
                 var at=net.minecraft.core.BlockPos.containing(target.subtract(normal.scale(.03)));
                 JakWorldDamage.hit(p,at,e.get("damage").getAsFloat());
             }else{
-                var ray=new net.minecraft.world.level.ClipContext(p.position().add(0,1,0),target,
-                    net.minecraft.world.level.ClipContext.Block.COLLIDER,
-                    net.minecraft.world.level.ClipContext.Fluid.NONE,p);
-                var hit=p.level().clip(ray);
-                if(hit.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK)
-                    JakWorldDamage.hit(p,hit.getBlockPos(),e.get("damage").getAsFloat());
+                // A punch or kick hits one block (Adrii 05/11): the one Minecraft
+                // outlines (the player's own pick), then the one right under it.
+                if(e.has("center")){
+                    WORLD_STRIKES.incrementAndGet();
+                    var level=p.level();var marked=MARKED.get(p.getUUID());net.minecraft.core.BlockPos struck=null;
+                    if(marked!=null&&level.getBlockState(marked).isAir()&&!level.getBlockState(marked.below()).getCollisionShape(level,marked.below()).isEmpty()
+                        &&Vec3.atCenterOf(marked).distanceTo(p.position())<3)struck=marked.below();
+                    else if(p.pick(p.blockInteractionRange(),1,false) instanceof net.minecraft.world.phys.BlockHitResult pick&&pick.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK
+                        &&Vec3.atCenterOf(pick.getBlockPos()).distanceTo(p.position().add(0,1,0))<2.5){struck=pick.getBlockPos();MARKED.put(p.getUUID(),struck.immutable());}
+                    if(struck!=null){WORLD_STRIKES_FOUND.incrementAndGet();strikeBlock(p,struck,e.get("damage").getAsFloat());}
+                    return;
+                }
+                // A slam (no sphere), Rust block_struck: the block along the blow,
+                // else under the fist or foot (a low block, the ground).
+                Vec3 along=vector(e.getAsJsonArray("dir"));
+                along=along.lengthSqr()>1e-6?along.normalize():new Vec3(0,-1,0);
+                var hit=clip(p,target.subtract(along.scale(.6)),target.add(along.scale(.5)));
+                if(hit==null)hit=clip(p,target.subtract(along.scale(.3)),target.add(0,-1.2,0));
+                WORLD_STRIKES.incrementAndGet();
+                if(hit!=null){WORLD_STRIKES_FOUND.incrementAndGet();strikeBlock(p,hit.getBlockPos(),e.get("damage").getAsFloat());}
             }
         } else if(kind.equals("fall_damage")) p.hurtServer(p.level(),p.damageSources().fall(),e.get("damage").getAsFloat()*2.5f);
+        else if(kind.equals("gravity_field"))dev.jakmc.entity.MassInverter.field(p,vector(e.getAsJsonArray("pos")).add(origin));
         else if(kind.equals("lift")){
             Entity victim=p.level().getEntity(e.get("actor").getAsInt());
-            if(victim instanceof net.minecraft.world.entity.LivingEntity living)living.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.LEVITATION,(int)(20*e.get("seconds").getAsFloat()),1));
+            // Rust server.rs lift / float_lifted (was Levitation II).
+            if(victim instanceof net.minecraft.world.entity.LivingEntity living)dev.jakmc.entity.MassInverter.lift(living,e.get("seconds").getAsFloat());
         }
     }
 }

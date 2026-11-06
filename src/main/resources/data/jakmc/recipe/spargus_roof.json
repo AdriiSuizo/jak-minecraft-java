@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "pattern": [
+    "III"
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot"
+  },
+  "result": {
+    "id": "jak:spargus_roof",
+    "count": 6
+  }
+}

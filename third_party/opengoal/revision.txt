@@ -1,0 +1,3 @@
+open-goal/jak-project master, fetched 2026-11-05
+game/graphics/opengl_renderer/shaders/slow_time.{vert,frag}, BlitDisplays.cpp do_slow_time
+Ported in src/client/java/dev/jakmc/client/sky/JakFreezeScreen.java and shaders/core/jak_freeze.fsh

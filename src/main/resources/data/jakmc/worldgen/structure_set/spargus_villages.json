@@ -1,0 +1,15 @@
+{
+  "structures": [
+    {
+      "structure": "jakmc:spargus",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "type": "minecraft:random_spread",
+    "spacing": 18,
+    "separation": 8,
+    "frequency": 0.5,
+    "salt": 300
+  }
+}

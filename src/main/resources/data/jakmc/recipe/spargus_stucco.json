@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "pattern": [
+    "RR",
+    "RR"
+  ],
+  "key": {
+    "R": "jak:wasteland_rock"
+  },
+  "result": {
+    "id": "jak:spargus_stucco",
+    "count": 4
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "jak:wasteland_sand",
+    "minecraft:gravel"
+  ],
+  "result": {
+    "id": "jak:spargus_ground",
+    "count": 2
+  }
+}

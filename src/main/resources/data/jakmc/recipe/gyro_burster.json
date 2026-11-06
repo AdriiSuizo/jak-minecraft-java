@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "jakmc:beam_reflexor",
+    "jakmc:yellow_ammo",
+    "jakmc:yellow_ammo",
+    "minecraft:diamond",
+    "minecraft:diamond",
+    "minecraft:blaze_rod"
+  ],
+  "result": {
+    "id": "jakmc:gyro_burster",
+    "count": 1
+  }
+}

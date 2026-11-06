@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:ender_pearl",
+    "minecraft:obsidian",
+    "minecraft:coal",
+    "minecraft:coal"
+  ],
+  "result": {
+    "id": "jakmc:dark_eco",
+    "count": 2
+  }
+}

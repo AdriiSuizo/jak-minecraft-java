@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:gold_ingot",
+    "minecraft:redstone",
+    "minecraft:coal"
+  ],
+  "result": {
+    "id": "jakmc:yellow_ammo",
+    "count": 10
+  }
+}

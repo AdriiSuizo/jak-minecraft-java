@@ -50,11 +50,14 @@ final class CityBlueprint {
     final List<Garage> garages;
     final List<Patrol> patrols;
     final int minX,minY,minZ,maxX,maxY,maxZ;
+    /** The plan's street junctions (its light-blue markers) and the ways a street leaves each. */
+    private final Map<BlockPos,java.util.Set<Direction>> streets;
 
-    private CityBlueprint(Map<Long,Fragment> chunks,List<Garage> garages,List<Patrol> patrols,int[] bounds){
+    private CityBlueprint(Map<Long,Fragment> chunks,List<Garage> garages,List<Patrol> patrols,int[] bounds,Map<BlockPos,java.util.Set<Direction>> streets){
         this.chunks=chunks;
         this.garages=garages;
         this.patrols=patrols;
+        this.streets=streets;
         minX=bounds[0];minY=bounds[1];minZ=bounds[2];
         maxX=bounds[3];maxY=bounds[4];maxZ=bounds[5];
     }
@@ -181,7 +184,9 @@ final class CityBlueprint {
             }
             selected=spargusPatrols;
         }
-        return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),List.copyOf(selected),bounds);
+        var streets=new LinkedHashMap<BlockPos,java.util.Set<Direction>>();
+        routes.forEach((junction,ways)->streets.put(junction,java.util.Collections.unmodifiableSet(java.util.EnumSet.copyOf(ways))));
+        return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),List.copyOf(selected),bounds,streets);
     }
 
     private static BlockState resolve(String source,TreeSet<String> missing){
@@ -254,6 +259,70 @@ final class CityBlueprint {
         bounds[2]=Math.min(bounds[2],pos.getZ());bounds[5]=Math.max(bounds[5],pos.getZ());
         int packed=(pos.getY()<<8)|((pos.getZ()&15)<<4)|(pos.getX()&15);
         cells.computeIfAbsent(key(pos.getX()>>4,pos.getZ()>>4),_ ->new Int2ObjectOpenHashMap<>()).put(packed,state);
+    }
+
+    /** A stretch of street between two neighbouring junctions: its floor points from one to the other, every few blocks. */
+    record Stretch(BlockPos from,BlockPos to,List<BlockPos> points){}
+    private List<Stretch> stretches;
+    /**
+     * The plan's streets for the traffic (Rust zoomers.rs Route, its town's
+     * ring road). stand-in: the Rust ring sat round the old plaza, which the
+     * barrio plan has not; here every street between two junctions that
+     * join both ways, on street floor all along. The host keeps those open
+     * in the world (the palace's walls cross some) and goes round a block.
+     */
+    synchronized List<Stretch> stretches(){
+        if(stretches!=null)return stretches;
+        var out=new ArrayList<Stretch>();
+        for(var from:streets.keySet())for(var way:new Direction[]{Direction.EAST,Direction.SOUTH}){
+            if(!joined(from,way))continue;
+            var points=new ArrayList<BlockPos>();
+            for(int along=0;along<=28;along+=4){
+                var foot=streetFoot(from.relative(way,along));
+                if(foot==null){points=null;break;}
+                points.add(foot);
+            }
+            if(points!=null)out.add(new Stretch(from,from.relative(way,28),List.copyOf(points)));
+        }
+        // stand-in (Adrii 06/11, the ring road): the plan marks only some of the streets round its
+        // edge though the rest are paved; every edge street of the junction grid on street floor
+        // all along is a street too, so the traffic can go round the barrio.
+        if(!streets.isEmpty()){
+            int minX=Integer.MAX_VALUE,maxX=Integer.MIN_VALUE,minZ=Integer.MAX_VALUE,maxZ=Integer.MIN_VALUE;
+            for(var at:streets.keySet()){minX=Math.min(minX,at.getX());maxX=Math.max(maxX,at.getX());minZ=Math.min(minZ,at.getZ());maxZ=Math.max(maxZ,at.getZ());}
+            var edges=new ArrayList<BlockPos[]>();
+            for(int x=minX;x+28<=maxX;x+=28)for(int z:new int[]{minZ,maxZ})edges.add(new BlockPos[]{new BlockPos(x,0,z),new BlockPos(x+28,0,z)});
+            for(int z=minZ;z+28<=maxZ;z+=28)for(int x:new int[]{minX,maxX})edges.add(new BlockPos[]{new BlockPos(x,0,z),new BlockPos(x,0,z+28)});
+            for(var edge:edges){
+                var way=edge[1].getX()>edge[0].getX()?Direction.EAST:Direction.SOUTH;
+                if(joined(edge[0],way))continue;
+                var points=new ArrayList<BlockPos>();
+                for(int along=0;along<=28;along+=4){
+                    var foot=streetFoot(edge[0].relative(way,along));
+                    if(foot==null){points=null;break;}
+                    points.add(foot);
+                }
+                if(points!=null)out.add(new Stretch(edge[0],edge[1],List.copyOf(points)));
+            }
+        }
+        return stretches=List.copyOf(out);
+    }
+    private boolean joined(BlockPos junction,Direction way){
+        var ways=streets.get(junction);
+        if(ways==null||!ways.contains(way))return false;
+        var next=streets.get(junction.relative(way,28));
+        return next!=null&&next.contains(way.getOpposite());
+    }
+
+    private int beds=-1;
+    /** Rust: settlement_housing capacity, a bed to each resident: the plan's beds (their foot halves). */
+    synchronized int beds(){
+        if(beds>=0)return beds;
+        int n=0;
+        for(var fragment:chunks.values())for(var state:fragment.states())
+            if(state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.BED_PART)
+                &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.BED_PART)==net.minecraft.world.level.block.state.properties.BedPart.FOOT)n++;
+        return beds=n;
     }
 
     BlockPos streetFoot(BlockPos junction){

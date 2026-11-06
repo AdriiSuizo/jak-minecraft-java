@@ -56,6 +56,8 @@ impl Jak {
             | State::LightJakGetOn { .. }
             | State::LightJakGetOff
             | State::LightJakRegen
+            | State::LightJakShield
+            | State::LightJakFreeze
             | State::LightJakSwoop { .. }
             | State::LightJakSwoopFalling => self.lightjak_code(),
             _ => None,

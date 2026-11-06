@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "III",
+    "PEP",
+    "CRC"
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "P": "minecraft:diamond",
+    "E": "minecraft:redstone_block",
+    "C": "minecraft:copper_ingot",
+    "R": "jakmc:blue_ammo"
+  },
+  "result": {
+    "id": "jakmc:zoomer_car_c",
+    "count": 1
+  }
+}

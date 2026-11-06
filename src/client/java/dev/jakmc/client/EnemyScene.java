@@ -95,8 +95,10 @@ public final class EnemyScene {
    case "kg-grunt"->"kg-grunt-knocked-land0";
    case "spydroid"->"spydroid-knocked0-land";
    case "predator"->"predator-knocked-land";
+   case "grunt"->"grunt-getup-back";
    default->"";
   };
+  if(kind.equals("grunt")&&t>=11&&t<50&&(t-11)%4==0)capture(c,"grunt-seq-"+t+".png");
   if(!recovery.isEmpty()&&t>=18){
    if(t<50){
     var row=RESULTS.get(kind);

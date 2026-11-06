@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "jakmc:wave_concussor",
+    "jakmc:red_ammo",
+    "jakmc:red_ammo",
+    "minecraft:diamond",
+    "minecraft:diamond",
+    "minecraft:tnt"
+  ],
+  "result": {
+    "id": "jakmc:plasmite_rpg",
+    "count": 1
+  }
+}

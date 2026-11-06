@@ -171,6 +171,12 @@ pub struct Control {
     pub turn_lockout_end_time: i64,
     pub turn_go_the_long_way: f32,
     pub force_turn_to_strength: f32,
+    /// Jak 1 `force-turn-to-direction`/`-strength` as `target-apply-tongue` sets them (kermit.gc), kept
+    /// until `tongue_until` since the host asks once a Minecraft tick; `tongue_adding` sums one frame's frogs.
+    pub tongue_dir: Vec3,
+    pub tongue_strength: f32,
+    pub tongue_until: i64,
+    pub tongue_adding: bool,
 
     pub last_time_on_surface: i64,
     pub list_time_on_ground: i64,
@@ -342,6 +348,10 @@ impl Control {
             turn_lockout_end_time: 0,
             turn_go_the_long_way: 0.0,
             force_turn_to_strength: 0.0,
+            tongue_dir: Vec3::ZERO,
+            tongue_strength: 0.0,
+            tongue_until: i64::MIN / 2,
+            tongue_adding: false,
             last_time_on_surface: now,
             list_time_on_ground: now,
             last_time_touching_actor: i64::MIN / 2,
@@ -706,7 +716,8 @@ impl Jak {
         let up=c.local_to_world.to_local(c.gravity_normal);
         let before=up.dot(c.local_transv);
         let slow=self.slow_falling && !c.on_surface() && before<=0.;
-        let gravity=if slow {c.gravity_length.min(5.76*METER)}else{c.gravity_length};
+        // Vanilla's 0.01 blocks a tick² in this host's blocks (6400 units: the Rust's were 1.44 m, hence its 5.76 m).
+        let gravity=if slow {c.gravity_length.min(4.0*6400.0)}else{c.gravity_length};
         let down = -(c.gravity_normal * gravity);
         let slip = if c.on_surface() {
             c.current.slip_factor
@@ -1390,7 +1401,7 @@ impl Vec2Xz {
         for _ in 0..1800 {
             jak.add_gravity();jak.control.transv=jak.control.local_to_world.to_world(jak.control.local_transv);
         }
-        assert!((jak.control.transv.y/METER+14.112).abs()<0.002,"{}",jak.control.transv.y/METER);
+        assert!((jak.control.transv.y/METER+15.3125).abs()<0.002,"{}",jak.control.transv.y/METER);
         let old=jak.control.trans;jak.control.trans-=Vec3::Y*50.*METER;jak.flag_setup();
         assert_ne!(jak.control.trans,old);assert_eq!(jak.control.highest_jump_mark,jak.control.trans);
         assert_eq!(jak.control.last_trans_any_surf,jak.control.trans);

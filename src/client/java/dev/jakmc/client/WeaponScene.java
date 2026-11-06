@@ -41,7 +41,25 @@ public final class WeaponScene {
  private static void control(net.minecraft.server.level.ServerPlayer p,int held,int pressed,float forward){
   JakPlayers.probeInput(p,held|(firstPerson?dev.jakmc.network.JakPackets.FIRST_PERSON:0),pressed,forward);
  }
- public static void startRings(Minecraft c){start(c);gun=10;end=11;output=c.gameDirectory.toPath().resolve("jakmc/evidence/rings");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}}
+ public static void startRings(Minecraft c){start(c);gun=10;end=11;placeObjects(c);output=c.gameDirectory.toPath().resolve("jakmc/evidence/rings");try{Files.createDirectories(output);}catch(Exception e){throw new RuntimeException(e);}}
+ /** Rings: objects about the field, to see the Mass Inverter lift them too (Adrii 06/11). */
+ private static final java.util.List<net.minecraft.world.entity.Entity> objects=new java.util.ArrayList<>();
+ private static final java.util.List<Double> objectY=new java.util.ArrayList<>();
+ private static int liftedBefore;
+ private static void placeObjects(Minecraft c){
+  objects.clear();objectY.clear();liftedBefore=dev.jakmc.entity.MassInverter.objectsLifted;
+  var uuid=c.player.getUUID();
+  c.getSingleplayerServer().execute(()->{
+   var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p==null)return;var level=p.level();
+   var item=new net.minecraft.world.entity.item.ItemEntity(level,origin.x+2,origin.y,origin.z+5,new ItemStack(net.minecraft.world.item.Items.COBBLESTONE,16));
+   item.setPickUpDelay(32767);
+   var boat=net.minecraft.world.entity.EntityTypes.OAK_BOAT.create(level,net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+   var cart=net.minecraft.world.entity.EntityTypes.MINECART.create(level,net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+   if(boat!=null)boat.setPos(origin.x-3,origin.y,origin.z+6);
+   if(cart!=null)cart.setPos(origin.x+3,origin.y,origin.z+8);
+   for(var e:new net.minecraft.world.entity.Entity[]{item,boat,cart})if(e!=null){level.addFreshEntity(e);objects.add(e);objectY.add(e.getY());}
+  });
+ }
  public static Vec3 cameraPosition(){
   if(!running||firstPerson)return null;
   var shown=JakPoses.presented();
@@ -54,7 +72,10 @@ public final class WeaponScene {
   int t=++tick;var uuid=c.player.getUUID();int current=gun;
   if(t==0){row=new JsonObject();row.addProperty("mode",JakItems.GUNS.get(gun).toString());row.addProperty("socket_samples",0);row.addProperty("walking_socket_samples",0);row.addProperty("aim_socket_samples",0);row.addProperty("max_socket_error",0);row.addProperty("effect_vertices",0);row.addProperty("lightning_vertices",0);row.addProperty("dark_ring_vertices",0);row.addProperty("model_draws",0);row.addProperty("interpolated_models",0);soundStart=JakSounds.played;viewStart=JakRenderer.firstPersonSerial;viewFireStart=JakRenderer.firstPersonFireSerial;handStart=JakFirstPerson.suppressedMainHands;
    c.gui.hud.getChat().clearMessages(false);c.player.setYRot(0);c.player.setXRot(0);
-   c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.setPos(origin);JakPlayers.resetForProbe(p);p.setYRot(0);p.setXRot(0);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(current)));control(p,0,0,0);}});
+   c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){p.setPos(origin);JakPlayers.resetForProbe(p);p.setYRot(0);p.setXRot(0);p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(current)));
+    // A fresh world has no ammo: a full load of each colour for every gun.
+    for(int kind=2;kind<6;kind++)dev.jakmc.player.JakResources.grant(p,kind,Math.max(0,100-dev.jakmc.player.JakResources.totals(p)[kind]));
+    control(p,0,0,0);}});
   }
   if(t>=0){peak("effect_vertices",JakEffects.drawnVertices);peak("lightning_vertices",JakEffects.drawnLightningVertices);peak("dark_ring_vertices",JakEffects.drawnDarkVertices);peak("model_draws",JakShotRenderer.drawnModels);peak("interpolated_models",JakShotRenderer.interpolatedModels);}
   if(t>=8&&t<60){var pose=JakPoses.get(c.player.getId());if(pose!=null&&pose.raw().getAsJsonObject("gun").get("kind").getAsInt()==gun){
@@ -124,6 +145,11 @@ public final class WeaponScene {
  private static void peak(String key,int value){row.addProperty(key,Math.max(row.get(key).getAsInt(),value));}
  private static void finish(Minecraft c,String reason){
   var result=new JsonObject();result.addProperty("reason",reason);result.add("guns",results);result.addProperty("visual_review","required");
+  if(!objects.isEmpty()){
+   result.addProperty("objects_lifted",dev.jakmc.entity.MassInverter.objectsLifted-liftedBefore);
+   var rise=new com.google.gson.JsonArray();for(int k=0;k<objects.size();k++)rise.add(objects.get(k).getY()-objectY.get(k));result.add("object_rise",rise);
+   for(var e:objects)c.getSingleplayerServer().execute(e::discard);objects.clear();
+  }
   try{Files.writeString(output.resolve("result.json"),result.toString());}catch(Exception e){throw new RuntimeException(e);}
   running=false;c.setCameraEntity(c.player);c.options.setCameraType(CameraType.THIRD_PERSON_BACK);var uuid=c.player.getUUID();c.getSingleplayerServer().execute(()->{var p=c.getSingleplayerServer().getPlayerList().getPlayer(uuid);if(p!=null){control(p,0,0,0);JakPlayers.controlForProbe(p,false);}});c.stop();
  }

@@ -20,6 +20,7 @@ public final class JakWorldDamage {
     private JakWorldDamage(){}
     private static final Map<ServerLevel,Map<BlockPos,Damage>> DAMAGE=new WeakHashMap<>();
     private static int nextCrack=-1_000_000;
+    private static final float DAMAGE_TO_MW2=100f/8,DAMAGE_PER_HARDNESS=160;
     private static final class Damage {
         final BlockState state;
         final int crack=nextCrack--;
@@ -58,24 +59,32 @@ public final class JakWorldDamage {
         var damage=entries.get(pos);
         if(damage==null||damage.state!=state){damage=new Damage(state);entries.put(pos.immutable(),damage);}
         damage.until=level.getGameTime()+100;
-        damage.progress+=player.hasInfiniteMaterials()||hardness==0?1:
-            Math.max(state.getDestroyProgress(player,level,pos),strength/(20*Math.max(.1f,hardness)));
+        // Rust mining: the blow in MW2 points (x100/8) over 160 a hardness.
+        damage.progress+=player.hasInfiniteMaterials()||hardness==0?1:strength*DAMAGE_TO_MW2/DAMAGE_PER_HARDNESS/hardness;
         if(damage.progress>=1){
             level.destroyBlockProgress(damage.crack,pos,-1);entries.remove(pos);
             player.gameMode.destroyBlock(pos);
         }else level.destroyBlockProgress(damage.crack,pos,Math.min(9,(int)(damage.progress*10)));
     }
+    /**
+     * The Super Nova's blast on the world: a big TNT one (Adrii 06/11: "como una nuke"). stand-in: the
+     * original's 300 m reach is damage only and breaks nothing; this power (four TNT's, some 19 blocks of
+     * crater), the TNT-like hurt and throw of the creatures near it, and TNT's drop decay are Adrii's ask.
+     */
+    public static final float NUKE_POWER=16;
     public static void explosion(ServerLevel level,Entity source,ServerPlayer owner,Vec3 center,float power){
         if(!Float.isFinite(power)||power<=0||!Double.isFinite(center.lengthSqr()))return;
+        boolean nuke=power>=NUKE_POWER;
         var calculator=new ExplosionDamageCalculator(){
-            @Override public boolean shouldDamageEntity(Explosion explosion,Entity entity){return false;}
-            @Override public float getKnockbackMultiplier(Entity entity){return 0;}
+            @Override public boolean shouldDamageEntity(Explosion explosion,Entity entity){return nuke&&entity!=owner&&entity!=owner.getVehicle();}
+            @Override public float getKnockbackMultiplier(Entity entity){return nuke&&entity!=owner?1:0;}
             @Override public boolean shouldBlockExplode(Explosion explosion,BlockGetter world,BlockPos pos,BlockState state,float energy){
                 return permitted(owner,level,pos);
             }
         };
         // Native resistance, fluid shielding, block callbacks and drops. Original
         // particle/sound streams already present this blast; don't play it twice.
+        if(nuke){new ServerExplosion(level,source,null,calculator,center,NUKE_POWER,false,Explosion.BlockInteraction.DESTROY_WITH_DECAY).explode();return;}
         new ServerExplosion(level,source,null,calculator,center,Math.min(9,power),false,Explosion.BlockInteraction.DESTROY).explode();
     }
 }

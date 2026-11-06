@@ -447,7 +447,7 @@ mod tests {
 
     fn strike(jak: &mut Jak, key: u64) -> usize {
         let first = jak.events.len();
-        jak.events.push(Event::Strike { actor: Some(key), pos: Vec3::ZERO, dir: Vec3::Z, damage: 1.0 });
+        jak.events.push(Event::Strike { actor: Some(key), pos: Vec3::ZERO, dir: Vec3::Z, damage: 1.0, sphere: None });
         first
     }
 

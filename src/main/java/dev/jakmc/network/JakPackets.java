@@ -42,6 +42,23 @@ public final class JakPackets {
         @Override public Type<PropBreak> type(){return TYPE;}
     }
 
+    /** MassInverter: a creature's float ticks left and a blow along a direction of a strength (0: none) for its tumble. */
+    public record Tumble(int entity,int lift,float dx,float dy,float dz,float strength) implements CustomPacketPayload {
+        public static final Type<Tumble> TYPE=new Type<>(JakData.id("tumble_v1"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,Tumble> CODEC=StreamCodec.of((b,p)->{
+            b.writeVarInt(p.entity);b.writeVarInt(p.lift);b.writeFloat(p.dx);b.writeFloat(p.dy);b.writeFloat(p.dz);b.writeFloat(p.strength);
+        },b->new Tumble(b.readVarInt(),b.readVarInt(),b.readFloat(),b.readFloat(),b.readFloat(),b.readFloat()));
+        @Override public Type<Tumble> type(){return TYPE;}
+    }
+    /** dark_eco.rs died_in_it: where a player died in dark eco, for its group-dark-eco-death burst. */
+    public record DarkEcoDeath(net.minecraft.resources.Identifier dimension,net.minecraft.world.phys.Vec3 at) implements CustomPacketPayload {
+        public static final Type<DarkEcoDeath> TYPE=new Type<>(JakData.id("dark_eco_death_v1"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,DarkEcoDeath> CODEC=StreamCodec.of((b,p)->{
+            b.writeIdentifier(p.dimension);b.writeDouble(p.at.x);b.writeDouble(p.at.y);b.writeDouble(p.at.z);
+        },b->new DarkEcoDeath(b.readIdentifier(),new net.minecraft.world.phys.Vec3(b.readDouble(),b.readDouble(),b.readDouble())));
+        @Override public Type<DarkEcoDeath> type(){return TYPE;}
+    }
+
     public record CreatureBurst(net.minecraft.resources.Identifier dimension,net.minecraft.world.phys.Vec3 at) implements CustomPacketPayload {
         public static final Type<CreatureBurst> TYPE=new Type<>(JakData.id("spydroid_explosion_v1"));
         public static final StreamCodec<RegistryFriendlyByteBuf,CreatureBurst> CODEC=StreamCodec.of((b,p)->{
@@ -64,6 +81,8 @@ public final class JakPackets {
         PayloadTypeRegistry.clientboundPlay().register(EntityTime.TYPE,EntityTime.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(PropBreak.TYPE,PropBreak.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(CreatureBurst.TYPE,CreatureBurst.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(DarkEcoDeath.TYPE,DarkEcoDeath.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(Tumble.TYPE,Tumble.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Input.TYPE,(packet,context)->{if(packet.valid())JakPlayers.input(context.player(),packet);});
     }
 }

@@ -8,6 +8,10 @@
 - OpenGOAL: https://opengoal.dev and https://github.com/open-goal/jak-project.
   The installer uses the owner's extractor, configurations and game installation;
   it does not bundle OpenGOAL game data or original decompiled GOAL sources.
+  The mod's Light Jak slow-time screen pass ports OpenGOAL's slow_time shaders
+  (ISC License, Copyright (c) 2020-2026 OpenGOAL Team); see licenses/opengoal.
+- Jak Enhanced Trilogy: the mod's area colour grade ports its grading
+  (ISC License); see licenses/jak-enhanced-trilogy.
 - FFmpeg: https://ffmpeg.org; Windows build https://www.gyan.dev/ffmpeg/builds/.
   The bundled utility's COPYING/LICENSE and documentation are retained beside
   the executable. FFmpeg build configuration is available with `ffmpeg -version`.

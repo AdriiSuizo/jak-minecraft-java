@@ -52,12 +52,20 @@ public final class NativeJak {
     public static native long hellcatCreate(Object query,float yaw,float vx,float vy,float vz,float health,int flags,int torpedoes,long key);
     public static native int hellcatFlames(float thrust,int age,ByteBuffer out);
     public static native void hellcatDestroy(long session);
+    /** A swamp frog's tongue on Jak, its base in blocks from the session origin. */
+    public static native void tongue(long session,float x,float y,float z);
+    /** Jak stood on a skatepark jump pad (spring height in metres); whether the bounce was taken. */
+    public static native boolean padBounce(long session,float metres);
+    /** The liquid's top over the HellCat for its next step, blocks above its position (NaN: none). */
+    public static native void hellcatLiquid(long session,float depth);
     public static native String hellcatStep(long session,ByteBuffer input,ByteBuffer actors,float dx,float dy,float dz,float hour,int commands,int steps);
     public static native void relocate(long session,float x,float y,float z,float vx,float vy,float vz);
     public static native String fxManifest();
     public static native long fxCreate();
     public static native void fxVentPickup(long owner,float x,float y,float z,int color,boolean start);
     public static native long fxCreateDecor(int kind);
+    /** A lasting world effect's launch point, in blocks from its owner's origin. */
+    public static native void fxDecorAt(long handle,float x,float y,float z);
     public static native void fxSandstorm(long owner,float strength);
     public static native void fxDestroy(long session);
     public static native int fxBacklog(long session);

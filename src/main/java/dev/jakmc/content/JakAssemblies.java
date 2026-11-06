@@ -52,10 +52,12 @@ public final class JakAssemblies {
 
     public static void initialize(){
         var railBlocks=new HashSet<Block>();
-        for(var entry:JakBlocks.resource("/data/jakmc/catalog/assemblies.json").getAsJsonObject().entrySet()){
+        // loose_objects: jak_objects.rs placed, the level's loose things standing on the ground (plants included).
+        for(var list:new String[]{"assemblies","loose_objects"})
+        for(var entry:JakBlocks.resource("/data/jakmc/catalog/"+list+".json").getAsJsonObject().entrySet()){
             int id=Integer.parseInt(entry.getKey());
             var source=JakBlocks.resource("/data/jakmc/catalog/objects/"+id+".json").getAsJsonObject();
-            var assembly=new Assembly(source,position(entry.getValue().getAsJsonArray()));
+            var assembly=new Assembly(source,position(entry.getValue().getAsJsonArray()),list.equals("loose_objects"));
             var model=new Model(id,assembly.path,assembly.extent,assembly.size,assembly.anchorOffset,List.copyOf(assembly.models));
             MODELS.put(id,model);
             if(source.get("group").getAsString().equals("facade"))FACADES.put(assembly.path,model);
@@ -83,14 +85,14 @@ public final class JakAssemblies {
         Part anchor;
         Item item;
 
-        Assembly(JsonObject source,BlockPos anchorOffset){
+        Assembly(JsonObject source,BlockPos anchorOffset,boolean ground){
             this.path=source.get("path").getAsString();
             this.anchorOffset=anchorOffset;
             size=position(source.getAsJsonArray("size"));
             this.extent=Math.max(size.getY(),Math.max(size.getX(),size.getZ()));
             boolean palm=source.get("group").getAsString().equals("palmera");
             soft=source.get("soft").getAsBoolean();
-            wallMounted=soft||source.has("wallMounted")&&source.get("wallMounted").getAsBoolean();
+            wallMounted=!ground&&(soft||source.has("wallMounted")&&source.get("wallMounted").getAsBoolean());
             String group=source.get("group").getAsString();
             rail=group.equals("rail");
             track=rail||group.equals("track");

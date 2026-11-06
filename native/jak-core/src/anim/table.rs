@@ -1,7 +1,7 @@
 //! The animations Jak's states play, by the names the art groups give them.
 use super::Anim;
 
-pub static NAMES: [&str; 289] = [
+pub static NAMES: [&str; 293] = [
     "jakb-attack-from-jump",
     "jakb-attack-from-jump-end",
     "jakb-attack-from-jump-loop",
@@ -290,6 +290,7 @@ pub static NAMES: [&str; 289] = [
     "jakb-lightjak-heal-end",
     "jakb-ladder-get-on","jakb-ladder-stance","jakb-ladder-up","jakb-ladder-down",
     "jakb-edge-grab-to-jump","jakb-ladder-jump","jakb-ladder-slide-loop",
+    "jakb-lightjak-freeze","jakb-lightjak-freeze-land","jakb-lightjak-shield","jakb-lightjak-shield-end",
 ];
 
 pub const ATTACK_FROM_JUMP: Anim = Anim(0);
@@ -586,3 +587,9 @@ pub const LADDER_DOWN:Anim=Anim(285);
 pub const LADDER_GET_OFF:Anim=Anim(286);
 pub const LADDER_JUMP:Anim=Anim(287);
 pub const LADDER_SLIDE:Anim=Anim(288);
+
+/// Light Jak's clap (`target-lightjak-freeze`) and his shield's move (`target-lightjak-shield`).
+pub const LIGHTJAK_FREEZE: Anim = Anim(289);
+pub const LIGHTJAK_FREEZE_LAND: Anim = Anim(290);
+pub const LIGHTJAK_SHIELD: Anim = Anim(291);
+pub const LIGHTJAK_SHIELD_END: Anim = Anim(292);

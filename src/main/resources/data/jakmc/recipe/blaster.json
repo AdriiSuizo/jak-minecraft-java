@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "III",
+    "EC ",
+    "I  "
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "E": "jakmc:yellow_ammo",
+    "C": "minecraft:copper_ingot"
+  },
+  "result": {
+    "id": "jakmc:blaster",
+    "count": 1
+  }
+}

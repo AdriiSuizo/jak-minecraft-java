@@ -2,13 +2,22 @@
   "structures": [
     {
       "structure": "jakmc:sandover",
+      "weight": 2
+    },
+    {
+      "structure": "jakmc:sandover_snow",
+      "weight": 1
+    },
+    {
+      "structure": "jakmc:sandover_swamp",
       "weight": 1
     }
   ],
   "placement": {
     "type": "minecraft:random_spread",
     "spacing": 20,
-    "separation": 8,
+    "separation": 6,
+    "frequency": 0.35,
     "salt": 504,
     "exclusion_zone": {
       "other_set": "jakmc:jak_cities",

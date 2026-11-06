@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    {"id": "jak:haven_puerta", "required": false},
+    {"id": "jak:haven_puerta_alta", "required": false},
+    {"id": "jak:spargus_puerta_alta", "required": false}
+  ]
+}

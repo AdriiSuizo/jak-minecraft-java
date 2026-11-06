@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:glowstone_dust",
+    "minecraft:glowstone_dust",
+    "minecraft:gold_nugget"
+  ],
+  "result": {
+    "id": "jakmc:yellow_ammo",
+    "count": 10
+  }
+}

@@ -183,5 +183,55 @@
       "monk-standing-idle-2": 1.9999961853027344
     },
     "game": "jak3"
+  },
+  {
+    "model": "mayor",
+    "asset": "levels/beach/mayor-lod0.glb",
+    "clips": {
+      "mayor-idle": 3.833303451538086
+    },
+    "game": "jak1"
+  },
+  {
+    "model": "explorer",
+    "asset": "levels/village1/explorer-lod0.glb",
+    "clips": {
+      "explorer-idle": 2.133316993713379,
+      "explorer-idle2-look-at-map": 1.3333282470703125,
+      "explorer-idle2-look-right-map": 0.5333322882652283,
+      "explorer-idle3-step-right": 0.9333315491676331,
+      "explorer-idle3-looking": 0.39999961853027344,
+      "explorer-idle3-step-left": 0.6666653752326965
+    },
+    "game": "jak1"
+  },
+  {
+    "model": "gambler",
+    "asset": "levels/village2/gambler-lod0.glb",
+    "clips": {
+      "gambler-idle-tiptoe": 1.600000023841858,
+      "gambler-idle-look-1": 1.7999999523162842,
+      "gambler-idle-fidget": 2.866666555404663,
+      "gambler-idle-scratch-1": 2.0,
+      "gambler-idle-look-2": 2.933333396911621,
+      "gambler-idle-scratch-2": 1.6666666269302368
+    },
+    "game": "jak1"
+  },
+  {
+    "model": "geologist",
+    "asset": "levels/village2/geologist-lod0.glb",
+    "clips": {
+      "geologist-idle": 4.299933910369873
+    },
+    "game": "jak1"
+  },
+  {
+    "model": "warrior",
+    "asset": "levels/village2/warrior-lod0.glb",
+    "clips": {
+      "warrior-idle": 6.66656494140625
+    },
+    "game": "jak1"
   }
 ]

@@ -985,6 +985,7 @@ impl Jak {
                     start: now,
                     caught: Vec::new(),
                 });
+                self.events.push(Event::GravityField { center: ground });
                 true
             }
             GunKind::Dark3 => {

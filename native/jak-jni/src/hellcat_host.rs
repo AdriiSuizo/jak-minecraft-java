@@ -8,6 +8,8 @@ struct Vehicle {
     actors: Actors,
     lamps: Lamps,
     key: u64,
+    /// The liquid's top over the craft, JakHellcat's this step (units, + under it).
+    liquid_depth: Option<f32>,
 }
 
 #[derive(Default)]
@@ -19,7 +21,10 @@ struct Vehicles {
 static VEHICLES: OnceLock<Mutex<Vehicles>> = OnceLock::new();
 
 fn vehicles() -> Result<std::sync::MutexGuard<'static, Vehicles>, String> {
-    VEHICLES.get_or_init(Mutex::default).lock().map_err(|e| e.to_string())
+    // A panic in one vehicle's step poisons the lock; its Java owner closes that
+    // vehicle, so the others keep driving instead of failing forever.
+    let mutex = VEHICLES.get_or_init(Mutex::default);
+    match mutex.lock() { Ok(guard) => Ok(guard), Err(poison) => { mutex.clear_poison(); Ok(poison.into_inner()) } }
 }
 
 #[unsafe(no_mangle)]
@@ -47,9 +52,21 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatCreate(
         let mut vehicles = vehicles()?;
         vehicles.next += 1;
         let id = vehicles.next;
-        vehicles.active.insert(id, Vehicle { craft, world, lamps, actors: Actors::default(), key: key as u64 });
+        vehicles.active.insert(id, Vehicle { craft, world, lamps, actors: Actors::default(), key: key as u64, liquid_depth: None });
         Ok(id as jlong)
     })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatLiquid(
+    mut env: JNIEnv, _: JClass, id: jlong, depth: jni::sys::jfloat,
+) {
+    protect(&mut env, || {
+        if let Some(v) = vehicles()?.active.get_mut(&(id as u64)) {
+            v.liquid_depth = depth.is_finite().then_some(depth * BLOCK);
+        }
+        Ok(())
+    });
 }
 
 #[unsafe(no_mangle)]
@@ -98,7 +115,9 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatStep(
             if !lo.is_finite() || !hi.is_finite() || !lo.cmple(hi).all() {
                 return Err("Invalid HellCat actor bounds".into());
             }
-            v.actors.boxes.push((u64::from_le_bytes(row[..8].try_into().unwrap()),lo,hi));
+            // MinecraftCollision.actors' flag bits: a dying body is not aimed at.
+            let raw=u64::from_le_bytes(row[..8].try_into().unwrap());
+            if raw>>62&1==0 {v.actors.boxes.push((raw&((1u64<<61)-1),lo,hi));}
         }
         let craft = &mut v.craft;
         craft.reframe(Quat::IDENTITY, -Vec3::new(x,y,z) * BLOCK);
@@ -114,6 +133,25 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatStep(
                 craft.vel.y = -jak_core::math::meters(4.0);
             }
             craft.damage();
+        }
+        // A blow of Jak's fists or feet (Adrii): no harm. Left running it
+        // shuts off onto its hover; parked it rocks as a struck boat does.
+        if commands & 8 != 0 && !craft.piloted && !craft.destroyed {
+            if craft.idling || craft.hold {
+                craft.idling = false;
+                craft.hold = false;
+            } else {
+                craft.vel.y += jak_core::math::meters(0.4);
+                craft.roll += if commands & 16 != 0 { -0.18 } else { 0.18 };
+            }
+        }
+        // Rust jak_entities.rs: under a liquid's surface (put down in it, or pushed under), up out of it to ride
+        // over it, as a hull that floats: vel.y at least max((top + 1.5 m − y)·3, 2 m).
+        if let Some(depth) = v.liquid_depth.take()
+            && depth > -jak_core::math::meters(0.5)
+        {
+            let up = ((depth + jak_core::math::meters(1.5)) * 3.0).max(jak_core::math::meters(2.0));
+            craft.vel.y = craft.vel.y.max(up);
         }
         let mut popped = false;
         for _ in 0..steps {

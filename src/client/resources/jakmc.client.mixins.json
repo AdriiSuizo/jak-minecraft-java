@@ -4,10 +4,14 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "JakRenderMixin",
+    "JakTumbleMixin",
     "JakFirstPersonItemMixin",
     "JakDisconnectMixin",
     "DevSceneCameraMixin",
     "JakControllerCameraMixin",
+    "JakCameraCutoutMixin",
+    "JakCameraFadeUboMixin",
+    "JakCameraFadeWriteMixin",
     "JakCameraPresentationMixin",
     "JakAimCrosshairMixin",
     "JakMountedPickMixin",
@@ -20,6 +24,7 @@
     "CitizenRenderStateMixin",
     "JakAtmosphericFogMixin",
     "JakAtmosphericSkyMixin",
+    "JakSkyMixin","JakWeatherMixin","JakRainTickMixin","JakBoltMixin","JakCloudMixin",
     "JakContainerBounds",
     "JakMouseCapture",
     "JakMinimapMixin",
@@ -27,7 +32,9 @@
     "CreativeBoardSlotAccess",
     "BoardSlotScreenMixin",
     "CreativeInventoryActions",
-    "JakGuiEntityMixin"
+    "JakGuiEntityMixin",
+    "JakGradeMixin",
+    "JakLightningLightMixin"
   ],
   "injectors": {
     "defaultRequire": 1

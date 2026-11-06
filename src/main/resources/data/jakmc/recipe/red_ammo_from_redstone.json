@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:redstone",
+    "minecraft:redstone",
+    "minecraft:redstone",
+    "minecraft:redstone",
+    "minecraft:gold_nugget"
+  ],
+  "result": {
+    "id": "jakmc:red_ammo",
+    "count": 5
+  }
+}

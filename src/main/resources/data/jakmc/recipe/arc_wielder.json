@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "jakmc:vulcan_fury",
+    "jakmc:blue_ammo",
+    "jakmc:blue_ammo",
+    "minecraft:gold_ingot",
+    "minecraft:gold_ingot",
+    "minecraft:redstone"
+  ],
+  "result": {
+    "id": "jakmc:arc_wielder",
+    "count": 1
+  }
+}

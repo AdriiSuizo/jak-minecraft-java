@@ -29,10 +29,15 @@ public final class InputScene {
   if(IntegrationScene.camera()!=null)return IntegrationScene.camera();
   if(view!=null)return view;
   if(EconomyScene.camera()!=null)return EconomyScene.camera();
+  if(RulesScene.camera()!=null)return RulesScene.camera();
+  if(LandsScene.camera()!=null)return LandsScene.camera();
+  if(PunchScene.camera()!=null)return PunchScene.camera();
+  if(WreckScene.camera()!=null)return WreckScene.camera();
   if(ScaleScene.camera()!=null)return ScaleScene.camera();
   if(SitesScene.camera()!=null)return SitesScene.camera();
   if(CityScene.camera()!=null)return CityScene.camera();
   if(SpydroidScene.camera()!=null)return SpydroidScene.camera();
+  if(KermitScene.camera()!=null)return KermitScene.camera();
   if(VentScene.camera()!=null)return VentScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
   var enemy=EnemyScene.camera(Minecraft.getInstance());
@@ -553,11 +558,25 @@ public final class InputScene {
  private static volatile int slowStart,slowEnd,resumeStart,resumeEnd;
  private static boolean freezeSeen,pauseOnLostFocus;
  static int replayPad(){return running&&pad!=null?pad.id:0;}
- static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||id!=0&&replayPad()==id;}
+ static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||PunchScene.backgroundPad(id)||id!=0&&replayPad()==id;}
  private static int darkScreenshot,shieldScreenshot,wingsScreenshot,betweenPackets,flightJump;
  private static Vec3 lastCamera;
+ private static long lastFrameNanos;
+ private static jdk.jfr.Recording shieldRecording;
+ @SuppressWarnings("unchecked") private static final java.util.List<Double>[] FRAME_MS=new java.util.List[]{new java.util.ArrayList<Double>(),new java.util.ArrayList<Double>(),new java.util.ArrayList<Double>()};
  private static long cameraSnapshot;
  public static void sampleCamera(Camera camera){
+  if(running&&powers){
+   long now=System.nanoTime();var player=Minecraft.getInstance().player;
+   var pose=player==null?null:JakPoses.get(player.getId());
+   if(lastFrameNanos!=0&&pose!=null){
+    double ms=(now-lastFrameNanos)/1e6;
+    int k=pose.raw().get("shield").getAsBoolean()?0:pose.light()?1:2;
+    FRAME_MS[k].add(ms);
+    if(k==0&&ms>40)STATES.add("spike="+String.format(java.util.Locale.ROOT,"%.0f@%d",ms,java.time.Instant.now().toEpochMilli()));
+   }
+   lastFrameNanos=now;
+  }
   if(running&&crossing&&crossingSample){
    var player=Minecraft.getInstance().player;
    var pose=player==null?null:JakPoses.get(player.getId());
@@ -669,12 +688,15 @@ public final class InputScene {
   freezeSeen=false;
   slowStart=slowEnd=resumeStart=resumeEnd=-1;
   freezeTarget=null;
-  darkScreenshot=shieldScreenshot=wingsScreenshot=betweenPackets=flightJump=0;
+  darkScreenshot=shieldScreenshot=wingsScreenshot=betweenPackets=flightJump=freezeFrames=0;clapShot=-1;for(var l:FRAME_MS)l.clear();lastFrameNanos=0;
+  dev.jakmc.client.sky.JakFreezeScreen.frames=0;
   lastCamera=null;
   onServer(c,p->{
    p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(3)));
    dev.jakmc.player.JakResources.grant(p,0,Math.max(0,100-dev.jakmc.player.JakResources.totals(p)[0]));
    dev.jakmc.player.JakResources.grant(p,1,Math.max(0,100-dev.jakmc.player.JakResources.totals(p)[1]));
+   // A fresh world has no ammo: some of each colour for the gun.
+   for(int kind=2;kind<6;kind++)dev.jakmc.player.JakResources.grant(p,kind,Math.max(0,100-dev.jakmc.player.JakResources.totals(p)[kind]));
    var mob=dev.jakmc.entity.JakEntities.TYPES.get("grunt")
        .create(p.level(),net.minecraft.world.entity.EntitySpawnReason.COMMAND);
    mob.setNoAi(true);
@@ -682,6 +704,12 @@ public final class InputScene {
    p.level().addFreshEntity(mob);
    aimTarget=mob.getUUID();
   });
+ }
+ private static int goldPlaced,clapShot=-1,freezeFrames;
+ private static int gold(net.minecraft.server.level.ServerPlayer p){
+  var base=net.minecraft.core.BlockPos.containing(start);int n=0;
+  for(int z=1;z<=3;z++)for(int y=0;y<3;y++)if(p.level().getBlockState(base.offset(0,y,z)).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK))n++;
+  return n;
  }
  private static void onServer(Minecraft c,java.util.function.Consumer<net.minecraft.server.level.ServerPlayer> action){
   var server=c.getSingleplayerServer();var id=c.player.getUUID();
@@ -705,6 +733,18 @@ public final class InputScene {
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,t>=653&&t<657);
   if(t==13){c.player.setYRot(0);c.player.setXRot(4);c.gui.hud.getChat().clearMessages(false);}
   if(t==52)capture(c,"powers-aim.png");
+  // The shield's opening profiled (IW4L_SHIELD_JFR=1).
+  if(t==200&&"1".equals(System.getenv("IW4L_SHIELD_JFR")))try{shieldRecording=new jdk.jfr.Recording(jdk.jfr.Configuration.getConfiguration("profile"));shieldRecording.enable("jdk.ExecutionSample").withPeriod(java.time.Duration.ofMillis(1));shieldRecording.enable("jdk.NativeMethodSample").withPeriod(java.time.Duration.ofMillis(1));shieldRecording.setToDisk(true);shieldRecording.start();}catch(Exception e){shieldRecording=null;}
+  if(t==320&&shieldRecording!=null)try{shieldRecording.dump(c.gameDirectory.toPath().resolve("jakmc/evidence/powers/shield.jfr"));shieldRecording.close();shieldRecording=null;}catch(Exception e){shieldRecording=null;}
+  // target-lightjak-freeze's clap and the slowed screen; target-lightjak-shield's move.
+  String drawn=pose==null?"":pose.clip();
+  if(drawn.equals("jakb-lightjak-shield"))ACTIONS.addProperty("shield_move_drawn",true);
+  if(drawn.equals("jakb-lightjak-freeze")){
+   if(!ACTIONS.has("freeze_clap_drawn"))clapShot=t+4;
+   ACTIONS.addProperty("freeze_clap_drawn",true);
+  }
+  if(t==clapShot)capture(c,"powers-clap.png");
+  if(t==700){freezeFrames=dev.jakmc.client.sky.JakFreezeScreen.frames;capture(c,"powers-freeze-screen.png");}
   if(t==60)onServer(c,p->{
    var target=p.level().getEntity(aimTarget);
    aimHit=target instanceof net.minecraft.world.entity.LivingEntity living&&living.getHealth()<living.getMaxHealth();
@@ -717,16 +757,17 @@ public final class InputScene {
   if(t==185)onServer(c,p->p.setGameMode(net.minecraft.world.level.GameType.SURVIVAL));
   if(t==91){
    onServer(c,p->{
-    var base=net.minecraft.core.BlockPos.containing(start);
-    for(int z=1;z<=3;z++)placeSeen|=p.level().getBlockState(base.offset(0,0,z)).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK);
+    goldPlaced=gold(p);placeSeen=goldPlaced>0;
     p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(net.minecraft.world.item.Items.DIAMOND_PICKAXE));
    });
   }
   if(t==103){
    onServer(c,p->{
+    // One R2 press breaks one block; L2 may have stacked them.
+    mineSeen=placeSeen&&gold(p)<goldPlaced;
+    // The rest out of the way of the walk that follows.
     var base=net.minecraft.core.BlockPos.containing(start);
-    mineSeen=placeSeen;
-    for(int z=1;z<=3;z++)mineSeen&=!p.level().getBlockState(base.offset(0,0,z)).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK);
+    for(int z=1;z<=3;z++)for(int y=0;y<3;y++)if(p.level().getBlockState(base.offset(0,y,z)).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK))p.level().removeBlock(base.offset(0,y,z),false);
     p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,ItemStack.EMPTY);
    });
    c.player.setXRot(5);
@@ -796,6 +837,15 @@ public final class InputScene {
    STATES.add("resumed_entity_ticks="+(resumeEnd-resumeStart));
    ACTIONS.addProperty("light_freeze_slows_entities",freezeSeen&&slowStart>=0&&slowEnd-slowStart>=2&&slowEnd-slowStart<=5);
    ACTIONS.addProperty("light_freeze_recovers",resumeStart>=0&&resumeEnd-resumeStart>=34);
+   String[] kinds={"shield","light","plain"};
+   for(int k=0;k<3;k++){var v=new java.util.ArrayList<>(FRAME_MS[k]);java.util.Collections.sort(v);
+    if(k==0&&FRAME_MS[0].size()>30){var steady=new java.util.ArrayList<>(FRAME_MS[0].subList(30,FRAME_MS[0].size()));java.util.Collections.sort(steady);
+     STATES.add("shield_first="+FRAME_MS[0].subList(0,12).stream().map(x->String.format(java.util.Locale.ROOT,"%.0f",x)).collect(java.util.stream.Collectors.joining("|")));
+     STATES.add("shield_steady_p50="+String.format(java.util.Locale.ROOT,"%.1f",steady.get(steady.size()/2))+"/max="+String.format(java.util.Locale.ROOT,"%.1f",steady.get(steady.size()-1)));}
+    if(!v.isEmpty())STATES.add("frame_"+kinds[k]+"/max="+String.format(java.util.Locale.ROOT,"%.0f",v.get(v.size()-1))+"="+v.size()+"/p50="+String.format(java.util.Locale.ROOT,"%.1f",v.get(v.size()/2))+"/p95="+String.format(java.util.Locale.ROOT,"%.1f",v.get((int)(v.size()*.95))));}
+   ACTIONS.addProperty("freeze_screen_drawn",freezeFrames>10);
+   ACTIONS.addProperty("freeze_clap_drawn",ACTIONS.has("freeze_clap_drawn"));
+   ACTIONS.addProperty("shield_move_drawn",ACTIONS.has("shield_move_drawn"));
    ACTIONS.addProperty("l2_only_aims",!ACTIONS.has("l2_triggered_dark")&&aimSeen);
    ACTIONS.addProperty("r2_fired",shotSeen&&aimHit);
    ACTIONS.addProperty("r2_mined_native_block",mineSeen);
@@ -915,7 +965,8 @@ public final class InputScene {
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,t>=135&&t<155);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_EAST,t==180);
   pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_WEST,t==200);
-  pad.axis(5,t==225||t==280?1:-1);
+  // Triangle takes the board out and puts it away (R2 mines).
+  pad.button(SDLGamepad.SDL_GAMEPAD_BUTTON_NORTH,t==225||t==280);
   if(t==75&&(walk<.1||Math.abs(yawAfter-yawStart)<.1)){finish(c,"Controller input not active; focused="+c.isWindowActive()+", device="+JakInput.controller().name());return;}
   if(t==45)walk=c.player.position().subtract(start).horizontalDistance();
   if(t==68){

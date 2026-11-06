@@ -35,7 +35,6 @@ public final class JakEntities {
    FabricDefaultAttributeRegistry.register(type,Monster.createMonsterAttributes().add(Attributes.MAX_HEALTH,k.hp*2.5).add(Attributes.ATTACK_DAMAGE,k.damage).add(Attributes.MOVEMENT_SPEED,k.guard()?navigationSpeed(k.run):k.run*JakEnemyKind.SCALE/20).add(Attributes.FOLLOW_RANGE,k.stop*JakEnemyKind.SCALE).add(Attributes.STEP_HEIGHT,.6));
    if(!k.guard()){
    SpawnPlacements.register(type,SpawnPlacementTypes.ON_GROUND,Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,Monster::checkMonsterSpawnRules);
-   BiomeModifications.addSpawn(context->habitat(k.model,context.getBiomeKey().identifier().getPath()),MobCategory.MONSTER,type,6,k.model.equals("predator")?1:2,3);
    }
    var eggKey=ResourceKey.create(Registries.ITEM,JakData.id(k.model.replace('-','_')+"_spawn_egg"));
    EGGS.add(Registry.register(BuiltInRegistries.ITEM,eggKey,new SpawnEggItem(new Item.Properties().setId(eggKey).spawnEgg(type))));
@@ -47,7 +46,7 @@ public final class JakEntities {
   if(ocean||biome.contains("end")&&!biome.equals("badlands")||biome.equals("the_void"))return false;
   return switch(model){
    case "lurkerpuppy","lurkercrab","double-lurker"->beach;
-   case "bonelurker","swamp-rat"->swamp;
+   case "bonelurker","swamp-rat","kermit"->swamp;
    case "yeti","snow-bunny"->snow;
    case "hopper"->jungle;
    case "baby-spider","kg-grunt","spydroid"->cave;

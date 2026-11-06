@@ -565,10 +565,20 @@
     "game": "jak2",
     "asset": "levels/castle/crimson-guard-lod0.glb",
     "clips": [
-      "crimson-guard-idle", "crimson-guard-notice", "crimson-guard-run", "crimson-guard-rifle-butt",
-      "crimson-guard-idle", "crimson-guard-walk", "crimson-guard-yellow-hit0", "crimson-guard-die"
+      "crimson-guard-idle",
+      "crimson-guard-notice",
+      "crimson-guard-run",
+      "crimson-guard-rifle-butt",
+      "crimson-guard-idle",
+      "crimson-guard-walk",
+      "crimson-guard-yellow-hit0",
+      "crimson-guard-die"
     ],
-    "jumpClips": ["", "", ""],
+    "jumpClips": [
+      "",
+      "",
+      ""
+    ],
     "run": 12.0,
     "walk": 3.0,
     "sight": 25.0,
@@ -581,6 +591,39 @@
     "leaps": false,
     "jumpMin": 0.0,
     "jumpFactor": 0.0,
+    "metalHead": false
+  },
+  {
+    "model": "kermit",
+    "game": "jak1",
+    "asset": "levels/swamp/kermit-lod0.glb",
+    "clips": [
+      "kermit-idle",
+      "kermit-hop",
+      "kermit-hop",
+      "kermit-lash",
+      "kermit-pull",
+      "kermit-hop",
+      "",
+      "kermit-die"
+    ],
+    "jumpClips": [
+      "",
+      "",
+      ""
+    ],
+    "run": 6.0,
+    "walk": 3.0,
+    "sight": 30.0,
+    "stop": 40.0,
+    "reach": 12.0,
+    "hp": 1.0,
+    "damage": 2,
+    "half": 0.75,
+    "height": 1.8,
+    "leaps": false,
+    "jumpMin": 1.0,
+    "jumpFactor": 0.5,
     "metalHead": false
   }
 ]

@@ -35,6 +35,14 @@ public final class RuntimeConfig {
             NativeJak.load(dll);
             int animations=NativeJak.configure(assets.toString());
             JakMod.LOG.info("Jak source timings loaded: {} animations, native ABI {}",animations,NativeJak.ABI);
-        } catch(Exception e){throw new IllegalStateException("Cannot initialize Jak from local owned exports",e);}
+        } catch(Exception|UnsatisfiedLinkError e){
+            Path config=FabricLoader.getInstance().getConfigDir().resolve("jakmc.properties");
+            throw new IllegalStateException(String.join(System.lineSeparator(),
+                "Jak mod could not start / El mod de Jak no ha podido arrancar.",
+                "OpenGOAL exports / Exportaciones de OpenGOAL: "+assets,
+                "Run the JakMod installer again, or set 'assets=' in "+config+".",
+                "Vuelve a ejecutar el instalador de JakMod, o pon la ruta en 'assets=' en "+config+".",
+                "Cause / Causa: "+e),e);
+        }
     }
 }

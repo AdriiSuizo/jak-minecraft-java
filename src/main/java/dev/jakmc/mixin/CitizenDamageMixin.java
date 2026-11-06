@@ -14,6 +14,6 @@ abstract class CitizenDamageMixin {
    state.citizenHit();
    if(source.getEntity() instanceof LivingEntity attacker)state.citizenAttacker(attacker);
    if(source.getEntity() instanceof net.minecraft.world.entity.player.Player player)
-    dev.jakmc.entity.KrimsonGuard.witness(level,v,player);
+    dev.jakmc.entity.CityAlert.struck(level,v,player);
   }}
 }

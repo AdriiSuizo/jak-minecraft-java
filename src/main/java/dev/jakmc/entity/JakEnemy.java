@@ -19,6 +19,13 @@ import java.util.*;
 /** Original enemy decisions and animation phases; Minecraft owns bodies, navigation,
  * oxygen, fluid currents, health, damage sources, persistence and dropped items. */
 public final class JakEnemy extends Monster {
+    @Override
+    public SpawnGroupData finalizeSpawn(net.minecraft.world.level.ServerLevelAccessor level,net.minecraft.world.DifficultyInstance difficulty,EntitySpawnReason reason,SpawnGroupData data){
+        var out=super.finalizeSpawn(level,difficulty,reason,data);
+        // Rust: jak_enemies.rs, `mc summon` makes a nestless enemy, which the step keeps as a night prowler.
+        if(reason==EntitySpawnReason.COMMAND)dev.jakmc.ecology.JakEcology.adoptProwler(level.getLevel(),this);
+        return out;
+    }
  public enum State {IDLE,NOTICE,CHASE,ATTACK,CELEBRATE,WALK,HURT,DEAD,GIVE_UP}
  private static final EntityDataAccessor<String> CLIP=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.STRING);
  private static final EntityDataAccessor<Long> CLIP_START=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.LONG);
@@ -27,11 +34,25 @@ public final class JakEnemy extends Monster {
  private static final EntityDataAccessor<Float> CLIP_OFFSET=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.FLOAT);
  private static final EntityDataAccessor<Integer> PHASE=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.INT);
  private static final EntityDataAccessor<String> SHOT=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.STRING);
+ private static final EntityDataAccessor<Integer> TONGUE=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.INT);
+ private static final EntityDataAccessor<Float> TONGUE_STRETCH=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.FLOAT);
+ private static final EntityDataAccessor<Float> TONGUE_MAX=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.FLOAT);
+ private static final EntityDataAccessor<Float> TONGUE_PULSE=SynchedEntityData.defineId(JakEnemy.class,EntityDataSerializers.FLOAT);
+ /** Entity event: a swamp frog's pulse touched its prey (kermit-pulse-impact). */
+ public static final byte KERMIT_IMPACT=120;
+ /** The client's group-kermit-pulse-impact, set by JakEffects. */
+ public static java.util.function.Consumer<JakEnemy> kermitImpact=e->{};
  private final KrimsonGuard guard;
+ private final Kermit kermit;
  private State state=State.IDLE;
  private int stateTicks,pathWait,landTicks,windup;
  private int reactionEnds,crabPhase=-1;
  private boolean reactionAirborne;
+ /** jak_enemies.rs grunt: thrown as a Fall (the client draws it), down from this tick on its way up again; -1 while still in the air. */
+ private int knockLanded=-1;
+ /** stand-in: the Fall settles on the client (grunt_ragdoll.rs: age > .35 s and .2 s at rest); the server allows this much after it lands. */
+ static final int KNOCK_SETTLE=10;
+ public static final String KNOCK_CLIP="grunt-ragdoll";
  private boolean struck,wasGround=true;
  private boolean requestLeap,leaping;
  private boolean nativeHeavy;
@@ -50,6 +71,7 @@ public final class JakEnemy extends Monster {
  public JakEnemy(EntityType<? extends Monster> type,Level level){
   super(type,level);kind=Objects.requireNonNull(JakEntities.KINDS.get(type),"Unregistered Jak enemy");
   guard=kind.guard()?new KrimsonGuard(this):null;
+  kermit=kind.model.equals("kermit")?new Kermit(this):null;
   spydroid=kind.model.equals("spydroid");
   crab=kind.model.equals("lurkercrab");
   hopper=kind.model.equals("hopper");
@@ -61,7 +83,13 @@ public final class JakEnemy extends Monster {
   jumpControl=new net.minecraft.world.entity.ai.control.JumpControl(this){@Override public void jump(){if(isInWater()||isInLava())super.jump();else if(guard!=null)super.jump();else if(onGround()&&!leaping&&leapWindup==0&&landTicks==0)requestLeap=true;}};
  }
  @Override protected void registerGoals(){goalSelector.addGoal(0,new FloatGoal(this));}
- @Override protected void defineSynchedData(SynchedEntityData.Builder b){super.defineSynchedData(b);b.define(CLIP,"");b.define(CLIP_START,0L);b.define(LOOP,true);b.define(PLAY_RATE,1f);b.define(CLIP_OFFSET,0f);b.define(PHASE,0);b.define(SHOT,"");}
+ @Override protected void defineSynchedData(SynchedEntityData.Builder b){super.defineSynchedData(b);b.define(CLIP,"");b.define(CLIP_START,0L);b.define(LOOP,true);b.define(PLAY_RATE,1f);b.define(CLIP_OFFSET,0f);b.define(PHASE,0);b.define(SHOT,"");b.define(TONGUE,-1);b.define(TONGUE_STRETCH,0f);b.define(TONGUE_MAX,2f);b.define(TONGUE_PULSE,-1f);}
+ /** A swamp frog's tongue (Kermit): the entity it tracks (-1: not tracking, its length then `tongueStretch`), joint-mod-tracker's control and max, the pulse along it (-1: none). */
+ public int tongueTarget(){return entityData.get(TONGUE);}
+ public float tongueStretch(){return entityData.get(TONGUE_STRETCH);}
+ public float tongueMax(){return entityData.get(TONGUE_MAX);}
+ public float tonguePulse(){return entityData.get(TONGUE_PULSE);}
+ void tongue(int target,float stretch,float max,float pulse){entityData.set(TONGUE,target);entityData.set(TONGUE_STRETCH,stretch);entityData.set(TONGUE_MAX,max);entityData.set(TONGUE_PULSE,pulse);}
  public String animation(){String c=entityData.get(CLIP);return c.isEmpty()?kind.clips[0]:c;}
  public boolean animationLoops(){return entityData.get(LOOP);}
  public float animationRate(){return entityData.get(PLAY_RATE);}
@@ -85,7 +113,7 @@ public final class JakEnemy extends Monster {
  }
  void set(State next){
   state=next;stateTicks=0;struck=false;lunge=Vec3.ZERO;windup=0;landTicks=0;requestLeap=false;leapWindup=0;leaping=false;
-  reactionAirborne=false;reactionEnds=0;crabPhase=-1;
+  reactionAirborne=false;reactionEnds=0;crabPhase=-1;knockLanded=-1;
   entityData.set(PHASE,next.ordinal());restartAnimation();
   if(next!=State.CHASE&&next!=State.WALK){getNavigation().stop();getMoveControl().setWantedPosition(getX(),getY(),getZ(),0);}
  }
@@ -96,11 +124,19 @@ public final class JakEnemy extends Monster {
   if(target!=null&&(!target.isAlive()||target.isSpectator()||target instanceof Player p&&p.isCreative())){setTarget(null);target=null;}
   if(state!=State.HURT&&tickCount%10==0&&target==null){
    double radius=kind.sight*JakEnemyKind.SCALE;
-   target=level.getEntitiesOfClass(LivingEntity.class,getBoundingBox().inflate(radius),e->e!=this&&canAttack(e)&&!(e instanceof JakEnemy)&&!(e instanceof Player p&&(p.isCreative()||p.isSpectator()))&&(e instanceof Player||kind.model.equals("predator")&&(e instanceof net.minecraft.world.entity.animal.Animal||e instanceof net.minecraft.world.entity.npc.villager.AbstractVillager)))
-    .stream().filter(e->getSensing().hasLineOfSight(e)).min(Comparator.comparingDouble(this::distanceToSqr)).orElse(null);
+   target=level.getEntitiesOfClass(LivingEntity.class,getBoundingBox().inflate(radius),e->e!=this&&canAttack(e)&&!(e instanceof JakEnemy)&&!(e instanceof Player p&&(p.isCreative()||p.isSpectator()))&&(e instanceof Player||kermit!=null&&e instanceof net.minecraft.world.entity.Mob||kind.model.equals("predator")&&(e instanceof net.minecraft.world.entity.animal.Animal||e instanceof net.minecraft.world.entity.npc.villager.AbstractVillager)))
+    // Rust jak_enemies.rs: discovery reach max(sight × visibility, 2 blocks), visibility as vanilla's (invisibility, armour).
+    .stream().filter(e->distanceTo(e)<=Math.max(radius*e.getVisibilityPercent(level,this),2)&&getSensing().hasLineOfSight(e)).min(Comparator.comparingDouble(this::distanceToSqr)).orElse(null);
    setTarget(target);
   }
   if(state==State.HURT){
+   if(reactionAirborne&&onGround()&&!isInWater()&&animation().equals(KNOCK_CLIP)){
+    // jak_enemies.rs: down, the Fall settles, then grunt-getup-front/back for its length.
+    reactionAirborne=false;knockLanded=stateTicks;
+    float getup=Math.max(kind.duration("grunt-getup-front"),kind.duration("grunt-getup-back"));
+    reactionEnds=stateTicks+KNOCK_SETTLE+Math.max(1,(int)Math.ceil(20*getup));
+   }
+   if(knockLanded>=0&&stateTicks==knockLanded+KNOCK_SETTLE)animate("grunt-getup-back",false,1);
    if(reactionAirborne&&(onGround()||isInWater())){
     reactionAirborne=false;
     if(!isInWater()&&!recovery.equals(animation())){
@@ -114,6 +150,7 @@ public final class JakEnemy extends Monster {
    sounds();return;
   }
   if(isPassenger()){animate(kind.clips[0],true,1);sounds();return;}
+  if(kermit!=null){kermit.tick(level,target);sounds();return;}
   if(hopper&&(windup>0||leaping||landTicks>0)){
    advanceHopper();
    sounds();return;
@@ -293,7 +330,11 @@ public final class JakEnemy extends Monster {
   if(hit&&guard!=null){guard.hit(level,source);return true;}
   if(hit&&isAlive()){
    String clip=kind.first(kind.clips[6],kind.model+"-stun",kind.model+"-take-hit",kind.model+"-both-take-hit",kind.model+"-kickback",kind.clips[7]);
-   beginReaction(clip,crab?.75f:1,kind.clips[6].isEmpty()?.45f:Math.max(.7f,kind.duration(clip)));
+   // jak_enemies.rs hit handler: a grunt out of the water is thrown as a Fall (grunt_ragdoll.rs), on its feet
+   // again only once it has landed; ten seconds at most if it never comes down.
+   boolean fall=dev.jakmc.ragdoll.GruntFallDeath.falls(this)&&!isInWater()&&source.getEntity() instanceof LivingEntity;
+   if(fall)beginReaction(KNOCK_CLIP,1,10);
+   else beginReaction(clip,crab?.75f:1,kind.clips[6].isEmpty()?.45f:Math.max(.7f,kind.duration(clip)));
    if(source.getEntity() instanceof LivingEntity attacker){setTarget(attacker);
     boolean thrown=!kind.clips[6].isEmpty()&&!kind.clips[6].contains("stun")&&!kind.clips[6].contains("take-hit")&&!kind.clips[6].contains("kickback");
     if(thrown&&!isInWater()){
@@ -316,7 +357,7 @@ public final class JakEnemy extends Monster {
  }
  @Override public void die(DamageSource source){
   super.die(source);if(level().isClientSide()||kind==null)return;
-  guardShot("");set(State.DEAD);animate(kind.clips[7],false,1);sounds();
+  guardShot("");if(kermit!=null)kermit.stop();set(State.DEAD);animate(kind.clips[7],false,1);sounds();
   if(spydroid&&level() instanceof ServerLevel server){
    var at=position().add(0,.5*JakEnemyKind.SCALE,0);
    SettlementShots.cue(server,"jak3","droid-explode",at);
@@ -329,8 +370,9 @@ public final class JakEnemy extends Monster {
  }
  @Override protected void tickDeath(){
   deathTime++;if(!level().isClientSide())sounds();
-  if(deathTime>=(kind.guard()?120:Math.max(20,Math.min(100,(int)(20*kind.duration(kind.clips[7])))))&&!level().isClientSide()&&!isRemoved()){level().broadcastEntityEvent(this,(byte)60);remove(RemovalReason.KILLED);}
+  if(deathTime>=dev.jakmc.ragdoll.GruntFallDeath.lastsTicks(this,kind.guard()?120:Math.max(20,Math.min(100,(int)(20*kind.duration(kind.clips[7])))))&&!level().isClientSide()&&!isRemoved()){level().broadcastEntityEvent(this,(byte)60);remove(RemovalReason.KILLED);}
  }
+ @Override public void handleEntityEvent(byte id){if(id==KERMIT_IMPACT){kermitImpact.accept(this);return;}if(id==60&&dev.jakmc.ragdoll.GruntFallDeath.puffed.test(this))return;super.handleEntityEvent(id);}
  @Override protected void dropCustomDeathLoot(ServerLevel level,DamageSource source,boolean playerKill){
   super.dropCustomDeathLoot(level,source,playerKill);
   if(guard!=null){

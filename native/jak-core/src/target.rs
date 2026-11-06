@@ -194,6 +194,40 @@ impl Jak {
         };
     }
 
+    /// Jak 1 logic-target.gc `target-real-post`: a frog's tongue on Jak lerps the stick toward
+    /// `force-turn-to-direction` × `force-turn-to-speed` (1) by `force-turn-to-strength`.
+    fn tongue_pull(&mut self, pad: Vec3, speed: f32) -> (Vec3, f32) {
+        let c = &mut self.control;
+        c.tongue_adding = false;
+        if self.time >= c.tongue_until || c.tongue_strength == 0.0 {
+            return (pad, speed);
+        }
+        let k = c.tongue_strength.min(1.0);
+        let from = if speed == 0.0 { Vec3::ZERO } else { pad * speed };
+        let v = from.lerp(c.tongue_dir, k);
+        (v.normalize_or_zero(), v.length())
+    }
+
+    /// Jak 1 target-handler.gc `target-apply-tongue`: a swamp frog's tongue, its base at `from`, pulls Jak's
+    /// steering toward it, harder the farther he is (0.15 at 5 m to 0.22 at 15 m, `*TARGET-bank*`).
+    /// stand-in: the original's prevent-attack and prevent-duck flags are not kept.
+    pub fn apply_tongue(&mut self, from: Vec3) {
+        if !from.is_finite() {
+            return;
+        }
+        let now = self.time;
+        let c = &mut self.control;
+        let to = from - c.trans;
+        c.tongue_strength = crate::math::lerp_scale(0.15, 0.22, to.length(), 20480.0, 61440.0);
+        if !c.tongue_adding {
+            c.tongue_dir = Vec3::ZERO;
+            c.tongue_adding = true;
+        }
+        let n = c.local_normal;
+        c.tongue_dir += (to - n * to.dot(n)).normalize_or_zero();
+        c.tongue_until = now + seconds(0.1);
+    }
+
     /// What every move leaves behind it.
     pub(crate) fn target_exit(&mut self) {
         let c = &mut self.control;
@@ -1272,6 +1306,7 @@ impl Jak {
                     // Enough to break grass, dirt or sand at one slam,
                     // stone at two.
                     damage: 10.0,
+                    sphere: None,
                 });
             }
             return Some(State::FlopHitGround { stuck });
@@ -1336,6 +1371,7 @@ impl Jak {
                 | State::PowerJakGetOn
                 | State::LightJakGetOn { .. }
                 | State::LightJakGetOff
+                | State::LightJakFreeze
         );
         if matches!(self.state, State::PowerJakGetOn | State::LightJakGetOff)
             && self.control.on_surface()
@@ -1349,6 +1385,7 @@ impl Jak {
         self.do_rotations1();
         let pad_dir = self.read_pad();
         let speed = if no_stick { 0.0 } else { self.debounce_speed() };
+        let (pad_dir, speed) = self.tongue_pull(pad_dir, speed);
         self.turn_to_vector(pad_dir, speed);
         self.add_thrust();
         self.add_gravity();

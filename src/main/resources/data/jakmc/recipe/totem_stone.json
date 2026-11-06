@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "pattern": [
+    "S",
+    "S"
+  ],
+  "key": {
+    "S": "jak:spargus_stucco_slab"
+  },
+  "result": {
+    "id": "jak:totem_stone",
+    "count": 1
+  }
+}

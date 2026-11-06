@@ -36,8 +36,21 @@ final class LightFormTexture {
             return (frame+Math.clamp(v,inset,1-inset))/FRAMES;
         }
 
+        private java.util.concurrent.CompletableFuture<NativeImage> building;
+        /** Builds the atlas off the render thread (its first draw used to wait about 0.3 s for it). */
+        void prepare(){
+            if(atlas==null&&building==null)building=java.util.concurrent.CompletableFuture.supplyAsync(this::build);
+        }
         Identifier texture(){
             if(atlas!=null)return atlas;
+            prepare();
+            var image=building.join();building=null;
+            var id=JakData.id("local/"+name().toLowerCase(java.util.Locale.ROOT)+"_animated");
+            Minecraft.getInstance().getTextureManager().register(id,new DynamicTexture(id::toString,image));
+            atlas=id;
+            return atlas;
+        }
+        private NativeImage build(){
             var folder=RuntimeConfig.assets.resolve("textures").resolve(page);
             var sources=new BufferedImage[names.length];
             try {
@@ -72,10 +85,7 @@ final class LightFormTexture {
                     image.setPixel(x,frame*height+y,color);
                 }
             }
-            var id=JakData.id("local/"+name().toLowerCase(java.util.Locale.ROOT)+"_animated");
-            Minecraft.getInstance().getTextureManager().register(id,new DynamicTexture(id::toString,image));
-            atlas=id;
-            return atlas;
+            return image;
         }
     }
 

@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "building",
+  "ingredients": [
+    "jak:palm_log"
+  ],
+  "result": {
+    "id": "jak:spargus_planks",
+    "count": 4
+  }
+}

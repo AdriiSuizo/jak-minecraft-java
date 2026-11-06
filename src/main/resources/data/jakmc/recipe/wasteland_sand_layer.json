@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "pattern": [
+    "SSS"
+  ],
+  "key": {
+    "S": "jak:wasteland_sand"
+  },
+  "result": {
+    "id": "jak:wasteland_sand_layer",
+    "count": 6
+  }
+}

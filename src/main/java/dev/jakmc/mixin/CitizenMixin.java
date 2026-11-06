@@ -31,7 +31,7 @@ abstract class CitizenMixin implements CitizenState {
   citizenWeaponOut(weaponOut);
  }
  @Unique private SpargusDefense jakmc$defense(){
-  if(citizenVariant()<CitizenKind.HAVEN_VARIANTS)return null;
+  if(citizenVariant()<CitizenKind.HAVEN_VARIANTS||CitizenKind.of(citizenVariant()).jak1())return null;
   if(jakmc$defense==null)jakmc$defense=new SpargusDefense((Villager)(Object)this,CitizenKind.of(citizenVariant()));
   return jakmc$defense;
  }

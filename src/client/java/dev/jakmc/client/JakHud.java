@@ -20,6 +20,9 @@ public final class JakHud {
     public static void draw(GuiGraphicsExtractor graphics){
         var client=Minecraft.getInstance();var player=client.player;
         if(player==null||client.gui.screen()!=null||!player.getAttachedOrCreate(JakData.ENABLED))return;
+        // The Super Nova's white flash over the whole screen (gun-dark-shot.gc).
+        float flash=dev.jakmc.client.sky.JakFreezeScreen.nukeFlash();
+        if(flash>0)graphics.fill(0,0,client.getWindow().getGuiScaledWidth(),client.getWindow().getGuiScaledHeight(),Math.round(flash*255)<<24|0xffffff);
         if(!attempted){
             attempted=true;
             var root=RuntimeConfig.assets.resolve("textures/level-default-minimap");

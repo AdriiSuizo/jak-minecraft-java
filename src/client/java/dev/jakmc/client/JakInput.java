@@ -23,6 +23,7 @@ public final class JakInput {
     public static final KeyMapping AIM=key("aim",InputConstants.KEY_C);
     public static final KeyMapping FIRE=key("fire",InputConstants.KEY_R);
     public static final KeyMapping INTERACT=key("interact",InputConstants.KEY_F);
+    public static final KeyMapping RESCUE=key("rescue",InputConstants.KEY_K);
     private static int previous,sequence,physicalHeld,physicalSystem,suppressed,pressedPad,systemEdges;
     private static final int TRIANGLE=8,L2=32,R1=64,R2=128,L3=256,R3=512;
     private static final float DEFAULT_ZOOM=3.84f,FIRST_PERSON_ZOOM=.384f;
@@ -32,7 +33,8 @@ public final class JakInput {
     private static long lastFrame,dropStarted;
     private static boolean droppedStack;
     private static int controllerId;
-    private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower,vehicleUseLock;
+    private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower,vehicleUseLock,wasBoard,spinTriangle;
+    private static long spinPress=Long.MIN_VALUE/2;
     private static Trigger trigger;
     private static final dev.jakmc.client.input.SdlGamepad GAMEPAD=new dev.jakmc.client.input.SdlGamepad();
     private static dev.jakmc.client.input.SdlGamepad.State pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY,uiPad=pad;
@@ -57,6 +59,7 @@ public final class JakInput {
     }
 
     public static float cameraZoomFactor(){return cameraZoom==0?1:cameraZoom/DEFAULT_ZOOM;}
+    public static void rescueCamera(){cameraZoom=DEFAULT_ZOOM;}
 
     private static void zoom(Minecraft client,float dt){
         if((uiPad.held()&R3)==0)return;
@@ -96,6 +99,11 @@ public final class JakInput {
             trigger=null;
             if(controllerId!=0)dev.jakmc.JakMod.LOG.info("Jak controller connected/active: {} (SDL {})",next.name(),controllerId);
         }
+        // Pad play is play: without this Minecraft takes a pad-only player for
+        // away and caps the game at 30 FPS after a minute, 10 after ten.
+        if(next.held()!=0||next.system()!=0||Math.abs(next.leftX())>.2f||Math.abs(next.leftY())>.2f
+            ||Math.abs(next.rightX())>.2f||Math.abs(next.rightY())>.2f||next.brake()>.2f||next.throttle()>.2f)
+            c.getFramerateLimitTracker().onInputReceived();
         int zoomDirections=(next.held()&R3)!=0?60:0;
         systemEdges|=next.system()&~physicalSystem&~zoomDirections;
         if(c.gui.screen()!=null&&(next.held()&4)!=0&&(physicalHeld&4)==0)systemEdges|=64;
@@ -127,6 +135,9 @@ public final class JakInput {
                 return;
             }
             boolean board=pose!=null&&pose.board();
+            // render_anim jak.rs update/spend_on_change: what is held when the board comes or goes is spent until let go
+            // (the board's L2 grab and Triangle spin, the buttons it shares with Minecraft's use and the board's own).
+            if(board!=wasBoard){suppressed|=held&(L2|TRIANGLE);held&=~suppressed;edges&=~suppressed;wasBoard=board;}
             boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
             boolean powers=(held&L3)!=0||DARK.isDown()||LIGHT.isDown();
             boolean gun=JakItems.GUNS.contains(c.player.getMainHandItem().getItem());
@@ -139,20 +150,32 @@ public final class JakInput {
             else if(trigger!=wanted)trigger=Trigger.RESERVED;
             boolean mineTrigger=trigger==Trigger.MINE;
             // L2 goes through Minecraft's normal use path, including offhand,
-            // held/released use, doors and other mods' items and interactions.
-            useHeld=(held&L2)!=0&&!powers;
+            // held/released use, doors and other mods' items and interactions;
+            // with a gun in hand it only aims (Adrii 05/11: no getting in or opening while aiming).
+            useHeld=(held&L2)!=0&&!powers&&!board&&!gun;
             attackHeld=mineTrigger;
             useClicked|=useHeld&&(edges&L2)!=0;
             attackClicked|=mineTrigger&&(edges&R2)!=0;
 
-            int reserved=(board?R2:R1|R2)|R3|L2;
+            // render_anim jak.rs read_input/update: on the board (can_aim false) L2 (board_code.rs grabs, board.rs l2_start_time) reaches the core.
+            int reserved=(board?R2:R1|R2|L2)|R3;
             int mapped=held&~reserved;
             int mappedEdges=edges&~reserved;
+            // stand-in: the original's Triangle is only the ground spin (board.rs, after R1 within
+            // spin_ground_press_time's 0.3 s) and R2 gets off; here Triangle also gets off (Adrii's choice), so it
+            // is the spin's when pressed on the board within those 0.3 s after R1, else the board's R2.
+            long now=System.nanoTime();
+            if(board&&(edges&R1)!=0)spinPress=now;
+            if((held&TRIANGLE)==0)spinTriangle=false;
+            else if((edges&TRIANGLE)!=0)spinTriangle=board&&now-spinPress<300_000_000L;
             if(!powers&&!mounted){
                 mapped&=~TRIANGLE;
                 mappedEdges&=~TRIANGLE;
                 boolean equipped=c.player.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD);
-                if(equipped&&!vehicleUseLock){
+                if(spinTriangle){
+                    mapped|=held&TRIANGLE;
+                    mappedEdges|=edges&TRIANGLE;
+                }else if(equipped&&!vehicleUseLock){
                     if((held&TRIANGLE)!=0)mapped|=R2;
                     if((edges&TRIANGLE)!=0)mappedEdges|=R2;
                 }
