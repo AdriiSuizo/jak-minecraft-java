@@ -392,8 +392,16 @@ if __name__=='__main__':
             log=(args.minecraft or minecraft_default())/'instances/jakmod/jakmc/setup/installer-cli.log'
             log.parent.mkdir(parents=True,exist_ok=True)
             with log.open('a',encoding='utf-8') as output, contextlib.redirect_stdout(output),contextlib.redirect_stderr(output):
-                result=install(args.opengoal,args.minecraft or minecraft_default(),args.language,assets_only=args.assets_only)
-                print(json.dumps(result))
+                try:
+                    result=install(args.opengoal,args.minecraft or minecraft_default(),args.language,assets_only=args.assets_only)
+                    print(json.dumps(result))
+                except Exception as failure:
+                    # As the window does: the reason in a plain message, the details only in the log.
+                    import traceback;traceback.print_exc()
+                    import tkinter as tk;from tkinter import messagebox
+                    root=tk.Tk();root.withdraw()
+                    messagebox.showerror(TEXT[args.language]['error'],str(failure));root.destroy()
+                    sys.exit(1)
         else:
             result=install(args.opengoal,args.minecraft or minecraft_default(),args.language,assets_only=args.assets_only)
             print(json.dumps(result))
