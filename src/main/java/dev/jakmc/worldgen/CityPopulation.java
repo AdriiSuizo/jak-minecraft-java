@@ -4,6 +4,8 @@ import dev.jakmc.JakData;
 import dev.jakmc.citizens.CitizenTown;
 import dev.jakmc.entity.CitizenKind;
 import dev.jakmc.entity.CitizenState;
+import dev.jakmc.entity.JakEnemy;
+import dev.jakmc.entity.JakEntities;
 import dev.jakmc.entity.JakLeaper;
 import java.util.*;
 import net.minecraft.core.BlockPos;
@@ -33,6 +35,11 @@ public final class CityPopulation {
  static final double PEOPLED=150,EMPTIED=220;
  private static final Map<ResourceKey<Level>,Set<BlockPos>> PEOPLED_TOWNS=new HashMap<>();
  private static final Map<String,CityBlueprint> PLANS=new HashMap<>();
+ /** The peopled Havens, for their garrison. */
+ private record Town(String city,BlockPos origin,int turns,BoundingBox bounds){}
+ private static final Map<ResourceKey<Level>,Map<BlockPos,Town>> TOWNS=new HashMap<>();
+ /** stand-in (Adrii 06/11): a guard to each beat, up to this many; Rust kept 8 (jak_entities.rs). */
+ static final int GARRISON=48;
  private static synchronized CityBlueprint plan(String city){return PLANS.computeIfAbsent(city,CityBlueprint::read);}
  private CityPopulation(){}
 
@@ -55,6 +62,13 @@ public final class CityPopulation {
   var peopled=PEOPLED_TOWNS.computeIfAbsent(level.dimension(),k->new HashSet<>());
   // Rust: far towns emptied (every player past EMPTIED).
   peopled.removeIf(t->level.players().stream().noneMatch(p->!p.isSpectator()&&Math.hypot(t.getX()-p.getX(),t.getZ()-p.getZ())<=EMPTIED));
+  var towns=TOWNS.computeIfAbsent(level.dimension(),k->new HashMap<>());
+  towns.keySet().retainAll(peopled);
+  // Rust: jak_entities.rs, a guard every 8 s while the barrio is short of them. stand-in (Adrii 06/11): by day only.
+  if(level.getGameTime()%160==20)for(var town:towns.values()){
+   if(loaded(level,town.bounds))beds(level,AABB.of(town.bounds).inflate(0,24,0));
+   garrison(level,town);
+  }
   StructurePieceSerializationContext context=null;
   for(var p:level.players()){
    if(p.isSpectator())continue;
@@ -72,7 +86,11 @@ public final class CityPopulation {
       if(!city.equals("haven")&&!city.equals("spargus"))continue;
       var origin=new BlockPos(tag.getIntOr("X",0),tag.getIntOr("Y",0),tag.getIntOr("Z",0));
       if(peopled.contains(origin)||Math.hypot(origin.getX()-p.getX(),origin.getZ()-p.getZ())>=PEOPLED)continue;
-      if(people(level,city,origin,tag.getIntOr("Turns",0)&3,start))peopled.add(origin);
+      int turns=tag.getIntOr("Turns",0)&3;
+      if(people(level,city,origin,turns,start)){
+       peopled.add(origin);
+       if(city.equals("haven"))TOWNS.computeIfAbsent(level.dimension(),k->new HashMap<>()).put(origin,new Town(city,origin,turns,start.getBoundingBox()));
+      }
      }
     }
    }
@@ -109,7 +127,61 @@ public final class CityPopulation {
    }
   }
   if(spargus)loose(level,plan,origin,turns,box);
+  beds(level,box.inflate(0,24,0));
   return true;
+ }
+
+ /**
+  * Rust: settlement_housing, a bed to each resident. stand-in (Adrii 06/11, "cada ciudadano una cama"):
+  * the resident is handed a free bed of its own town at once (vanilla's HOME, the bed's POI taken) instead
+  * of waiting for vanilla to find one; at night vanilla's rest takes it there, its doors shut behind it.
+  * The Krimson station's beds (on its floor) are the guards' barracks, left out.
+  */
+ private static void beds(ServerLevel level,AABB box){
+  int radius=(int)Math.ceil(Math.hypot(box.getXsize(),box.getZsize())/2)+2;
+  for(var v:level.getEntitiesOfClass(Villager.class,box,CityPopulation::resident)){
+   if(v.getBrain().hasMemoryValue(net.minecraft.world.entity.ai.memory.MemoryModuleType.HOME))continue;
+   level.getPoiManager().take(h->h.is(net.minecraft.world.entity.ai.village.poi.PoiTypes.HOME),
+     (h,pos)->box.contains(Vec3.atCenterOf(pos))&&!barracks(level,pos),v.blockPosition(),radius)
+    .ifPresent(pos->v.getBrain().setMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.HOME,net.minecraft.core.GlobalPos.of(level.dimension(),pos)));
+  }
+ }
+ private static boolean barracks(ServerLevel level,BlockPos bed){
+  return BuiltInRegistries.BLOCK.getKey(level.getBlockState(bed.below()).getBlock()).getPath().equals("krimson_suelo");
+ }
+
+ /**
+  * Rust: jak_entities.rs (the Haven guards topped up, one at a time, at a site no guard is near).
+  * stand-in (Adrii 06/11): only by day, they come out of the Krimson station (its guard posts) and
+  * take a beat no guard walks; no bed, the station is their home.
+  */
+ private static void garrison(ServerLevel level,Town town){
+  if(!level.isBrightOutside()||!loaded(level,town.bounds))return;
+  var plan=plan(town.city);
+  var box=AABB.of(town.bounds).inflate(0,24,0);
+  var guards=level.getEntitiesOfClass(JakEnemy.class,box,e->e.isAlive()&&e.kind.guard());
+  if(guards.size()>=Math.min(GARRISON,plan.patrols.size()))return;
+  BlockPos from=null,to=null;
+  for(var beat:plan.patrols){
+   var a=CityBlueprint.rotate(beat.start(),town.turns).offset(town.origin);
+   if(guards.stream().anyMatch(g->Math.hypot(g.getX()-a.getX(),g.getZ()-a.getZ())<12))continue;
+   from=a;to=CityBlueprint.rotate(beat.end(),town.turns).offset(town.origin);break;
+  }
+  if(from==null)return;
+  Vec3 at=null;
+  var posts=new ArrayList<>(plan.posts);Collections.shuffle(posts);
+  for(var post:posts){
+   at=CitizenTown.standing(level,Vec3.atBottomCenterOf(CityBlueprint.rotate(post,town.turns).offset(town.origin).above()));
+   if(at!=null)break;
+  }
+  if(at==null)at=CitizenTown.standing(level,Vec3.atBottomCenterOf(from));
+  if(at==null)return;
+  var guard=JakEntities.TYPES.get("crimson-guard").create(level,EntitySpawnReason.EVENT);
+  if(guard==null)return;
+  guard.patrol(from,to);
+  guard.snapTo(at.x,at.y,at.z,level.getRandom().nextFloat()*360,0);
+  guard.setPersistenceRequired();
+  level.addFreshEntity(guard);
  }
 
  /** Rust: settlement_nav spawn_sites, spread over the town's streets: the farthest from those taken, each standing clear. */
@@ -161,5 +233,5 @@ public final class CityPopulation {
 
  /** For the scenes: the towns peopled now. */
  public static Set<BlockPos> peopled(ServerLevel level){return Set.copyOf(PEOPLED_TOWNS.getOrDefault(level.dimension(),Set.of()));}
- public static void clear(){PEOPLED_TOWNS.clear();}
+ public static void clear(){PEOPLED_TOWNS.clear();TOWNS.clear();}
 }

@@ -38,6 +38,7 @@ public final class InputScene {
   if(CityScene.camera()!=null)return CityScene.camera();
   if(SpydroidScene.camera()!=null)return SpydroidScene.camera();
   if(KermitScene.camera()!=null)return KermitScene.camera();
+  if(LoteScene.camera()!=null)return LoteScene.camera();
   if(VentScene.camera()!=null)return VentScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
   var enemy=EnemyScene.camera(Minecraft.getInstance());

@@ -101,7 +101,8 @@ public final class CitizenTown {
  // Rust: jak2_villagers.rs visible_threat over jak_entities.rs settlement_threats (Jak's enemies and Minecraft's hostile mobs)
  static boolean threatSeen(ServerLevel level,Villager v){
   Vec3 feet=v.position();
-  for(var e:level.getEntitiesOfClass(Mob.class,v.getBoundingBox().inflate(18),m->m instanceof Enemy&&m.isAlive())){
+  for(var e:level.getEntitiesOfClass(Mob.class,v.getBoundingBox().inflate(18),m->m instanceof Enemy&&m.isAlive()
+      &&!(m instanceof dev.jakmc.entity.JakEnemy guard&&guard.kind.guard()))){
    if(Math.abs(e.getY()-feet.y)>=6||e.position().distanceToSqr(feet)>=18*18)continue;
    var hit=level.clip(new ClipContext(feet.add(0,1,0),e.position().add(0,1,0),ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,v));
    if(hit.getType()==HitResult.Type.MISS)return true;

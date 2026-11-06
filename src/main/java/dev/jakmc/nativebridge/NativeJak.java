@@ -56,6 +56,7 @@ public final class NativeJak {
     public static native void tongue(long session,float x,float y,float z);
     /** Jak stood on a skatepark jump pad (spring height in metres); whether the bounce was taken. */
     public static native boolean padBounce(long session,float metres);
+    public static native boolean launch(long session,float metres);
     /** The liquid's top over the HellCat for its next step, blocks above its position (NaN: none). */
     public static native void hellcatLiquid(long session,float depth);
     public static native String hellcatStep(long session,ByteBuffer input,ByteBuffer actors,float dx,float dy,float dz,float hour,int commands,int steps);

@@ -25,6 +25,9 @@ pub enum Danger {
     /// What its air attack's landing strikes round it (its touch-tracker,
     /// grown to 7 m).
     FlutGround,
+    /// The Dark Bomb's blast (`'bomb`): his root sphere grown with
+    /// `bomb-scale` to 30 m (see [`crate::darkjak::BOMB_RADIUS`]).
+    Bomb,
 }
 
 /// A sphere the attack strikes with: at an offset from Jak's origin in his
@@ -59,6 +62,9 @@ const FLOP: [HitSphere; 1] = [at(3276.8, 5734.4)];
 const FLOP_DOWN: [HitSphere; 2] = [at(3276.8, 5734.4), at(9011.2, 5734.4)];
 const FLUT: [HitSphere; 2] = [at(6553.6, 12288.0), at(6553.6, 7372.8)];
 const FLUT_GROUND: [HitSphere; 1] = [at(4096.0, 28672.0)];
+/// `*TARGET-bank*` root-offset (y 4915.2) and root-radius (2.2 m), the
+/// sphere the bomb grows from.
+const BOMB: [HitSphere; 1] = [at(4915.2, 9011.2)];
 
 impl Danger {
     pub fn spheres(self) -> &'static [HitSphere] {
@@ -70,6 +76,7 @@ impl Danger {
             Danger::FlopDown => &FLOP_DOWN,
             Danger::Flut => &FLUT,
             Danger::FlutGround => &FLUT_GROUND,
+            Danger::Bomb => &BOMB,
         }
     }
 
@@ -78,6 +85,8 @@ impl Danger {
         match self {
             Danger::Spin | Danger::SpinAir | Danger::Punch | Danger::GetOn | Danger::Flut | Danger::FlutGround => 3.0,
             Danger::Uppercut | Danger::Flop | Danger::FlopDown => 2.0,
+            // penetrate-using->damage: dark-bomb, 15.
+            Danger::Bomb => 15.0,
         }
     }
 
@@ -92,6 +101,7 @@ impl Danger {
             Danger::GetOn => "get-on",
             Danger::Flut => "flut-attack",
             Danger::FlutGround => "flut-ground",
+            Danger::Bomb => "bomb",
         }
     }
 }
@@ -138,6 +148,12 @@ impl Jak {
                 },
                 None => self.control.trans + self.control.quat * sphere.offset,
             };
+            let radius = if danger == Danger::Bomb {
+                sphere.radius + (crate::darkjak::BOMB_RADIUS - sphere.radius) * self.bomb.scale
+            } else {
+                sphere.radius
+            };
+            let sphere = HitSphere { radius, ..*sphere };
             self.attack.live.push((center, sphere.radius));
             if let Some(actors) = actors.as_deref_mut() {
                 for key in actors.actors_touching(center, sphere.radius) {
@@ -164,7 +180,9 @@ impl Jak {
                     });
                 }
             }
-            if !self.attack.struck_world {
+            // The bomb is for creatures: a 30 m sphere would pick some block
+            // of the world to strike every time.
+            if !self.attack.struck_world && danger != Danger::Bomb {
                 let r = Vec3::splat(sphere.radius);
                 self.probe_cache.fill_box(world, center - r, center + r);
                 if self.probe_cache.overlaps_sphere(center, sphere.radius) {

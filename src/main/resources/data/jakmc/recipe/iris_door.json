@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "CCC",
+    "CLC",
+    "CCC"
+  ],
+  "key": {
+    "C": "minecraft:copper_ingot",
+    "L": "minecraft:lapis_block"
+  },
+  "result": {
+    "id": "jakmc:iris_door"
+  }
+}

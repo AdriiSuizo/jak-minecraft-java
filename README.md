@@ -14,9 +14,10 @@ El mod no incluye **ningún archivo de los juegos**. Su instalador los genera en
 
 ### Qué incluye
 - **Jak y Daxter:** el movimiento y el combate originales de Jak (saltos, doble salto, rodar, puñetazo, patada giratoria, agarrarse a bordes, nadar, escaleras), con Daxter al hombro.
-- **Poderes:** Jak oscuro (incluida la bomba) y Jak de luz (volar, escudo, parar el tiempo, curar).
+- **Poderes:** Jak oscuro (bomba con X+Cuadrado y explosión de rayos con X+Círculo) y Jak de luz (volar, escudo, parar el tiempo, curar).
 - **Armas:** las 12 armas Morph de Jak 3, con munición de eco que se gasta del inventario.
-- **Turbotabla (JET-Board)**, con barandillas para deslizarse y saltadores del skatepark.
+- **Turbotabla (JET-Board)**, con barandillas para deslizarse; va sobre el agua.
+- **Objetos de Jak para construir:** el lanzador de eco azul de Jak 1, la puerta iris de la Roca del Géiser (se abre con eco azul) y la esclusa de Villarefugio, de 3x3 bloques. Todas las piezas decorativas de Jak se fabrican en el cortapiedras.
 - **Vehículos:** HellCat, Helldog, zoomers de Villarefugio, coches del desierto, Leapers y Flut Flut, que se puede domar y criar.
 - **Enemigos:** 18 tipos de Jak 1 y Jak 3, más los guardias Krimson de Jak II. Cada uno vive en su bioma y tiene su nido.
 - **Lugares que se generan en mundos normales:** Villarefugio (Haven City) con su tráfico y ciudadanos, Spargus en el desierto, Sandover y la cueva del cráter.
@@ -51,9 +52,10 @@ The mod ships **no game files at all**. Its installer builds them on your PC fro
 
 ### What's included
 - **Jak and Daxter:** Jak's original movement and combat (jumps, double jump, roll, punch, spin kick, ledge grab, swimming, ladders), with Daxter on his shoulder.
-- **Powers:** Dark Jak (including the bomb) and Light Jak (flight, shield, time freeze, healing).
+- **Powers:** Dark Jak (bomb with X+Square, lightning blast with X+Circle) and Light Jak (flight, shield, time freeze, healing).
 - **Guns:** all 12 Jak 3 Morph Guns, with eco ammo taken from your inventory.
-- **JET-Board**, with grind rails and the skatepark jump pads.
+- **JET-Board**, with grind rails; it rides over water.
+- **Jak pieces to build with:** Jak 1's blue eco launcher, the Geyser Rock iris door (opens with blue eco) and Haven's airlock, 3x3 blocks. Every Jak decorative piece is made in the stonecutter.
 - **Vehicles:** HellCat, Helldog, Haven zoomers, desert cars, Leapers and the Flut Flut, which can be tamed and bred.
 - **Enemies:** 18 types from Jak 1 and Jak 3, plus Jak II's Krimson Guards. Each lives in its own biome and has its own nests.
 - **Places generated in normal worlds:** Haven City with its traffic and citizens, Spargus in the desert, Sandover and the crater cave.

@@ -34,7 +34,7 @@ def call(instance,op,**data):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--minecraft',type=Path,required=True)
-    parser.add_argument('--world-template',type=Path,default=ROOT/'run/saves/New World (1)')
+    parser.add_argument('--world-template',type=Path,default=ROOT/'.local/test-world-template')  # a new world from these settings (run_scene.py keeps them)
     args=parser.parse_args();mc=args.minecraft.resolve()
     if not mc.is_relative_to(ROOT/'.local'):raise SystemExit('Only a private .local lab installation is supported')
     personal=Path.home()/'AppData/Roaming/.minecraft';instance=mc/'instances/jakmod'

@@ -1,0 +1,13 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/eco_vent",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "ctyfarma/com-airlock-outer-lod0.glb",
+      "game": "jak2",
+      "scale": 0.06,
+      "fit_gui": true
+    }
+  }
+}

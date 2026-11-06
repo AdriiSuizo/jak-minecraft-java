@@ -94,6 +94,8 @@ pub struct Zoomer {
     pub high: bool,
     pub grounded: bool,
     pub climb: f32,
+    /// Town traffic on its route (Rust zoomers.rs `route`): it never backs up when it brakes.
+    pub routed: bool,
     yaw_rate: f32,
     tilt: [f32; 2],
     tilt_rate: [f32; 2],
@@ -122,6 +124,7 @@ impl Zoomer {
             high: false,
             grounded: false,
             climb: 0.,
+            routed: false,
             yaw_rate: 0.,
             tilt: [0.; 2],
             tilt_rate: [0.; 2],
@@ -206,12 +209,13 @@ impl Zoomer {
         self.yaw_rate += (turn - self.yaw_rate) * (DT / 0.1);
         let old_yaw=self.yaw;
         self.yaw += self.yaw_rate * DT;
-        if self.yaw!=old_yaw && crate::wheeled::hull_hit(terrain,self.position,Vec3::ZERO,self.model.half(),self.heading()).is_some()
+        if !self.routed && self.yaw!=old_yaw && crate::wheeled::hull_hit(terrain,self.position,Vec3::ZERO,self.model.half(),self.heading()).is_some()
             && crate::wheeled::hull_hit(terrain,self.position,Vec3::ZERO,self.model.half(),ahead).is_none(){
             self.yaw=old_yaw;self.yaw_rate=0.0;
         }
 
-        let reversing = self.brake > 0.05 && forward_speed < 2.0 && self.throttle <= 0.0;
+        // Rust zoomers.rs: `self.route.is_none() &&`, the traffic only stops.
+        let reversing = !self.routed && self.brake > 0.05 && forward_speed < 2.0 && self.throttle <= 0.0;
         let throttle = if reversing {
             -0.5 * self.brake
         } else {

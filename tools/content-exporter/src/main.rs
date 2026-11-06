@@ -9,7 +9,23 @@ fn save(root:&Path,name:&str,blocks:Vec<Placed>,props:Vec<minecraft_terrain::jak
  let props:Vec<_>=props.iter().map(|p|json!({"kind":p.kind,"origin":[p.origin.0,p.origin.1-64,p.origin.2],"turns":p.turns})).collect();
  std::fs::write(root.join(format!("{name}.json")),json!({"palette":palette,"blocks":entries,"props":props}).to_string()).unwrap();
 }
-fn texture(name:&str)->Option<image::RgbaImage>{let(w,h,mut rgba)=minecraft_terrain::original_places::embedded_texture(name)?;for p in rgba.chunks_exact_mut(4){p[3]=p[3].saturating_mul(2);}image::RgbaImage::from_raw(w,h,rgba)}
+fn texture(name:&str)->Option<image::RgbaImage>{let(w,h,mut rgba)=minecraft_terrain::original_places::embedded_texture(name).or_else(||tpage_texture(name))?;for p in rgba.chunks_exact_mut(4){p[3]=p[3].saturating_mul(2);}image::RgbaImage::from_raw(w,h,rgba)}
+// Adrii 06/11: the Wasteland's textures (des-*) and a few more are in none of the levels read, so their blocks were
+// drawn with the stand-in stripes. The extracted tpages' own images instead (Jak 3's first, then Jak 2's and Jak 1's).
+fn tpage_texture(name:&str)->Option<(u32,u32,Vec<u8>)>{
+ static FILES:std::sync::OnceLock<std::collections::HashMap<String,std::path::PathBuf>>=std::sync::OnceLock::new();
+ let files=FILES.get_or_init(||{let mut out=std::collections::HashMap::new();
+  for game in ["IW4L_JAK3_ASSETS","IW4L_JAK2_ASSETS","IW4L_JAK1_ASSETS"]{
+   let Some(root)=std::env::var_os(game) else{continue};
+   let Ok(tpages)=std::fs::read_dir(Path::new(&root).join("textures")) else{continue};
+   let mut tpages:Vec<_>=tpages.flatten().map(|e|e.path()).collect();tpages.sort();
+   for tpage in tpages{let Ok(images)=std::fs::read_dir(&tpage) else{continue};
+    for image in images.flatten(){let path=image.path();
+     if let Some(stem)=path.file_stem().and_then(|s|s.to_str()).filter(|_|path.extension().is_some_and(|e|e=="png")){out.entry(stem.to_owned()).or_insert(path);}}}
+  }out});
+ let image=image::open(files.get(name)?).ok()?.to_rgba8();
+ Some((image.width(),image.height(),image.into_raw()))
+}
 fn look(b:jak_items::BlockLook)->serde_json::Value {use jak_items::BlockLook::*;match b {
  Like{vanilla,..}|Shaped{vanilla,..}|Set{vanilla,..}=>json!({"kind":"native","vanilla":vanilla}),
  Slab{double,..}=>json!({"kind":"slab","double":double}),

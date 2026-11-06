@@ -26,7 +26,7 @@ public final class JakEffects {
  private record Decoration(BlockPos pos,int kind){}
  private static final Map<Decoration,Owner> DECORATIONS=new HashMap<>();
  private static final List<Owner> BURSTS=new ArrayList<>();
- private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18,SPYDROID=19,DARK_ECO_DEATH=20,KERMIT_PULSE=21,KERMIT_IMPACT=22;
+ private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18,SPYDROID=19,DARK_ECO_DEATH=20,KERMIT_PULSE=21,KERMIT_IMPACT=22,LAUNCHER=23;
  /** kermit.gc: each frog's pulse on its tongue, where it was last drawn. */
  private static final Map<Integer,Owner> PULSES=new HashMap<>();
  private static final Map<Integer,Vec3> PULSE_AT=new HashMap<>();
@@ -189,6 +189,15 @@ public final class JakEffects {
     int kind,range;
     if(entry.getValue() instanceof JakProps.FireBarrel){kind=BARREL;range=24;}
     else if(entry.getValue() instanceof JakProps.Projector){kind=PROJECTOR;range=36;}
+    // generic-obs.gc launcher-active: awake within its active distance while Jak carries blue eco.
+    else if(entry.getValue() instanceof dev.jakmc.content.JakEcoLauncher.Pad){
+     var pose=JakPoses.rendered(client.player.getId());
+     double reach=dev.jakmc.content.JakEcoLauncher.ACTIVE_METRES*dev.jakmc.player.JakPlayers.METRE;
+     boolean blue=pose!=null&&pose.raw().has("blueEco")&&pose.raw().get("blueEco").getAsBoolean();
+     if(!blue||client.player.position().distanceToSqr(Vec3.atCenterOf(pos))>reach*reach)continue;
+     kind=LAUNCHER;range=48;
+     JakSounds.launcher(pos,focus);
+    }
     else if(entry.getValue() instanceof dev.jakmc.content.JakEcoVent.Vent vent&&vent.open()){
      int color=vent.color().ordinal();
      kind=10+color+(vent.color().model()&&vent.touched()?2:0);
@@ -201,7 +210,7 @@ public final class JakEffects {
     if(kind==BARREL)JakSounds.barrel(pos,focus);
     var fx=DECORATIONS.computeIfAbsent(key,decoration->{
      long handle=NativeJak.fxCreateDecor(decoration.kind());
-     return handle==0?null:new Owner(Vec3.atBottomCenterOf(pos).add(0,kind==BARREL?.94:kind==PROJECTOR?1.01:.30,0),handle);
+     return handle==0?null:new Owner(Vec3.atBottomCenterOf(pos).add(0,kind==BARREL?.86:kind==PROJECTOR?1.01:.30,0),handle);
     });
     if(fx!=null&&kind>=10&&kind<=13&&entry.getValue() instanceof dev.jakmc.content.JakEcoVent.Vent vent
         &&vent.pickupEntity>=0&&vent.pickupTime!=fx.pickupAt&&client.level.getGameTime()-vent.pickupTime<=15){

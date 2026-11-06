@@ -29,7 +29,7 @@ public final class JakClient implements ClientModInitializer {
   ScaleScene.initialize();
   PortScene.initialize();
   EnemyScene.initialize();
-  SpydroidScene.initialize();KermitScene.initialize();
+  SpydroidScene.initialize();KermitScene.initialize();LoteScene.initialize();
   WeaponScene.initialize();
   InputScene.initialize();
   IntegrationScene.initialize();
@@ -57,13 +57,16 @@ public final class JakClient implements ClientModInitializer {
   VehicleEffects.initialize();
   dev.jakmc.client.model.GltfItemRenderer.initialize();
   dev.jakmc.client.model.PropModels.initialize();
+  dev.jakmc.client.model.PlacementPreview.initialize();dev.jakmc.client.model.BombBlastRenderer.initialize();
   dev.jakmc.client.model.JakWorldTextures.initialize();
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
       dev.jakmc.content.JakBoardAltar.TYPE,ctx->new dev.jakmc.client.model.BoardAltarRenderer());
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
       dev.jakmc.content.JakEcoVent.TYPE,ctx->new dev.jakmc.client.model.EcoVentRenderer());
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
-      dev.jakmc.content.JakJumpPad.TYPE,ctx->new dev.jakmc.client.model.JumpPadRenderer());
+      dev.jakmc.content.JakEcoLauncher.TYPE,ctx->new dev.jakmc.client.model.LauncherRenderer());
+  net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
+      dev.jakmc.content.JakIrisDoor.TYPE,ctx->new dev.jakmc.client.model.IrisDoorRenderer());
   dev.jakmc.client.model.SkullGemRenderer.initialize();
   dev.jakmc.client.model.EcoItemRenderer.initialize();
   dev.jakmc.client.darkeco.DarkEcoClient.initialize();

@@ -284,6 +284,7 @@ pub fn emit_jak_sounds_for(
                 1.0,
             ),
             Event::GunFire { kind:GunKind::Red2, .. } => continue,
+            Event::Freeze { .. } => continue,
             Event::GunFire { kind, from } => {
                 let name = match kind {
                     GunKind::Red1 => "RED_SHOT_FIRE",

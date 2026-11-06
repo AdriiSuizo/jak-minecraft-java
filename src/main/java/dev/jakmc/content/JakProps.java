@@ -168,7 +168,9 @@ public final class JakProps {
         }
         @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){builder.add(FACING);}
         @Override public BlockState getStateForPlacement(BlockPlaceContext context){
-            return defaultBlockState().setValue(FACING,context.getHorizontalDirection().getOpposite());
+            // The source meshes face +Z (south) at no turns, so the way the player looks turns them to face him
+            // (Adrii 06/11: the fish trophy faced away).
+            return defaultBlockState().setValue(FACING,context.getHorizontalDirection());
         }
         @Override protected VoxelShape getShape(BlockState state,BlockGetter level,BlockPos pos,CollisionContext context){
             return shapes[turns(state.getValue(FACING))];

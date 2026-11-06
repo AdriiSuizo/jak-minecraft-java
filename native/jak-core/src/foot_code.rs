@@ -10,7 +10,6 @@ use crate::math::*;
 use crate::pad::button;
 use crate::surface;
 use crate::target::*;
-use crate::darkjak::DARK_PUNCH;
 use crate::{Event, HighJump, Jak, State};
 
 /// How far toward the run the walk cycle mixes at a speed.
@@ -49,6 +48,8 @@ impl Jak {
             State::AttackUppercut { min, max } => self.uppercut_code(min, max),
             State::AttackUppercutJump { .. } => self.uppercut_jump_code(),
             State::Flop { .. } => self.flop_code(),
+            State::DarkBomb => self.dark_bomb_code(),
+            State::DarkBlast => self.dark_blast_code(),
             State::FlopHitGround { stuck } => self.flop_hit_ground_code(stuck),
             State::Roll => self.roll_code(),
             State::RollFlip { height, dist } => self.roll_flip_code(height, dist, world),
@@ -661,6 +662,23 @@ impl Jak {
     fn duck_high_jump_code(&mut self, min: f32, max: f32, kind: HighJump) -> Option<State> {
         loop {
             match self.code.pc {
+                0 if kind == HighJump::Launch => {
+                    // target-launch: still, the duck stance's crouch to aframe 15 at
+                    // three times its speed, then the high jump's own crouch.
+                    self.ja_push(seconds(0.15));
+                    self.set_forward_vel(0.0);
+                    let to = self.aframe(anim::DUCK_STANCE, 15.0);
+                    self.ja_set(anim::DUCK_STANCE, NumFunc::seek_to(to, 3.0), 0.0);
+                    self.goto(10);
+                }
+                10 => {
+                    if !self.ja_wait() {
+                        return None;
+                    }
+                    let to = self.aframe(anim::DUCK_HIGH_JUMP, 16.0);
+                    self.ja_set(anim::DUCK_HIGH_JUMP, NumFunc::seek_to(to, 1.0), 0.0);
+                    self.goto(1);
+                }
                 0 => {
                     if !self.chan.is(anim::DUCK_STANCE) {
                         self.ja_push(seconds(0.04));
@@ -689,12 +707,21 @@ impl Jak {
         loop {
             match self.code.pc {
                 0 => {
-                    self.code.z = if flop { 44.0 } else { 35.0 };
+                    self.code.z = if flop { 44.0 } else if kind == HighJump::Launch { 110.0 } else { 35.0 };
                     self.code.x = if flop { 0.75 } else { 1.0 };
                     self.goto(1);
                 }
                 1 => {
-                    let rate = self.rise_rate(self.code.z, self.code.x);
+                    let rising = self.rise_rate(self.code.z, f32::NAN);
+                    let rate = if rising.is_nan() {
+                        self.code.x
+                    } else {
+                        // 'launch: the rate kept for after the rise eases to four times this one.
+                        if kind == HighJump::Launch {
+                            self.code.x += (4.0 * rising - self.code.x) * 0.25;
+                        }
+                        rising
+                    };
                     self.chan.eval_with(&self.anims, NumFunc::seek(rate));
                     self.code.pc = 2;
                     return None;
@@ -862,7 +889,8 @@ impl Jak {
             {
                 self.dark_combo_buffer = None;
                 self.dark_combo += 1;
-                self.spend_dark(DARK_PUNCH);
+                // Adrii 06/11: his blows cost no dark eco, only the Bomb and the Blast
+                // (OpenGOAL spends darkjak-punch-inc here).
                 self.ja_push(seconds(0.1));
                 self.ja_play(
                     if self.dark_combo == 1 {
@@ -883,7 +911,6 @@ impl Jak {
                     self.control.gravity_length = 368640.0;
                     self.ja_push(seconds(0.02));
                     let punch = if self.dark {
-                        self.spend_dark(DARK_PUNCH);
                         self.dark_combo = 0;
                         self.dark_combo_buffer = None;
                         self.dark_combo_alternate = !self.dark_combo_alternate;

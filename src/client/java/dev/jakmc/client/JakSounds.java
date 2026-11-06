@@ -16,6 +16,7 @@ public final class JakSounds {
  private record Key(int owner,String name){}
  private static final Map<Key,Loop> LOOPS=new HashMap<>();
  private static final Map<BlockPos,SceneryLoop> BARRELS=new HashMap<>(),VENTS=new HashMap<>();
+ private static final Map<BlockPos,LauncherLoop> LAUNCHERS=new HashMap<>();
  private static WeatherLoop stormWind;
  public static long played;
  public static void initialize(){
@@ -23,6 +24,7 @@ public final class JakSounds {
    LOOPS.entrySet().removeIf(e->e.getValue().isStopped());
    BARRELS.values().removeIf(SceneryLoop::isStopped);
    VENTS.values().removeIf(SceneryLoop::isStopped);
+   LAUNCHERS.values().removeIf(LauncherLoop::isStopped);
    if(c.level!=null&&c.player!=null)for(var entity:c.level.entitiesForRendering()){
     if(entity instanceof dev.jakmc.entity.JakHellcat cat&&cat.distanceToSqr(c.player)<64*64)vehicle(cat);
     if(entity instanceof dev.jakmc.entity.JakVehicle car&&car.distanceToSqr(c.player)<40*40){
@@ -84,6 +86,24 @@ public final class JakSounds {
   VENTS.put(pos,loop);
   Minecraft.getInstance().getSoundManager().play(loop);
  }
+ /** generic-obs.gc launcher-active: "launch-start" as it wakes, then "launch-idle" round while it stays awake. */
+ static void launcher(BlockPos pos,Vec3 listener){
+  var loop=LAUNCHERS.get(pos);
+  if(loop!=null){loop.seen=System.nanoTime();return;}
+  var sounds=Minecraft.getInstance().getSoundManager();
+  sounds.play(new SimpleSoundInstance(event("jak1:launch-start"),SoundSource.BLOCKS,1,1,SoundInstance.createUnseededRandom(),pos.getX()+.5,pos.getY()+.2,pos.getZ()+.5));
+  loop=new LauncherLoop(pos);LAUNCHERS.put(pos.immutable(),loop);sounds.play(loop);
+ }
+ private static final class LauncherLoop extends AbstractTickableSoundInstance {
+  long seen=System.nanoTime();
+  LauncherLoop(BlockPos pos){
+   super(event("jak1:launch-idle"),SoundSource.BLOCKS,SoundInstance.createUnseededRandom());
+   looping=true;delay=0;volume=.8f;x=pos.getX()+.5;y=pos.getY()+.2;z=pos.getZ()+.5;
+  }
+  // The decorations are found every 5 ticks; past half a second unseen it has gone to sleep.
+  void end(){stop();}
+  @Override public void tick(){if(System.nanoTime()-seen>500_000_000L)stop();}
+ }
  static void stormWind(float gain){
   var client=Minecraft.getInstance();
   if(gain<.02f){
@@ -106,6 +126,7 @@ public final class JakSounds {
   for(var loop:LOOPS.values())loop.end();LOOPS.clear();
   for(var loop:BARRELS.values())loop.end();BARRELS.clear();
   for(var loop:VENTS.values())loop.end();VENTS.clear();
+  for(var loop:LAUNCHERS.values())loop.end();LAUNCHERS.clear();
  }
  private static final class SceneryLoop extends AbstractTickableSoundInstance {
   final BlockPos position;

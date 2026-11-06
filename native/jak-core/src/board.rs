@@ -200,6 +200,29 @@ impl Jak {
         true
     }
 
+    /// Jak 1's blue eco launcher (generic-obs.gc `launcher-active`): it sends 'launch only
+    /// while he carries blue eco (`'query 'powerup eco-blue`), and on foot.
+    pub fn request_launch(&mut self, height: f32) -> bool {
+        if !self.has_eco(crate::eco_power::EcoKind::Blue) || self.state.is_board() {
+            return false;
+        }
+        if !self.request_pad_bounce(height) {
+            return false;
+        }
+        self.pad_launch = true;
+        true
+    }
+
+    /// target2.gc `target-launch`: the duck stance's crouch, then `target-high-jump`
+    /// at the launcher's spring height (its min and max alike).
+    pub fn launch_from_pad(&mut self, height: f32) -> bool {
+        if !height.is_finite() || height <= 0.0 || !self.pad_bounce_allowed() || self.state.is_board() {
+            return false;
+        }
+        self.go(State::DuckHighJump { min: height, max: height, kind: crate::HighJump::Launch });
+        true
+    }
+
     fn pad_bounce_allowed(&self) -> bool {
         matches!(self.state, State::BoardStance | State::BoardDuckStance |
             State::BoardHitGround | State::BoardFalling | State::BoardJump { .. } | State::BoardGrind |
@@ -1552,6 +1575,48 @@ mod pad_regressions {
         for _ in 0..60 { jak.step(&PadInput::default(),world,None); }
         assert!(jak.control.on_surface());
         jak
+    }
+
+    /// After the Dark Bomb he is still Dark Jak.
+    #[test]
+    fn dark_jak_again_after_the_bomb() {
+        let mut world = floor(None);
+        let mut jak = rested(false,&mut world);
+        jak.dark_eco = 100.0;
+        jak.request_dark(true);
+        for _ in 0..120 { jak.step(&PadInput::default(),&mut world,None); }
+        assert!(jak.dark && jak.dark_transition.is_none());
+        jak.go(crate::State::DarkBomb);
+        let mut states = Vec::new();
+        for _ in 0..600 {
+            jak.step(&PadInput::default(),&mut world,None);
+            let name = jak.state.name();
+            if states.last() != Some(&name) { states.push(name); }
+        }
+        // Adrii 06/11: still Dark Jak after it, the eco spent.
+        assert!(jak.dark && jak.dark_transition.is_none(), "after: dark={} transition={:?} {:?}", jak.dark, jak.dark_transition, states);
+        assert!((jak.dark_eco - 90.0).abs() < 1e-3);
+        assert!(jak.bomb.blast_at.is_some());
+    }
+
+    /// The blue eco launcher (target-launch): its 40 m of spring, crouch first.
+    #[test]
+    fn the_launcher_rises_its_spring_height() {
+        let mut world = floor(None);
+        let mut jak = rested(false,&mut world);
+        let start = jak.trans();
+        jak.get_eco_power(crate::eco_power::EcoKind::Blue, crate::eco_power::FULL_INC);
+        let height = meters(40.0);
+        assert!(jak.request_launch(height));
+        let mut peak = start.y;
+        let mut states = Vec::new();
+        for _ in 0..400 {
+            jak.step(&PadInput::default(),&mut world,None);
+            peak = peak.max(jak.trans().y);
+            let name = jak.state.name();
+            if states.last() != Some(&name) { states.push(name); }
+        }
+        assert!((peak-start.y-height).abs()<meters(1.0),"rise={}m states {:?}",(peak-start.y)/METER,states);
     }
 
     #[test]

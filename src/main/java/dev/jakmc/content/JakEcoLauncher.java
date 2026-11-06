@@ -18,27 +18,29 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
- * Jak II's skatepark jump pad, `skatea-jump-pad` (skatea-obs.gc; Rust native_skate.rs springs): stood on,
- * it throws Jak up its spring height, the original's only pad's 102400 units (25 m). stand-in: the
- * original sits in the skatepark, which this world does not have whole; here a block to place, drawn
- * with the original mesh, its sensor the block's top instead of the 1.5 m sphere a metre over it.
+ * Jak 1's blue eco launcher (generic-obs.gc `launcher`, carried by citadel-obs.gc `citb-launcher`): within its
+ * active distance it wakes only while Jak carries blue eco (its particles and launch-idle loop), and then
+ * throws him up its spring height (target2.gc target-launch). Adrii 06/11: in place of the skatepark pad.
+ * stand-in: its sensor is the block's top, Jak standing on it, instead of the 3 m sphere.
  */
-public final class JakJumpPad extends Block implements EntityBlock {
- /** skatea-actors.json skatea-jump-pad-4 lump spring-height, in metres. */
- public static final float SPRING_METRES=102400/4096f;
- private static final VoxelShape SHAPE=Block.box(0,0,0,16,2,16);
- public static JakJumpPad BLOCK;public static Item ITEM;public static BlockEntityType<Pad> TYPE;
- private JakJumpPad(Properties properties){super(properties);}
+public final class JakEcoLauncher extends Block implements EntityBlock {
+ /** citb-launcher's spring-height default (163840 units, 40 m). */
+ public static final float SPRING_METRES=163840/4096f;
+ /** citb-launcher baseplat-method-26: the launcher it spawns wakes within 81920 units (20 m). */
+ public static final float ACTIVE_METRES=20;
+ private static final VoxelShape SHAPE=Block.box(0,0,0,16,3,16);
+ public static JakEcoLauncher BLOCK;public static Item ITEM;public static BlockEntityType<Pad> TYPE;
+ private JakEcoLauncher(Properties properties){super(properties);}
  public static void initialize(){
-  var id=JakData.id("skate_jump_pad");
+  var id=JakData.id("eco_launcher");
   var key=ResourceKey.create(Registries.BLOCK,id);
-  BLOCK=Registry.register(BuiltInRegistries.BLOCK,key,new JakJumpPad(Properties.of().setId(key).strength(1.5f,6).noOcclusion()));
+  BLOCK=Registry.register(BuiltInRegistries.BLOCK,key,new JakEcoLauncher(Properties.of().setId(key).strength(1.5f,6).noOcclusion()));
   var item=ResourceKey.create(Registries.ITEM,id);
   ITEM=Registry.register(BuiltInRegistries.ITEM,item,new BlockItem(BLOCK,new Item.Properties().setId(item).useBlockDescriptionPrefix()));
   TYPE=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,id,new BlockEntityType<>(Pad::new,java.util.Set.of(BLOCK)));
  }
  @Override protected VoxelShape getShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){return SHAPE;}
  @Override public BlockEntity newBlockEntity(BlockPos at,BlockState state){return new Pad(at,state);}
- /** Only for the original mesh to be drawn. */
+ /** For the original mesh and its particles. */
  public static final class Pad extends BlockEntity{Pad(BlockPos at,BlockState state){super(TYPE,at,state);}}
 }

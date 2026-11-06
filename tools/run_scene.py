@@ -35,12 +35,12 @@ def project_client_running():
 
 
 def run():
-    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['integration','first_person','natural_cities','economy','equipment','scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','kermit','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','zoomers','rules','lands','punch','wrecks'],default='scale');parser.add_argument('--origin',nargs=3,type=float);parser.add_argument('--fresh-world',action='store_true');parser.add_argument('--gun',type=int,choices=range(12));args=parser.parse_args();scene=args.scene
+    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['integration','first_person','natural_cities','economy','equipment','scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','kermit','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','zoomers','rules','lands','punch','wrecks','lote'],default='scale');parser.add_argument('--origin',nargs=3,type=float);parser.add_argument('--fresh-world',action='store_true');parser.add_argument('--gun',type=int,choices=range(12));args=parser.parse_args();scene=args.scene
     if args.gun is not None and scene!='first_person':parser.error('--gun is supported by the first_person scene')
     stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     evidence=ROOT/'.local/evidence'/(scene+'-'+stamp);evidence.mkdir(parents=True)
     result=ROOT/f'run/jakmc/evidence/{scene}/result.json'
-    image=ROOT/('run/screenshots/integration-155.png' if scene=='integration' else 'run/screenshots/rules-items.png' if scene=='rules' else 'run/screenshots/lands-wasteland.png' if scene=='lands' else 'run/screenshots/punch-dirt.png' if scene=='punch' else 'run/screenshots/wreck-hellcat-charred.png' if scene=='wrecks' else 'run/screenshots/equipment-survival.png' if scene=='equipment' else 'run/screenshots/economy-drops.png' if scene=='economy' else 'run/screenshots/zoomers-bike.png' if scene=='zoomers' else 'run/screenshots/cities-haven.png' if scene=='cities' else 'run/screenshots/cars-toad.png' if scene=='cars' else 'run/screenshots/jak-track.png' if scene=='track' else 'run/screenshots/jak-ladder.png' if scene=='ladder' else 'run/screenshots/jak-surface-ice.png' if scene=='surface' else 'run/screenshots/jak-altar.png' if scene=='altar' else 'run/screenshots/weather-storm.png' if scene=='weather' else 'run/screenshots/jak-vents.png' if scene=='vents' else 'run/screenshots/jak-materials.png' if scene=='materials' else 'run/screenshots/hellcat-idle.png' if scene=='helldog' else f'run/screenshots/{scene}-idle.png' if scene in ('leaper','flut','hellcat','helldog','hellcat_crossing') else 'run/screenshots/powers-dark.png' if scene=='powers' else 'run/screenshots/jak-dark-run.png' if scene=='dark_motion' else 'run/screenshots/citizens-standing.png' if scene=='citizens' else 'run/screenshots/jak-sleep.png' if scene=='player_sleep' else 'run/screenshots/jak-yakow.png' if scene=='yakow' else 'run/screenshots/collision-perf.png' if scene=='collision_perf' else 'run/screenshots/gems-palm-day.png' if scene=='gems_visual' else 'run/screenshots/gems-world-110.png' if scene=='gems' else 'run/screenshots/menus-anvil.png' if scene=='menus' else 'run/screenshots/input-actions-gui.png' if scene=='input_actions' else 'run/screenshots/input-move-86.png' if scene=='input' else 'run/screenshots/scale-two-block-ceiling.png' if scene=='scale' else f'run/screenshots/view-{7 if args.gun is None else args.gun}-28.png' if scene=='first_person' else 'run/screenshots/weapon-10-28.png' if scene=='rings' else 'run/screenshots/weapon-7-28.png' if scene in ('weapons','rings','input','input_actions') else 'run/screenshots/port-blaster.png' if scene=='effects' else 'run/screenshots/enemy-babak-idle.png' if scene=='enemies' else 'run/screenshots/spydroid-explosion.png' if scene=='spydroid' else 'run/screenshots/kermit-tongue.png' if scene=='kermit' else 'run/screenshots/enemy-chase-step.png')
+    image=ROOT/('run/screenshots/integration-155.png' if scene=='integration' else 'run/screenshots/rules-items.png' if scene=='rules' else 'run/screenshots/lands-wasteland.png' if scene=='lands' else 'run/screenshots/punch-dirt.png' if scene=='punch' else 'run/screenshots/wreck-hellcat-charred.png' if scene=='wrecks' else 'run/screenshots/equipment-survival.png' if scene=='equipment' else 'run/screenshots/economy-drops.png' if scene=='economy' else 'run/screenshots/zoomers-bike.png' if scene=='zoomers' else 'run/screenshots/cities-haven.png' if scene=='cities' else 'run/screenshots/cars-toad.png' if scene=='cars' else 'run/screenshots/jak-track.png' if scene=='track' else 'run/screenshots/jak-ladder.png' if scene=='ladder' else 'run/screenshots/jak-surface-ice.png' if scene=='surface' else 'run/screenshots/jak-altar.png' if scene=='altar' else 'run/screenshots/weather-storm.png' if scene=='weather' else 'run/screenshots/jak-vents.png' if scene=='vents' else 'run/screenshots/jak-materials.png' if scene=='materials' else 'run/screenshots/hellcat-idle.png' if scene=='helldog' else f'run/screenshots/{scene}-idle.png' if scene in ('leaper','flut','hellcat','helldog','hellcat_crossing') else 'run/screenshots/powers-dark.png' if scene=='powers' else 'run/screenshots/jak-dark-run.png' if scene=='dark_motion' else 'run/screenshots/citizens-standing.png' if scene=='citizens' else 'run/screenshots/jak-sleep.png' if scene=='player_sleep' else 'run/screenshots/jak-yakow.png' if scene=='yakow' else 'run/screenshots/collision-perf.png' if scene=='collision_perf' else 'run/screenshots/gems-palm-day.png' if scene=='gems_visual' else 'run/screenshots/gems-world-110.png' if scene=='gems' else 'run/screenshots/menus-anvil.png' if scene=='menus' else 'run/screenshots/input-actions-gui.png' if scene=='input_actions' else 'run/screenshots/input-move-86.png' if scene=='input' else 'run/screenshots/scale-two-block-ceiling.png' if scene=='scale' else f'run/screenshots/view-{7 if args.gun is None else args.gun}-28.png' if scene=='first_person' else 'run/screenshots/weapon-10-28.png' if scene=='rings' else 'run/screenshots/weapon-7-28.png' if scene in ('weapons','rings','input','input_actions') else 'run/screenshots/port-blaster.png' if scene=='effects' else 'run/screenshots/enemy-babak-idle.png' if scene=='enemies' else 'run/screenshots/spydroid-explosion.png' if scene=='spydroid' else 'run/screenshots/kermit-tongue.png' if scene=='kermit' else 'run/screenshots/lote-deco.png' if scene=='lote' else 'run/screenshots/enemy-chase-step.png')
     if result.exists():shutil.copyfile(result,evidence/'previous-result.json')
     if scene not in ('sites','new_sites','natural_cities') and image.exists():shutil.copyfile(image,evidence/'previous-screen.png')
     ready=ROOT/'run/jakmc/bridge/ready.json'
@@ -50,9 +50,7 @@ def run():
     gradle=next((Path.home()/'.gradle/wrapper/dists/gradle-9.8.0-bin').glob('*/gradle-9.8.0/bin/gradle.bat'))
     log=(evidence/'game.log').open('w',encoding='utf-8')
     command=[str(gradle),'runClient','--no-daemon','--console=plain']
-    # PROBAR-JAK uses this save for manual play. Every destructive developer
-    # scene gets its own copy, never the manual save (even if a scene fails).
-    dev_save=ROOT/'run/saves/New World (1)'
+    dev_save=ROOT/'run/saves/New World (1)'  # only the first time: its settings become the test template
     if project_client_running():raise RuntimeError('The project client is already open; leave the running/manual game untouched')
     # Asset copying/native compilation is build work, not a hung game startup.
     # Complete it before the bounded launch timer, with no game window open.
@@ -61,16 +59,24 @@ def run():
             cwd=ROOT,env=env,stdout=build_log,stderr=subprocess.STDOUT,check=True,timeout=600,
             creationflags=subprocess.CREATE_NO_WINDOW)
     if project_client_running():raise RuntimeError('A manual project client opened during compilation; leave it untouched')
-    world=('Jak worldgen ' if args.fresh_world else 'Jak probe ')+stamp
-    fresh=ROOT/'run/saves'/world
-    if args.fresh_world:
-        fresh.mkdir()
-        for metadata in ('level.dat','data/minecraft/world_gen_settings.dat'):
-            path=fresh/metadata
-            path.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copyfile(dev_save/metadata,path)
-    else:
-        shutil.copytree(dev_save,fresh,ignore=shutil.ignore_patterns('session.lock'))
+    # Adrii 06/11: every test makes a new world and deletes all the earlier ones (an old world that no
+    # longer loads left the game waiting forever). Only the world's settings are kept, outside run/saves.
+    template=ROOT/'.local/test-world-template'
+    for metadata in ('level.dat','data/minecraft/world_gen_settings.dat'):
+        if not (template/metadata).exists() and (dev_save/metadata).exists():
+            (template/metadata).parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(dev_save/metadata,template/metadata)
+    saves=ROOT/'run/saves';saves.mkdir(parents=True,exist_ok=True)
+    for old in saves.iterdir():
+        if old.is_dir():shutil.rmtree(old,ignore_errors=True)
+    for old in (ROOT/'.local/evidence').glob('*/world'):
+        if old.is_dir():shutil.rmtree(old,ignore_errors=True)
+    world='Jak test '+stamp
+    fresh=saves/world
+    fresh.mkdir()
+    for metadata in ('level.dat','data/minecraft/world_gen_settings.dat'):
+        path=fresh/metadata
+        path.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(template/metadata,path)
     (evidence/'lab-world.txt').write_text(str(fresh),encoding='utf-8')
     command.append('-PjakmcDevWorld='+world)
     options=ROOT/'run/options.txt'
@@ -90,7 +96,7 @@ def run():
                         call(scene+'_scene',**({'origin':args.origin} if args.origin is not None else {}),**({'mode':args.gun} if args.gun is not None else {}));sent=True;break
             time.sleep(.25)
         if not sent:raise RuntimeError('Game exited before the requested scene started')
-        process.wait(timeout=240 if scene=='lands' else 200 if scene=='punch' else 180 if scene=='natural_cities' else 120 if scene in ('first_person','enemies','weapons','input','gems','citizens','cities','sites','new_sites') else 150 if scene=='weather' else 90 if scene in ('powers','hellcat_crossing','kermit') else 60 if scene=='systems' else 40)
+        process.wait(timeout=240 if scene=='lands' else 200 if scene=='punch' else 180 if scene=='natural_cities' else 120 if scene in ('first_person','enemies','weapons','input','gems','citizens','cities','sites','new_sites') else 150 if scene=='weather' else 90 if scene in ('powers','hellcat_crossing','kermit','lote') else 60 if scene=='systems' else 40)
         if process.returncode!=0:raise RuntimeError(f'Native game exited {process.returncode}')
         shutil.copyfile(result,evidence/'result.json')
         if scene in ('integration','first_person','equipment','economy','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','kermit','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','natural_cities','zoomers','rules','lands','punch','wrecks') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')
@@ -109,6 +115,9 @@ def run():
             for shot in (ROOT/'run/screenshots').glob('punch-*.png'):
                 if shot.stat().st_mtime_ns>=capture_after:shutil.copyfile(shot,evidence/shot.name)
             if (ROOT/'run/jakmc/evidence/punch/run.jfr').exists():shutil.copyfile(ROOT/'run/jakmc/evidence/punch/run.jfr',evidence/'run.jfr')
+        if scene=='lote':
+            for shot in (ROOT/'run/screenshots').glob('lote-*.png'):
+                if shot.stat().st_mtime_ns>=capture_after:shutil.copyfile(shot,evidence/shot.name)
         if scene=='lands':
             for shot in (ROOT/'run/screenshots').glob('lands-*.png'):
                 if shot.stat().st_mtime_ns>=capture_after:shutil.copyfile(shot,evidence/shot.name)

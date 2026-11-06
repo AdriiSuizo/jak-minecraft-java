@@ -1,7 +1,7 @@
 //! The animations Jak's states play, by the names the art groups give them.
 use super::Anim;
 
-pub static NAMES: [&str; 293] = [
+pub static NAMES: [&str; 302] = [
     "jakb-attack-from-jump",
     "jakb-attack-from-jump-end",
     "jakb-attack-from-jump-loop",
@@ -291,6 +291,8 @@ pub static NAMES: [&str; 293] = [
     "jakb-ladder-get-on","jakb-ladder-stance","jakb-ladder-up","jakb-ladder-down",
     "jakb-edge-grab-to-jump","jakb-ladder-jump","jakb-ladder-slide-loop",
     "jakb-lightjak-freeze","jakb-lightjak-freeze-land","jakb-lightjak-shield","jakb-lightjak-shield-end",
+    "jakb-darkjak-bomb-pre","jakb-darkjak-bomb","jakb-darkjak-bomb-loop","jakb-darkjak-bomb-land","jakb-darkjak-bomb-end",
+    "jakb-darkjak-attack-ice","jakb-darkjak-attack-ice-loop","jakb-darkjak-attack-ice-loop2","jakb-darkjak-attack-ice-end",
 ];
 
 pub const ATTACK_FROM_JUMP: Anim = Anim(0);
@@ -593,3 +595,13 @@ pub const LIGHTJAK_FREEZE: Anim = Anim(289);
 pub const LIGHTJAK_FREEZE_LAND: Anim = Anim(290);
 pub const LIGHTJAK_SHIELD: Anim = Anim(291);
 pub const LIGHTJAK_SHIELD_END: Anim = Anim(292);
+/// The Dark Bomb (`target-darkjak-bomb0`) and the Dark Blast (`target-darkjak-bomb1`, out of the dark uppercut).
+pub const DARKJAK_BOMB_PRE: Anim = Anim(293);
+pub const DARKJAK_BOMB: Anim = Anim(294);
+pub const DARKJAK_BOMB_LOOP: Anim = Anim(295);
+pub const DARKJAK_BOMB_LAND: Anim = Anim(296);
+pub const DARKJAK_BOMB_END: Anim = Anim(297);
+pub const DARKJAK_ATTACK_ICE: Anim = Anim(298);
+pub const DARKJAK_ATTACK_ICE_LOOP: Anim = Anim(299);
+pub const DARKJAK_ATTACK_ICE_LOOP2: Anim = Anim(300);
+pub const DARKJAK_ATTACK_ICE_END: Anim = Anim(301);

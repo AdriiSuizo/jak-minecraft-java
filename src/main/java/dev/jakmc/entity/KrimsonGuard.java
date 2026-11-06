@@ -47,8 +47,10 @@ public final class KrimsonGuard {
             body.setTarget(null);foe=null;
         }
         if(foe==null&&body.tickCount%20==0){
-            foe=level.getEntitiesOfClass(JakEnemy.class,body.getBoundingBox().inflate(25*.64),
-                enemy->!enemy.kind.guard()&&enemy.isAlive()&&body.getSensing().hasLineOfSight(enemy))
+            // stand-in (Adrii 06/11): Minecraft's hostile mobs too, as the Spargus wastelanders do (SpargusDefense).
+            foe=level.getEntitiesOfClass(net.minecraft.world.entity.Mob.class,body.getBoundingBox().inflate(25*.64),
+                enemy->enemy instanceof net.minecraft.world.entity.monster.Enemy&&!(enemy instanceof JakEnemy jak&&jak.kind.guard())
+                    &&enemy.isAlive()&&body.getSensing().hasLineOfSight(enemy))
                 .stream().min(Comparator.comparingDouble(body::distanceToSqr)).orElse(null);
             if(foe!=null)alert(level,foe);
         }

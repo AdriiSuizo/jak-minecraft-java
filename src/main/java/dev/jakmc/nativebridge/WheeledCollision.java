@@ -64,6 +64,9 @@ public final class WheeledCollision {
         }
         for(var shape:level.getBlockCollisions(owner,range))shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->
             sweepBox(center,delta,new AABB(x0,y0,z0,x1,y1,z1)));
+        // Rust zoomers.rs contact bodies: a zoomer's hull meets the others' (Adrii 06/11: they went through each other).
+        if(floats)for(var other:level.getEntities(owner,range,e->e instanceof dev.jakmc.entity.JakVehicle v&&v.model.hover()&&!e.isRemoved()))
+            sweepBox(center,delta,other.getBoundingBox());
         return contact;
     }
     private void sweepBox(Vec3 at,Vec3 motion,AABB shape){

@@ -326,7 +326,7 @@ public final class JakVehicle extends Entity {
             }
             String encoded;
             if(model.hover()){
-                int zoomer=(edges&1)|(held&6);
+                int zoomer=(edges&1)|(held&6)|(traffic?8:0);
                 float hour=(server.getDefaultClockTime()%24000+6000)%24000/1000f;
                 encoded=NativeJak.hoverStep(handle,steer,lean,throttle,brake,zoomer,
                     (float)moved.x,(float)moved.y,(float)moved.z,hour%24,health/model.hitPoints,rider!=null||traffic);

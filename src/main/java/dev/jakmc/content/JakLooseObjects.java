@@ -30,6 +30,12 @@ public final class JakLooseObjects {
             .register(output->ALIASES.forEach(output::accept));
     }
 
+    /** The item an older kind places (itself when it is not one). */
+    public static Item placedItem(Item item){
+        if(item instanceof Alias alias){var placed=alias.placed();return placed==null?item:placed;}
+        return item;
+    }
+
     // render_anim minecraft_world.rs place_object: placement_kind(kind) before placing.
     private static final class Alias extends Item {
         private final int target;

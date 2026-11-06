@@ -28,7 +28,7 @@ public final class GltfItemRenderer implements SpecialModelRenderer<Void> {
             String name=file;
             if(!name.matches("(?:[a-z0-9_-]+/)?[a-z0-9_+.-]+\\.glb"))throw new IllegalArgumentException("Invalid original model name");
             try{
-                if(!game.equals("jak2")&&!game.equals("jak3"))throw new IllegalArgumentException("Invalid original game");
+                if(!game.equals("jak1")&&!game.equals("jak2")&&!game.equals("jak3"))throw new IllegalArgumentException("Invalid original game");
                 var path=name.contains("/")?name:"common/"+name;
                 var model=new GltfModel(RuntimeConfig.gameAssets(game).resolve("levels").resolve(path),"item_"+game+"_"+name.replace('/','_').replace(".glb",""));
                 if(!damageTable.isEmpty())HellcatRenderer.damageStages(model,damageTable);

@@ -299,7 +299,7 @@ impl Jak {
         // The count wears off a frame at a time (`seekl! ... 0 1`).
         self.dark_shock.lightning_count = (self.dark_shock.lightning_count - 1).max(0);
         // His blows as Dark Jak take their victims, once each.
-        if self.dark && self.dark_transition.is_none() && self.attack.danger.is_some() {
+        if self.dark && self.dark_transition.is_none() && (self.attack.danger.is_some() || self.state == crate::State::DarkBlast) {
             let struck: Vec<u64> = self.events[first_event.min(self.events.len())..]
                 .iter()
                 .filter_map(|e| match e {

@@ -49,12 +49,15 @@ final class CityBlueprint {
     private final Map<Long,Fragment> chunks;
     final List<Garage> garages;
     final List<Patrol> patrols;
+    /** The Krimson station's guard posts (jak:krimson_puesto): the garrison's base. */
+    final List<BlockPos> posts;
     final int minX,minY,minZ,maxX,maxY,maxZ;
     /** The plan's street junctions (its light-blue markers) and the ways a street leaves each. */
     private final Map<BlockPos,java.util.Set<Direction>> streets;
 
-    private CityBlueprint(Map<Long,Fragment> chunks,List<Garage> garages,List<Patrol> patrols,int[] bounds,Map<BlockPos,java.util.Set<Direction>> streets){
+    private CityBlueprint(Map<Long,Fragment> chunks,List<Garage> garages,List<Patrol> patrols,List<BlockPos> posts,int[] bounds,Map<BlockPos,java.util.Set<Direction>> streets){
         this.chunks=chunks;
+        this.posts=posts;
         this.garages=garages;
         this.patrols=patrols;
         this.streets=streets;
@@ -66,6 +69,7 @@ final class CityBlueprint {
         String path="/data/jakmc/catalog/"+id+".jbp";
         var cells=new HashMap<Long,Int2ObjectOpenHashMap<BlockState>>();
         var garages=new ArrayList<Garage>();
+        var posts=new ArrayList<BlockPos>();
         var routes=new LinkedHashMap<BlockPos,java.util.EnumSet<Direction>>();
         var gates=new LinkedHashMap<BlockPos,BlockState>();
         var facades=new LinkedHashMap<BlockPos,Facade>();
@@ -101,6 +105,7 @@ final class CityBlueprint {
                         continue;
                     }
                     if(name.equals("jak:altar_turbotabla"))palace=pos.offset(0,-6,0);
+                    if(name.startsWith("jak:krimson_puesto"))posts.add(pos);
                     if(name.startsWith("jak:pieza_haven_fuego")||name.startsWith("jak:pieza_haven_follaje"))continue;
                     BlockState state=states[index];
                     if(state==null)continue;
@@ -165,8 +170,8 @@ final class CityBlueprint {
         if(!missing.isEmpty())JakMod.LOG.info("Jak city {} legacy palette mappings: {}",id,missing);
         var patrols=new ArrayList<Patrol>();
         routes.forEach((start,directions)->{
-            // Split the junction grid into beats, with at most one guard per intersection pair.
-            if(Math.floorMod(start.getX()/28+start.getZ()/28,2)!=0)return;
+            // stand-in (Adrii 06/11, "un montón" of guards): a beat from every junction, where the
+            // Rust kept one guard per intersection pair.
             for(var facing:directions){
                 BlockPos end=start.relative(facing,28);
                 if(!routes.getOrDefault(end,java.util.EnumSet.noneOf(Direction.class)).contains(facing.getOpposite()))continue;
@@ -186,7 +191,7 @@ final class CityBlueprint {
         }
         var streets=new LinkedHashMap<BlockPos,java.util.Set<Direction>>();
         routes.forEach((junction,ways)->streets.put(junction,java.util.Collections.unmodifiableSet(java.util.EnumSet.copyOf(ways))));
-        return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),List.copyOf(selected),bounds,streets);
+        return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),List.copyOf(selected),List.copyOf(posts),bounds,streets);
     }
 
     private static BlockState resolve(String source,TreeSet<String> missing){

@@ -14,6 +14,14 @@ public final class JakEffectTypes {
  private static final RenderPipeline[] PIPELINES=new RenderPipeline[4];
  private static final OitPipelineSet[] OIT=new OitPipelineSet[4];
  private static final Map<String,RenderType> TYPES=new HashMap<>();
+ /**
+  * Light Jak's body (powers.gc rim-lights, no textures): opaque, its own rim colour unlit, culled and writing
+  * depth as the Rust's body pass did. The translucent emissive type blended his back faces and inner
+  * layers through him (Adrii 06/11: Light Jak all wrong).
+  */
+ private static final RenderPipeline LIGHT_BODY=RenderPipelines.register(RenderPipeline.builder(RenderPipelines.ENTITY_EMISSIVE_SNIPPET)
+  .withLocation(JakData.id("pipeline/light_body")).withShaderDefine("ALPHA_CUTOUT",0.1f)
+  .withShaderDefine("NO_OVERLAY").withShaderDefine("NO_CARDINAL_LIGHTING").withColorTargetState(ColorTargetState.DEFAULT).build());
  static {
   BlendFunction[] blends={BlendFunction.TRANSLUCENT,new BlendFunction(BlendFactor.SRC_ALPHA,BlendFactor.ONE,BlendOp.REVERSE_SUBTRACT),BlendFunction.LIGHTNING,BlendFunction.ADDITIVE};
   for(int i=0;i<4;i++){
@@ -37,5 +45,6 @@ public final class JakEffectTypes {
  }
  public static RenderType get(Identifier texture,int blend){return TYPES.computeIfAbsent(texture+"/"+blend,k->RenderType.create("jak_effect_"+blend,RenderSetup.builder(PIPELINES[blend]).setOitPipelines(OIT[blend]).withTexture("Sampler0",texture).sortOnUpload().createRenderSetup()));}
  public static RenderType getGui(Identifier texture,int blend){return TYPES.computeIfAbsent(texture+"/gui/"+blend,k->RenderType.create("jak_effect_gui_"+blend,RenderSetup.builder(GUI_PIPELINES[blend]).withTexture("Sampler0",texture).sortOnUpload().createRenderSetup()));}
+ public static RenderType lightBody(Identifier texture){return TYPES.computeIfAbsent(texture+"/light",k->RenderType.create("jak_light_body",RenderSetup.builder(LIGHT_BODY).withTexture("Sampler0",texture).createRenderSetup()));}
  static void initialize(){}
 }

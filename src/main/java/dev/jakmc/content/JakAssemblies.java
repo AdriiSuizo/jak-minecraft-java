@@ -130,6 +130,16 @@ public final class JakAssemblies {
         Direction support(Direction facing){return !wallMounted?Direction.DOWN:soft?facing:facing.getOpposite();}
     }
 
+    /** For the client's placement preview (Adrii 06/11): the cells the item in hand would fill there, none when it cannot go. */
+    public static Map<BlockPos,BlockState> preview(Item item,BlockPlaceContext context){
+        item=JakLooseObjects.placedItem(item);
+        if(!(item instanceof AssemblyItem assembly)||assembly.assembly.parts.size()<2)return Map.of();
+        var placing=assembly.updatePlacementContext(context);
+        if(placing==null||!placing.canPlace())return Map.of();
+        var state=assembly.getBlock().getStateForPlacement(placing);
+        return state==null?Map.of():assembly.placement(placing,state);
+    }
+
     private static BlockPos rotatedOffset(BlockPos offset,Direction direction){
         return switch(direction){
             case EAST -> new BlockPos(-offset.getZ(),offset.getY(),offset.getX());

@@ -17,6 +17,8 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Interactuar con puertas, bloques y entidades | L2 | LT |
 | Sacar / guardar turbotabla equipada en su ranura | Triángulo | Y |
 | Activar o desactivar Jak oscuro | Pulsar y soltar L3 | Pulsar y soltar stick izquierdo |
+| Bomba oscura (Jak oscuro, 5 de eco o más) | X y en el aire Cuadrado | A y en el aire X |
+| Explosión oscura de rayos (Jak oscuro, 5 de eco o más) | X y en el aire Círculo | A y en el aire B |
 | Jak luminoso con alas | L3 + X | Stick izquierdo + A |
 | Escudo de Jak luminoso | L3 + Círculo | Stick izquierdo + B |
 | Curación de Jak luminoso | L3 + Triángulo | Stick izquierdo + Y |

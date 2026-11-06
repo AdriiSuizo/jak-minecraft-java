@@ -52,6 +52,8 @@ public final class ZoomerTraffic {
         final ArrayList<Vec3> points=new ArrayList<>();
         int next,street;
         BlockPos end;
+        /** stand-in: how long it has waited behind something, and how long it now goes on regardless. */
+        int waited,pushing;
         Route(Network net,int street,boolean forward,int from,Vec3 town){
             this.net=net;this.town=town;this.street=street;
             var s=net.streets().get(street);
@@ -150,12 +152,19 @@ public final class ZoomerTraffic {
         Vec3 after=flat(route.after(z.getRandom()).subtract(target));
         double bend=Math.abs(Math.atan2(after.x*to.z-after.z*to.x,after.dot(to)));
         boolean blocked=false;
+        // stand-in (Adrii 06/11, traffic stuck): the Rust ring never met itself head on; in the barrio's
+        // junctions two can, so one held back 2 s goes on for 1.5 s past zoomers and citizens (their
+        // hulls now meet: WheeledCollision), never past a player.
+        if(route.pushing>0)route.pushing--;
         for(var e:z.level().getEntities(z,z.getBoundingBox().inflate(9*M+2),e->e instanceof JakVehicle&&!e.isRemoved()
             ||e instanceof Player p&&!p.isSpectator()||e instanceof Villager v&&v.getVehicle()==null&&v.isAlive())){
+            if(route.pushing>0&&!(e instanceof Player))continue;
             Vec3 rel=flat(e.position().subtract(pos));
             double along=rel.dot(forward);
             if(along>0&&along<9*M&&Math.abs(rel.dot(left))<2.2*M){blocked=true;break;}
         }
+        if(blocked&&speed<1){if(++route.waited>40){route.waited=0;route.pushing=30;}}
+        else if(!blocked)route.waited=0;
         // stand-in: a street corner (a right angle) is taken at walking pace, the Rust ring's bends at 7.
         double cruise=bend>1.2||Math.abs(turn)>1.2?3.5:Math.abs(turn)>.6||bend>.6?7:12;
         return new Controls((float)Math.clamp(turn*2.5,-1,1),!blocked&&speed<cruise?1:0,blocked||speed>cruise+2.5?1:0);

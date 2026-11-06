@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " B ",
+    "CPC",
+    "III"
+  ],
+  "key": {
+    "B": "jakmc:blue_ammo",
+    "C": "minecraft:copper_ingot",
+    "P": "minecraft:piston",
+    "I": "minecraft:iron_ingot"
+  },
+  "result": {
+    "id": "jakmc:eco_launcher"
+  }
+}

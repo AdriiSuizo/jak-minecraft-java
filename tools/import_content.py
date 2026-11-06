@@ -292,6 +292,133 @@ def import_blueprints(names):
         (catalog/f'{name}.jbp').write_bytes(packed_blueprint(data))
         print(name,len(data['blocks']),'cells',len(data['props']),'whole props')
 
+# Item transforms of Minecraft's block/block parent, for the Jak blocks drawn as their block.
+BLOCK_DISPLAY={'gui':{'rotation':[30,225,0],'scale':[0.625]*3},'ground':{'translation':[0,3,0],'scale':[0.25]*3},
+    'fixed':{'scale':[0.5]*3},'thirdperson_righthand':{'rotation':[75,45,0],'translation':[0,2.5,0],'scale':[0.375]*3},
+    'firstperson_righthand':{'rotation':[0,45,0],'scale':[0.4]*3},'firstperson_lefthand':{'rotation':[0,225,0],'scale':[0.4]*3}}
+
+def icons():
+    # Adrii 06/11: the Jak objects and shaped blocks showed a 16x16 crop of one texture in the inventory.
+    # The loose objects (and the older kinds that place them) now draw their own model, as the decorations
+    # do (jakmc:prop); a shaped block draws its block model, at the block angle.
+    assets=DEST/'assets/jak';catalog=DEST/'data/jakmc/catalog'
+    loose=json.loads((catalog/'loose_objects.json').read_text(encoding='utf-8'))
+    aliases=json.loads((catalog/'object_aliases.json').read_text(encoding='utf-8'))
+    objects=0
+    for kind,target in [(int(k),int(k)) for k in loose]+[(int(k),int(v)) for k,v in aliases.items()]:
+        source=json.loads((catalog/'objects'/f'{kind}.json').read_text(encoding='utf-8'))
+        shape=json.loads((catalog/'objects'/f'{target}.json').read_text(encoding='utf-8'))
+        sprite=min(t['texture'] for cell in shape['cells'] for t in cell['triangles'])
+        path=source['path']
+        item={'model':{'type':'minecraft:special','base':'jak:item/'+path,'model':{'type':'jakmc:prop','id':target}}}
+        (assets/'items'/f'{path}.json').write_text(json.dumps(item),encoding='utf-8')
+        model={'gui_light':'side','textures':{'particle':'jak:block/'+sprite},
+               'display':{'gui':{'rotation':[25,135,0],'scale':[0.9]*3},'ground':{'translation':[0,3,0],'scale':[0.5]*3},
+                          'thirdperson_righthand':{'rotation':[0,90,-30],'scale':[0.4]*3},
+                          'firstperson_righthand':{'rotation':[0,45,0],'scale':[0.65]*3}}}
+        (assets/'models/item'/f'{path}.json').write_text(json.dumps(model),encoding='utf-8')
+        objects+=1
+    blocks=0
+    for file in sorted((assets/'items').glob('*.json')):
+        model=json.loads(file.read_text(encoding='utf-8'))['model']
+        if model.get('type')!='minecraft:model':continue
+        item_model=assets/'models/item'/file.name
+        state=assets/'blockstates'/file.name
+        if not item_model.is_file() or not state.is_file():continue
+        current=json.loads(item_model.read_text(encoding='utf-8'))
+        if current.get('parent')!='minecraft:item/generated' or current.get('textures',{}).get('layer0')!='jak:item/'+file.stem:continue
+        states=json.loads(state.read_text(encoding='utf-8'))
+        if 'variants' in states:
+            first=next(iter(states['variants'].values()),None)
+        else:
+            first=next((part['apply'] for part in states.get('multipart',[])),None)
+        if isinstance(first,list):first=first[0] if first else None
+        block=first and first.get('model')
+        if not block or not block.startswith('jak:block/'):continue
+        if not (assets/'models/block'/(block[len('jak:block/'):]+'.json')).is_file():continue
+        item_model.write_text(json.dumps({'parent':block,'display':BLOCK_DISPLAY}),encoding='utf-8')
+        blocks+=1
+    print('Item icons:',objects,'objects drawn as their model,',blocks,'blocks as their block model')
+
+# Adrii 06/11: every piece of Jak decoration is made. In the stonecutter: one block of the place's material,
+# the piece chosen from the list (the crafting table cannot offer a choice for the same materials).
+PLACES=(('spargus',('sp_','sp-','spargus','sparg_','muro_spargus','objeto_spargus','arena_','cumbrera_roja')),
+        ('palace',('palacio',)),
+        ('haven',('hv_','hv-','haven','barrio','pieza_haven','objeto_haven','objeto_villarrefugio','suelo_villarrefugio',
+                  'muro_villarrefugio','muro_haven','krimson','bar_','luz_','cumbrera_chapa')),
+        ('sandover',('v1_','v1-')),
+        ('snow',('sn_','sn-','snow','nieve','montana','objeto_montana','muro_montana','cumbrera_nevada')),
+        ('swamp',('sw_','sw-','swamp','pantano','objeto_pantano','muro_pantano','cumbrera_pantano')),
+        ('wasteland',('wasteland','desert')))
+STONE={'spargus':'minecraft:sandstone','palace':'minecraft:quartz_block','haven':'minecraft:stone_bricks','sandover':'minecraft:cobblestone',
+       'snow':'minecraft:stone','swamp':'minecraft:mossy_cobblestone','wasteland':'minecraft:red_sandstone','other':'minecraft:stone'}
+WOOD={'spargus':'jak:spargus_planks','palace':'minecraft:dark_oak_planks','haven':'minecraft:oak_planks','sandover':'minecraft:oak_planks',
+      'snow':'minecraft:spruce_planks','swamp':'minecraft:mangrove_planks','wasteland':'minecraft:jungle_planks','other':'minecraft:oak_planks'}
+ROOF={'spargus':'minecraft:iron_ingot','palace':'minecraft:bricks','haven':'minecraft:bricks','sandover':'minecraft:hay_block',
+      'snow':'minecraft:spruce_planks','swamp':'minecraft:hay_block','wasteland':'minecraft:iron_ingot','other':'minecraft:bricks'}
+# By what the piece is made of, from its name (Spanish and the original texture names), first match.
+MATERIALS=((('glass','vidrio','window','ventana','cristal'),'minecraft:glass'),
+           (('light','luz','lamp','farol','lantern','neon','glow','bombilla'),'minecraft:glowstone'),
+           (('straw','paja','hay','thatch'),'minecraft:hay_block'),
+           (('rope','cuerda','string'),'minecraft:string'),
+           (('cloth','tela','banner','flag','bandera','estandarte','toldo','awning','sail','vela','curtain','cortina','carpet','alfombra','rug'),'minecraft:white_wool'),
+           (('precursor','warpgate','sculpt','sage','brass','bronce','copper','cobre','gold','oro'),'minecraft:copper_ingot'),
+           (('metal','iron','hierro','steel','acero','pipe','tubo','tuberia','rail','grate','rejilla','reja','siding','chapa','bars','barrotes','gear',
+             'blindaje','terminal','insignia','desague','sign','cartel','rotulo','propaganda'),'minecraft:iron_ingot'),
+           (('palmtree','palm','palmera','trunk','tronco','log'),'minecraft:jungle_log'),
+           (('wood','madera','plank','tabla','tablon','board','barril','barrel','crate','caja','box','post','poste','beam','viga','fence','valla',
+             'door','puerta','porton','bench','banco','mesa','table','taburete','stool','shelf','andamio','scaffold','entramado','larguero',
+             'puntal','mensula','ladder','marco','frame','urna','vase','jarr','pot','bidon','trofeo','botell',
+             'jarra','bandeja','juego','espejo','mostrador','servicio','coleccion'),'WOOD'),
+           (('roof','tejado','tejadillo','teja','cumbrera','tile','alero','azotea','cupula'),'ROOF'),
+           (('brick','ladrillo'),'minecraft:bricks'),
+           (('snow','nieve'),'minecraft:snow_block'),
+           (('rice','arroz'),'minecraft:dirt'),
+           (('ice','hielo'),'minecraft:ice'),
+           (('mud','barro','lodo'),'minecraft:mud'),
+           (('sand','arena','dune'),'minecraft:sand'),
+           (('dirt','tierra','soil'),'minecraft:dirt'),
+           (('leaf','leaves','hoja','frond','planta','plant','grass','hierba','hierbajos','bush','arbusto','mata','flower','flor','vine','enredadera','moss','musgo','canes'),'PLANT'))
+
+def place(path):
+    for name,prefixes in PLACES:
+        if path.startswith(prefixes) or any(p.strip('_-') in path for p in prefixes if len(p)>4):return name
+    return 'other'
+
+def recipe_material(path,kind):
+    if kind in ('plant','vine','lily_pad'):return 'minecraft:short_grass'
+    words=path.lower()
+    for keys,material in MATERIALS:
+        if any(key in words for key in keys):
+            where=place(path)
+            if material=='WOOD':return WOOD[where]
+            if material=='ROOF':return ROOF[where]
+            if material=='PLANT':return 'minecraft:oak_leaves' if kind in ('cube','leaves') else 'minecraft:short_grass'
+            return material
+    return 'minecraft:oak_leaves' if kind=='leaves' and 'hv_city' not in path.lower() else STONE[place(path)]
+
+def recipes(definitions):
+    """A stonecutting recipe for every Jak block the game registers (its loot table); the older loose-object items place one of these."""
+    target=DEST/'data/jak/recipe'
+    if target.exists():shutil.rmtree(target)
+    target.mkdir(parents=True)
+    kinds={row['path']:(row['look']['kind'],row['look'].get('vanilla','')) for row in definitions}
+    made=set(json.loads(r.read_text(encoding='utf-8'))['result']['id'] for r in (ROOT/'src/main/resources/data/jakmc/recipe').glob('*.json'))
+    loot=DEST/'data/jak/loot_table/blocks'
+    ids={p.stem for p in loot.glob('*.json')}
+    ids.discard('altar_turbotabla')
+    written=0
+    for path in sorted(ids):
+        if 'jak:'+path in made or path=='palm_log':continue
+        kind,vanilla=kinds.get(path,('object',''))
+        material=recipe_material(path,kind)
+        if material=='jak:'+path:continue
+        count=2 if kind in ('slab','layers') or vanilla.endswith(('_slab','_pane','_bars','_rod','_wall')) or vanilla in ('glass_pane','iron_bars','lightning_rod','cobblestone_wall','leaf_litter') else 1
+        recipe={'type':'minecraft:stonecutting','ingredient':material,'result':{'id':'jak:'+path,'count':count}}
+        (target/(path+'.json')).write_text(json.dumps(recipe,separators=(',',':')),encoding='utf-8')
+        written+=1
+    print('Stonecutting recipes:',written)
+
 def main():
     if not (SOURCE/'objects/104.json').is_file():raise RuntimeError('Source export is incomplete; run tools/content-exporter first')
     DEST.mkdir(parents=True,exist_ok=True)
@@ -306,6 +433,8 @@ def main():
     seal_track_meshes(catalog)
     import_blueprints(('haven','spargus','palace')+SITES)
     import import_facade_parts;import_facade_parts.export(SOURCE,DEST)
+    icons()
+    recipes(definitions)
     receipts=[]
     for path in sorted(DEST.rglob('*')):
         if path.is_file():receipts.append(dict(path=str(path.relative_to(DEST)).replace('\\','/'),sha256=hashlib.sha256(path.read_bytes()).hexdigest(),size=path.stat().st_size))
@@ -316,5 +445,9 @@ if __name__=='__main__':
     import sys
     if sys.argv[1:]==['--sites-only']:
         import_blueprints(SITES)
+    elif sys.argv[1:]==['--icons']:
+        icons()
+    elif sys.argv[1:]==['--recipes']:
+        recipes(json.loads((DEST/'data/jakmc/catalog/blocks.json').read_text(encoding='utf-8')))
     else:
         main()

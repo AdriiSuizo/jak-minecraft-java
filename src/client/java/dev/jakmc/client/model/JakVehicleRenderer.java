@@ -30,7 +30,7 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
     public JakVehicleRenderer(EntityRendererProvider.Context context){super(context);shadowRadius=1.3f;}
     public static final class State extends EntityRenderState {
         JsonObject before,after;
-        float partial;
+        float partial,bob;
         JakVehicle.Model model;
     }
 
@@ -44,6 +44,8 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
         state.after=car.presentationAfter();
         state.partial=car.presentationFraction();
         state.model=car.model;
+        // Rust zoomers.rs: the hover's bob, sin(clock*2.1+phase)*0.07 m, its phase the zoomer's own.
+        state.bob=(float)(Math.sin((car.tickCount+partial)/20.0*2.1+(car.getId()*0.618%1)*Math.PI*2)*0.07/(6400.0/4096));
     }
 
     @Override public void submit(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){
@@ -166,6 +168,9 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
         var attitude=rotation(state.before).slerp(rotation(state.after),blend);
         var pose=model.articulate(rests.get(state.model.asset),joints,Map.of());
         stack.pushPose();
+        // Rust zoomers.rs root_of: drawn `climb` below its hull, the step it rose eased away, and bobbing.
+        float climb=state.before.has("climb")&&state.after.has("climb")?interpolate(state.before,state.after,"climb",blend):0;
+        stack.translate(0,state.bob-climb,0);
         stack.mulPose(new org.joml.Matrix4f().rotation(attitude));
         stack.scale(.64f,.64f,.64f);
         model.submit(pose,stack,collector,state.lightCoords,1,

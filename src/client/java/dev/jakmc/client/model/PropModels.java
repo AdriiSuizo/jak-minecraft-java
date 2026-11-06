@@ -40,6 +40,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
@@ -50,6 +52,8 @@ public final class PropModels {
     private record Triangle(Point[] points,Identifier texture,boolean blended){}
     private record Geometry(List<Triangle> triangles){}
     private static final Map<Integer,Geometry> GEOMETRY=new LinkedHashMap<>();
+    /** Each assembly cell's own geometry, for the placement preview. */
+    private static final Map<Block,Geometry> CELLS=new java.util.HashMap<>();
 
     public static void initialize(){
         for(var entry:JakProps.MODELS.values())GEOMETRY.put(entry.id(),geometry(entry.triangles()));
@@ -60,6 +64,7 @@ public final class PropModels {
             for(var part:model.parts()){
                 Geometry geometry=geometry(part.triangles());
                 roots.put(part.block(),new Root(model.path(),geometry));
+                CELLS.put(part.block(),geometry);
                 for(var triangle:geometry.triangles()){
                     var points=new Point[3];
                     for(int i=0;i<points.length;i++){
@@ -97,12 +102,20 @@ public final class PropModels {
             }
             String texture=row.get("texture").getAsString();
             var material=Identifier.fromNamespaceAndPath("jak","block/"+texture);
+            if(opaque(material)){
+                blend=false;
+                for(int i=0;i<3;i++)points[i]=new Point(points[i].x,points[i].y,points[i].z,points[i].u,points[i].v,points[i].color|0xFF000000);
+            }
             tris.add(new Triangle(points,material,blend));
-            if(texture.equals("waspala-palmplant-leaf-02")||texture.startsWith("city-slum-shrub-overhang"))
-                tris.add(new Triangle(new Point[]{points[2],points[1],points[0]},material,blend));
+            // The games draw these meshes double-sided (glTF doubleSided, which the export drops): the
+            // urn's mouth and the palm trunk's inward-wound faces showed their insides (Adrii 06/11).
+            tris.add(new Triangle(new Point[]{points[2],points[1],points[0]},material,blend));
         }
         return new Geometry(List.copyOf(tris));
     }
+
+    /** Barrels: their texture alpha is the PS2's, not transparency (an opaque can in the games). */
+    private static boolean opaque(Identifier texture){return texture.getPath().contains("barrel");}
 
     private static int color(JsonArray rgba,int index){return Math.min(255,2*rgba.get(index).getAsInt());}
 
@@ -130,7 +143,8 @@ public final class PropModels {
                     emitter.pos(i,position(point,turns)).uv(i,point.u(),point.v()).color(i,point.color());
                 }
                 emitter.materialBake(material,MutableQuadView.BAKE_NORMALIZED)
-                    .chunkLayer(triangle.blended()?ChunkSectionLayer.TRANSLUCENT:ChunkSectionLayer.byTransparency(material.sprite().transparency()))
+                    .chunkLayer(triangle.blended()?ChunkSectionLayer.TRANSLUCENT:opaque(triangle.texture())?ChunkSectionLayer.SOLID
+                        :ChunkSectionLayer.byTransparency(material.sprite().transparency()))
                     .ambientOcclusion(net.fabricmc.fabric.api.util.TriState.FALSE).emit();
             }
             var particle=materials.isEmpty()
@@ -149,6 +163,45 @@ public final class PropModels {
         @Override public void emitQuads(QuadEmitter emitter,BlockAndTintGetter level,BlockPos at,BlockState state,
                                         RandomSource random,Predicate<Direction> cullTest){
             quads.getMesh().outputTo(emitter);
+        }
+    }
+
+    /**
+     * The placement preview (Adrii 06/11): an object bigger than a block drawn faint (alpha 0..1) where it
+     * would go, each cell as its terrain mesh turned to the cell's facing.
+     */
+    public static void submitGhost(Map<BlockPos,BlockState> cells,Vec3 camera,PoseStack stack,SubmitNodeCollector collector,float alpha){
+        var atlas=Minecraft.getInstance().getAtlasManager().getAtlasOrThrow(net.minecraft.data.AtlasIds.BLOCKS);
+        int a=Math.round(alpha*255)<<24;
+        Map<Identifier,List<Object[]>> batches=new LinkedHashMap<>();
+        for(var cell:cells.entrySet()){
+            var geometry=CELLS.get(cell.getValue().getBlock());
+            if(geometry==null)continue;
+            int turns=cell.getValue().hasProperty(BlockStateProperties.HORIZONTAL_FACING)
+                ?JakProps.turns(cell.getValue().getValue(BlockStateProperties.HORIZONTAL_FACING)):0;
+            for(var triangle:geometry.triangles())batches.computeIfAbsent(triangle.texture(),_ ->new ArrayList<>())
+                .add(new Object[]{triangle,cell.getKey(),turns});
+        }
+        for(var batch:batches.entrySet()){
+            var sprite=atlas.getSprite(batch.getKey());
+            stack.pushPose();
+            collector.submitCustomGeometry(stack,RenderTypes.entityTranslucent(sprite.atlasLocation()),(pose,vertices)->{
+                for(var entry:batch.getValue()){
+                    var triangle=(Triangle)entry[0];var at=(BlockPos)entry[1];int turns=(int)entry[2];
+                    var points=triangle.points();
+                    var normal=position(points[1],turns).sub(position(points[0],turns))
+                        .cross(position(points[2],turns).sub(position(points[0],turns))).normalize();
+                    pose.normal().transform(normal);
+                    for(int i=0;i<4;i++){
+                        var point=points[Math.min(i,2)];
+                        var local=position(point,turns).add((float)(at.getX()-camera.x),(float)(at.getY()-camera.y),(float)(at.getZ()-camera.z));
+                        var p=pose.pose().transformPosition(local);
+                        vertices.addVertex(p.x,p.y,p.z,a|point.color()&0xFFFFFF,sprite.getU(point.u()),sprite.getV(point.v()),
+                            net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY,0xF000F0,normal.x,normal.y,normal.z);
+                    }
+                }
+            });
+            stack.popPose();
         }
     }
 
@@ -178,7 +231,7 @@ public final class PropModels {
             for(var batch:batches.entrySet()){
                 var sprite=sprites.get(new SpriteId(BLOCK_ATLAS,batch.getKey().id()));
                 var layer=batch.getKey().blend()?RenderTypes.entityTranslucent(sprite.atlasLocation()):
-                    RenderTypes.entityCutout(sprite.atlasLocation());
+                    opaque(batch.getKey().id())?RenderTypes.entitySolid(sprite.atlasLocation()):RenderTypes.entityCutout(sprite.atlasLocation());
                 collector.submitCustomGeometry(stack,layer,(pose,vertices)->{
                     for(var triangle:batch.getValue()){
                         var points=triangle.points();

@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/eco_vent",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "training/jng-iris-door-lod0.glb",
+      "game": "jak1",
+      "scale": 0.12
+    }
+  }
+}

@@ -17,6 +17,8 @@ import org.lwjgl.sdl.SDLMouse;
 /** Send controller input through vanilla widget and container mouse handling. */
 public final class JakMenuControls {
     private static final int PRIMARY=1,SPLIT=2,QUICK_MOVE=8;
+    /** Item rows a second with the right stick held all the way in the creative menu. */
+    private static final float SCROLL_ROWS=9;
     private static final int UP=SdlGamepad.UP,DOWN=SdlGamepad.DOWN,LEFT=SdlGamepad.LEFT,RIGHT=SdlGamepad.RIGHT;
     private static Screen lastScreen;
     private static int lastHeld,lastDirection,buttonHeld,lastId;
@@ -45,7 +47,13 @@ public final class JakMenuControls {
         var window=client.getWindow();
         double x=client.mouseHandler.getScaledXPos(window),y=client.mouseHandler.getScaledYPos(window);
         float[] motion=ControllerMath.look(pad.leftX(),pad.leftY());
-        if(motion[0]==0&&motion[1]==0)motion=ControllerMath.look(pad.rightX(),pad.rightY());
+        // Adrii 06/11: in the creative menu the right stick is the mouse wheel, wherever the pointer is
+        // (off the screen, so no bundle under it takes the scroll); the left stick alone moves the pointer.
+        boolean creative=screen instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+        if(creative){
+            float wheel=ControllerMath.look(0,pad.rightY())[1];
+            if(wheel!=0)screen.mouseScrolled(-1,-1,0,wheel*SCROLL_ROWS*dt);
+        }else if(motion[0]==0&&motion[1]==0)motion=ControllerMath.look(pad.rightX(),pad.rightY());
         if(motion[0]!=0||motion[1]!=0){
             double rate=window.getGuiScaledHeight()*1.3*dt;
             move(client,window,x+motion[0]*rate,y-motion[1]*rate,warp);

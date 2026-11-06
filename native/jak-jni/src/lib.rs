@@ -180,6 +180,7 @@ fn event(e:Event)->Value {
   Event::WorldHit{surface,normal,damage}=>json!({"kind":"world_hit","pos":pos(surface),"normal":pos(normal*BLOCK),"damage":damage}),
   Event::Sound{name,volume,pitch}=>json!({"kind":"sound","name":name,"volume":volume,"pitch":pitch}),
   Event::SoundAt{name,pos:p}=>json!({"kind":"sound_at","name":name,"pos":pos(p)}),
+  Event::Freeze{actor}=>json!({"kind":"freeze","actor":actor}),
   Event::Fire{from,dir}=>json!({"kind":"fire","pos":pos(from),"dir":pos(dir*BLOCK)}),
   Event::GunFire{kind,from}=>json!({"kind":"gun_fire","gun":format!("{kind:?}"),"pos":pos(from)}),
   Event::Trace{kind,from,to}=>json!({"kind":"trace","gun":format!("{kind:?}"),"from":pos(from),"to":pos(to)}),
@@ -220,7 +221,16 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_tongue(mut env:JNIE
   session.jak.apply_tongue(from);Ok(())
  });
 }
-/// JakPlayers: Jak stood on a skatepark jump pad (JakJumpPad), its spring height in metres; whether it took.
+/// JakPlayers: Jak stood on a blue eco launcher (JakEcoLauncher), its spring height in metres; whether it took.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_launch(mut env:JNIEnv,_:JClass,id:jlong,metres:f32)->jni::sys::jboolean{
+ protect(&mut env,||{
+  let mut sessions=lock_sessions()?;
+  let session=sessions.live.get_mut(&(id as u64)).ok_or("Stale launcher session")?;
+  Ok(if session.jak.request_launch(jak_core::math::meters(metres)){1u8}else{0u8})
+ })
+}
+/// JakPlayers: Jak stood on a world jump pad, its spring height in metres; whether it took.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_padBounce(mut env:JNIEnv,_:JClass,id:jlong,metres:f32)->jni::sys::jboolean{
  protect(&mut env,||{
@@ -264,7 +274,9 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_create(mut env:JNIE
   // Minecraft step sizes in the source host (render_anim/src/jak.rs).
   // On foot he steps a stair or a slab, not a whole block (Adrii 05/11: was 1.25).
   jak.foot_smooth_step=Some(0.6*BLOCK);jak.board_smooth_step=Some(1.1*BLOCK);jak.flut_smooth_step=jak.board_smooth_step;
-  jak.edge_grab_min_height=2.*BLOCK;
+  // A two-block ledge measured from the session's fractional origin can come out a hair under two
+  // blocks and was refused at random (Adrii 06/11: block edges not grabbed as in the mashup).
+  jak.edge_grab_min_height=1.9*BLOCK;
   let mut s=lock_sessions()?;s.next+=1;let id=s.next;
   s.live.insert(id,Session{jak,world:World::default(),actors:Actors::default(),audio:audio::JakSoundQueue::default(),power_held:false,dark_pending:false,joint_rotations:Vec::new(),board_started:None});Ok(id as jlong)
  })
@@ -637,7 +649,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
    json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  let mut out=json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"hurt":{"ticks":j.time,"invulnerableUntil":j.hurt_invulnerable_until(),"burnStart":j.hurt_fx.burn_start,"shockUntil":j.hurt_fx.shock_until},"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed});out["freezeClap"]=json!((j.lightjak.freeze_clap>jak_core::lightjak::LONG_AGO).then_some(j.lightjak.freeze_clap));out["nukeFlash"]=json!(j.weapons.flash.map(|at|(j.time-at) as f32/300.));out["darkVictims"]=json!(j.dark_shock.tints.iter().map(|(key,f)|json!([key,f])).collect::<Vec<_>>());if *LEDGE_TRACE {out["ledgeWhy"]=json!(ledge_why);out["trail"]=json!(trail);}Ok(out.to_string())
+  let mut out=json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"hurt":{"ticks":j.time,"invulnerableUntil":j.hurt_invulnerable_until(),"burnStart":j.hurt_fx.burn_start,"shockUntil":j.hurt_fx.shock_until},"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed});out["blueEco"]=json!(j.has_eco(jak_core::eco_power::EcoKind::Blue));out["bombBlast"]=json!(j.bomb.blast_at.map(|(at,time)|{let d=(at-j.trans())/BLOCK;[d.x,d.y,d.z,(j.time-time) as f32/300.]}));out["freezeClap"]=json!((j.lightjak.freeze_clap>jak_core::lightjak::LONG_AGO).then_some(j.lightjak.freeze_clap));out["nukeFlash"]=json!(j.weapons.flash.map(|at|(j.time-at) as f32/300.));out["darkVictims"]=json!(j.dark_shock.tints.iter().map(|(key,f)|json!([key,f])).collect::<Vec<_>>());if *LEDGE_TRACE {out["ledgeWhy"]=json!(ledge_why);out["trail"]=json!(trail);}Ok(out.to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
 }

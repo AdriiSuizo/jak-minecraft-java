@@ -172,7 +172,9 @@ pub struct JakBlock {
 /// in Jak 3's textures of its desert (`desert`, `deserta`, `desertb`) and
 /// of Spargus (`wascitya`).
 pub const BLOCK_LOOKS: [JakBlock; 77] = [
-    JakBlock { path: "wasteland_sand", look: BlockLook::Turned("des-beach-01") },
+    // Laid over the world one tile every 4 blocks at the game's 128 texels, as Jak 3 spreads its sand over
+    // metres (Adrii 06/11: one turned 32-texel tile per block made a grid of crossed ripples).
+    JakBlock { path: "wasteland_sand", look: BlockLook::All("w4_des-beach-01") },
     JakBlock { path: "wasteland_rock", look: BlockLook::BottomTop { top: "des-mount-02", side: "des-mount-01", bottom: "des-mount-bottom-01" } },
     // Jak 3's five cliff tops (`desertb`, `deserta`, `desertg`), one at
     // random a block.
@@ -203,7 +205,7 @@ pub const BLOCK_LOOKS: [JakBlock; 77] = [
     JakBlock { path: "spargus_roof", look: BlockLook::All("wascity-roof-1") },
     JakBlock { path: "spargus_planks", look: BlockLook::All("des-bridge-plank") },
     JakBlock { path: "totem_stone", look: BlockLook::BottomTop { top: "des-totem-stone-trim", side: "des-totem-stone-01", bottom: "des-totem-stone-trim" } },
-    JakBlock { path: "wasteland_sand_layer", look: BlockLook::Layers { texture: "des-beach-01", full: "wasteland_sand" } },
+    JakBlock { path: "wasteland_sand_layer", look: BlockLook::Layers { texture: "w4_des-beach-01", full: "wasteland_sand" } },
     // Where the dunes' sand gives way to the cliff rock (`des-cliff-trans-01`).
     JakBlock { path: "wasteland_cliff_edge", look: BlockLook::All("des-cliff-trans-01") },
     // The scrubby rock round the cliffs' feet (`des-rock-shrub-01`).

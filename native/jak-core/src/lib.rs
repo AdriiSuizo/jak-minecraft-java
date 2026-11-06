@@ -77,6 +77,8 @@ pub enum HighJump {
     /// Bounced off a dive's landing, standing still or running on.
     Flop,
     FlopForward,
+    /// Off a blue eco launcher (`target-launch`, its `'launch`).
+    Launch,
 }
 
 /// What a spin in the air came out of.
@@ -192,6 +194,12 @@ pub enum State {
     LightJakShield,
     /// `target-lightjak-freeze`: the clap that slows the world.
     LightJakFreeze,
+    /// `target-darkjak-bomb0`: Dark Jak's dive with dark eco to spare, the
+    /// rise, the fall and the blast on landing.
+    DarkBomb,
+    /// `target-darkjak-bomb1`: out of the dark uppercut, floating, a bolt of
+    /// lightning a tenth of a second at each creature 80 m round.
+    DarkBlast,
     /// A flap of Light Jak's wings: the first of a flight, or another
     /// `held` seconds after the last.
     LightJakSwoop {
@@ -319,6 +327,8 @@ impl State {
             State::LightJakRegen => "lightjak-regen",
             State::LightJakShield => "lightjak-shield",
             State::LightJakFreeze => "lightjak-freeze",
+            State::DarkBomb => "darkjak-bomb0",
+            State::DarkBlast => "darkjak-bomb1",
             State::LightJakSwoop { first: true, .. } => "lightjak-swoop",
             State::LightJakSwoop { first: false, .. } => "lightjak-swoop-again",
             State::LightJakSwoopFalling => "lightjak-swoop-falling",
@@ -434,6 +444,11 @@ pub enum Event {
     },
     DarkJak {
         on: bool,
+    },
+    /// A Dark Blast bolt struck this creature (`'ice` mode): the host
+    /// freezes it.
+    Freeze {
+        actor: u64,
     },
     /// A beat of Light Jak's wings.
     Flap,
@@ -591,6 +606,8 @@ pub struct Jak {
     /// A world pad detected after movement starts its jump inside the next
     /// movement tick, before that tick's state checks and collision sweep.
     pub(crate) pad_bounce: Option<f32>,
+    /// That pad is Jak 1's blue eco launcher: its crouch and high jump instead of a plain jump.
+    pub(crate) pad_launch: bool,
     /// The animation the state is playing, and the timing it plays by.
     pub chan: Channel,
     pub push: Push,
@@ -694,6 +711,8 @@ pub struct Jak {
     pub dark_eco: f32,
     /// Dark Jak's purple lightning on him and his victims (`dark_shock.rs`).
     pub dark_shock: dark_shock::DarkShock,
+    /// The Dark Bomb's sphere and the Dark Blast's targets (`darkjak.rs`).
+    pub bomb: darkjak::DarkBomb,
     pub dark_transition: Option<bool>,
     pub(crate) dark_combo: u8,
     pub(crate) dark_combo_alternate: bool,
@@ -729,6 +748,7 @@ impl Jak {
             probe_cache: CollideCache::default(),
             pending: None,
             pad_bounce: None,
+            pad_launch: false,
             chan: Channel::default(),
             push: Push::default(),
             anims: Arc::new(Anims::nominal()),
@@ -769,6 +789,7 @@ impl Jak {
             dark: false,
             dark_eco: 0.0,
             dark_shock: dark_shock::DarkShock::default(),
+            bomb: darkjak::DarkBomb::default(),
             dark_transition: None,
             dark_combo: 0,
             dark_combo_alternate: false,
@@ -818,6 +839,7 @@ impl Jak {
         self.attack = Attack::default();
         self.pending = None;
         self.pad_bounce = None;
+        self.pad_launch = false;
         self.projectiles.clear();
         self.weapons.clear();
         self.grind.ride = None;
@@ -879,10 +901,15 @@ impl Jak {
         self.eco_power_frame();
         self.dark_eco_frame();
         if let Some(height) = self.pad_bounce.take() {
+            let launch = std::mem::take(&mut self.pad_launch);
             // A hurt or relocation may have removed the supporting contact
             // since the world requested the bounce. Do not override it.
             if self.control.status & control::status::ON_GROUND != 0 {
-                self.bounce_from_pad(height);
+                if launch {
+                    self.launch_from_pad(height);
+                } else {
+                    self.bounce_from_pad(height);
+                }
             }
         }
         let previous = self.trans();
@@ -901,6 +928,7 @@ impl Jak {
         }
         self.grind_attach(previous, world);
         self.attack_post(world, actors.as_deref_mut());
+        self.dark_blast_frame(actors.as_deref_mut());
         self.dark_shock_frame(world, projectile::reborrow(&mut actors), events_before);
         self.track_peak();
         self.gun_frame(world, projectile::reborrow(&mut actors));

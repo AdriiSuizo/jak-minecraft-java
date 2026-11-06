@@ -506,30 +506,37 @@ public final class GltfModel {
         Posed upper=poseAtTime(name,seconds);Integer root=namedNodes.get("upper_body");if(root==null)throw new IllegalArgumentException("Original upper_body joint missing");
         // The board on Jak's back hangs from the waist, not upper_body; it is the clip's too, or it parts from the torso.
         Integer board=namedNodes.get("board");
-        for(int i=0;i<nodes.length;i++)for(int ancestor=i;ancestor>=0;ancestor=nodes[ancestor].parent)if(ancestor==root||board!=null&&ancestor==board){base.translations[i].set(upper.translations[i]);base.rotations[i].set(upper.rotations[i]);base.scales[i].set(upper.scales[i]);break;}
-        Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,base.translations,base.rotations,base.scales);
+        // On copies: `base` can be a cached pose (a clip's last frame, a transition's), and writing into it
+        // carried this frame's gun pose into the next, the board on Jak's back torn apart (Adrii 06/11).
+        var t=copy(base.translations);var r=copy(base.rotations);var s=copy(base.scales);
+        for(int i=0;i<nodes.length;i++)for(int ancestor=i;ancestor>=0;ancestor=nodes[ancestor].parent)if(ancestor==root||board!=null&&ancestor==board){t[i].set(upper.translations[i]);r[i].set(upper.rotations[i]);s[i].set(upper.scales[i]);break;}
+        Matrix4f[] globals=new Matrix4f[nodes.length];for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);
         Matrix4f[] skin=new Matrix4f[joints.length];for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
-        return new Posed(globals,skin,base.morphs,base.translations,base.rotations,base.scales);
+        return new Posed(globals,skin,base.morphs,t,r,s);
     }
     public Posed jakForm(Posed pose,boolean dark,float upperYaw){
+        // On copies, as overlayUpper: Dark Jak's 1.2 waist grew again every frame on a cached pose.
+        var t=pose.translations;var r=copy(pose.rotations);var s=copy(pose.scales);
         int horns=namedNodes.get("horns");
-        pose.scales[horns].set(dark?1:0);
+        s[horns].set(dark?1:0);
         if(dark){
-            pose.scales[namedNodes.get("waist_prog")].mul(1.2f,1,1.2f);
-            pose.scales[namedNodes.get("neckB")].mul(.95f/1.32f,.92f,.95f/1.32f);
+            s[namedNodes.get("waist_prog")].mul(1.2f,1,1.2f);
+            s[namedNodes.get("neckB")].mul(.95f/1.32f,.92f,.95f/1.32f);
         }
         if(upperYaw!=0){
             int upper=namedNodes.get("upper_body");
             var parent=pose.globals[nodes[upper].parent].getUnnormalizedRotation(new Quaternionf()).normalize();
             var twist=new Quaternionf(parent).conjugate().rotateY(upperYaw).mul(parent);
-            pose.rotations[upper].premul(twist).normalize();
+            r[upper].premul(twist).normalize();
         }
         var globals=new Matrix4f[nodes.length];
-        for(int i=0;i<nodes.length;i++)global(i,globals,pose.translations,pose.rotations,pose.scales);
+        for(int i=0;i<nodes.length;i++)global(i,globals,t,r,s);
         var skin=new Matrix4f[joints.length];
         for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
-        return new Posed(globals,skin,pose.morphs,pose.translations,pose.rotations,pose.scales);
+        return new Posed(globals,skin,pose.morphs,t,r,s);
     }
+    private static Vector3f[] copy(Vector3f[] values){var out=new Vector3f[values.length];for(int i=0;i<out.length;i++)out[i]=new Vector3f(values[i]);return out;}
+    private static Quaternionf[] copy(Quaternionf[] values){var out=new Quaternionf[values.length];for(int i=0;i<out.length;i++)out[i]=new Quaternionf(values[i]);return out;}
     public void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous,boolean closedEyes){
         submitJakBody(pose,stack,collector,light,dark,luminous,closedEyes,surfaces);
     }
@@ -657,8 +664,12 @@ public final class GltfModel {
     /** jak_pose.rs skin_model's colour for the next submit only (0xRRGGBB, 255 a channel = as drawn): a wreck's darkening. */
     private static int nextColour=0xffffff;
     public static void colourNext(int rgb){nextColour=rgb&0xffffff;}
+    private static boolean nextAdditive;
+    /** The next submit drawn added onto what is behind (a blast's glow: its colour is all of it). */
+    public static void additiveNext(){nextAdditive=true;}
     private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut,boolean closedEyes,List<Surface> selected){
         final int colour=nextColour;nextColour=0xffffff;
+        final boolean additive=nextAdditive;nextAdditive=false;
         uploadTextures();
         var hurt=JakHurtVisuals.current(); // Capture before deferred submission.
         int surfaceNumber=0;var ready=selected==surfaces?prepared.get(posed):null;
@@ -682,7 +693,7 @@ public final class GltfModel {
             Identifier texture=eye!=null?eye:effect!=null?effect.texture():surface.skullGem?gemAtlas():rim!=null?lightTextures.get(surface.texture):
                 dark?darkTextures.getOrDefault(surface.texture,surface.texture):surface.texture;
             int gemFrame=Math.floorMod((int)Math.floor(seconds*60),60);
-            var renderType=effect!=null?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?RenderTypes.entityTranslucentEmissive(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
+            var renderType=effect!=null||additive?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?dev.jakmc.client.JakEffectTypes.lightBody(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
                 Vector3f v=new Vector3f(),normal=new Vector3f();
                 float[] cameraVertices=cinematic?cameraVertices(pose,skinned,v,normal):null;
@@ -702,7 +713,7 @@ public final class GltfModel {
                         for(var direction:rim)illumination+=Math.max(0,normal.dot(direction));
                         int green=Math.clamp((int)(surface.colors[i*4+1]*1.9f*illumination*255),0,255);
                         int blue=Math.clamp((int)(surface.colors[i*4+2]*(.3f+2*illumination)*255),0,255);
-                        color=(color&0xff000000)|green<<8|blue;
+                        color=0xff000000|green<<8|blue;
                     }
                     float u=surface.uv[i*2],texV=surface.uv[i*2+1];
                     if(effect!=null){

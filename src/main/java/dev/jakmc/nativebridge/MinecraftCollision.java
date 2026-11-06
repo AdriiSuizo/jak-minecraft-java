@@ -21,6 +21,10 @@ public final class MinecraftCollision {
         final Level level;final Entity actor;public Vec3 origin;
         /** Liquid tops as ground (the HellCat's: Rust minecraft_interaction.rs liquid surfaces, CraftWorld::fill). */
         public boolean liquids;
+        /** On the JET-Board: water and dark eco tops as ground (Rust jak.rs board_water_in, lava left out), and
+         * block sides as ground as the mashup's voxels were, so the board's step-up meets them (Adrii 06/11). */
+        private boolean board;
+        public void board(boolean riding){if(riding!=board){board=riding;cache.clear();}}
         long tick=Long.MIN_VALUE;
         final DirectBufferArena arena=new DirectBufferArena(16*1024*1024);
         final Boxes boxes=new Boxes();
@@ -100,7 +104,7 @@ public final class MinecraftCollision {
             return cache.computeIfAbsent(r,key->{
                 long volume=(long)(key.X-key.x+1)*(key.Y-key.y+1)*(key.Z-key.z+1);
                 if(volume<0||volume>262144)throw new IllegalArgumentException("Collision query volume exceeds native budget: "+volume);
-                return MinecraftCollision.triangles(level,actor,origin,new AABB(key.x,key.y,key.z,key.X,key.Y,key.Z),boxes,arena,liquids);
+                return MinecraftCollision.triangles(level,actor,origin,new AABB(key.x,key.y,key.z,key.X,key.Y,key.Z),boxes,arena,liquids?ALL_LIQUIDS:board?BOARD:0);
             });
         }
     }
@@ -108,24 +112,29 @@ public final class MinecraftCollision {
     private static final class Boxes {
         final java.util.ArrayList<Track> tracks=new java.util.ArrayList<>();
         float[] values=new float[384];
-        byte[] materials=new byte[64];
+        byte[] materials=new byte[64],hidden=new byte[64];
         int used;
-        void add(double x,double y,double z,double X,double Y,double Z,int material){
+        void add(double x,double y,double z,double X,double Y,double Z,int material){add(x,y,z,X,Y,Z,material,0);}
+        void add(double x,double y,double z,double X,double Y,double Z,int material,int covered){
             if(used+6>values.length){
                 values=Arrays.copyOf(values,values.length*2);
                 materials=Arrays.copyOf(materials,materials.length*2);
+                hidden=Arrays.copyOf(hidden,hidden.length*2);
             }
+            hidden[used/6]=(byte)covered;
             materials[used/6]=(byte)material;
             values[used++]=(float)x;values[used++]=(float)y;values[used++]=(float)z;
             values[used++]=(float)X;values[used++]=(float)Y;values[used++]=(float)Z;
         }
     }
-    public static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region){return triangles(level,actor,origin,region,new Boxes(),null,false);}
+    public static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region){return triangles(level,actor,origin,region,new Boxes(),null,0);}
+    private static final int ALL_LIQUIDS=1,BOARD=2;
     /** Water, lava or dark eco: what a liquid top is made of. */
     public static boolean craftLiquid(net.minecraft.world.level.material.FluidState f){
         return f.is(net.minecraft.tags.FluidTags.WATER)||f.is(net.minecraft.tags.FluidTags.LAVA)||f.getType().isSame(dev.jakmc.content.darkeco.DarkEco.SOURCE);
     }
-    private static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region,Boxes boxes,DirectBufferArena arena,boolean liquids){
+    private static ByteBuffer triangles(Level level,Entity actor,Vec3 origin,AABB region,Boxes boxes,DirectBufferArena arena,int mode){
+        boolean liquids=mode!=0;int sides=mode==BOARD?0:1;
         boxes.used=0;boxes.tracks.clear();
         int trackBytes=0;var context=CollisionContext.of(actor);
         for(BlockPos pos:BlockPos.betweenClosed(BlockPos.containing(region.minX,region.minY,region.minZ),BlockPos.containing(region.maxX,region.maxY,region.maxZ))){
@@ -136,7 +145,7 @@ public final class MinecraftCollision {
             // stand-in: Rust takes each column's top cell's fluid_top quad with its corner heights; here a flat top.
             if(liquids){
                 var fluid=level.getFluidState(pos);
-                if(craftLiquid(fluid)&&!craftLiquid(level.getFluidState(pos.above()))){
+                if(craftLiquid(fluid)&&!(mode==BOARD&&fluid.is(net.minecraft.tags.FluidTags.LAVA))&&!craftLiquid(level.getFluidState(pos.above()))){
                     double top=y+fluid.getHeight(level,pos);
                     boxes.add(x-origin.x,top-.02-origin.y,z-origin.z,x+1-origin.x,top-origin.y,z+1-origin.z,0);
                 }
@@ -150,7 +159,7 @@ public final class MinecraftCollision {
             int material=state.is(Blocks.BLUE_ICE)?12:state.is(Blocks.PACKED_ICE)?8:
                 state.is(Blocks.ICE)||state.is(Blocks.FROSTED_ICE)?4:0;
             var shape=state.getCollisionShape(level,pos,context);
-            if(shape==net.minecraft.world.phys.shapes.Shapes.block()){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z,material);}
+            if(shape==net.minecraft.world.phys.shapes.Shapes.block()){boxes.add(x-origin.x,y-origin.y,z-origin.z,x+1-origin.x,y+1-origin.y,z+1-origin.z,material,covered(level,pos));}
             else if(!shape.isEmpty())shape.forAllBoxes((x0,y0,z0,x1,y1,z1)->boxes.add(x0+x-origin.x,y0+y-origin.y,z0+z-origin.z,x1+x-origin.x,y1+y-origin.y,z1+z-origin.z,material));
         }
         var decks=level.getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,region.inflate(4),
@@ -158,7 +167,7 @@ public final class MinecraftCollision {
         int bytes=Math.addExact(Math.multiplyExact(boxes.used/6,480),trackBytes);
         int capacity=decks.isEmpty()?bytes:Math.addExact(bytes,Math.multiplyExact(decks.size(),dev.jakmc.entity.JakHellcat.deckCapacity()));
         ByteBuffer data=arena==null?NativeJak.buffer(capacity):arena.acquire(capacity);
-        for(int i=0;i<boxes.used;i+=6)box(data,boxes.materials[i/6],boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);
+        for(int i=0;i<boxes.used;i+=6)box(data,boxes.materials[i/6],sides,boxes.hidden[i/6],boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);
         for(var track:boxes.tracks){
             var pos=track.at();
             track.mesh().write(data,level,pos,track.state(),pos.getX()-origin.x,pos.getY()-origin.y,pos.getZ()-origin.z);
@@ -166,13 +175,28 @@ public final class MinecraftCollision {
         for(var deck:decks)deck.appendDeck(origin,region,data);
         return data.slice(0,data.position()).order(java.nio.ByteOrder.LITTLE_ENDIAN);
     }
-    private static void box(ByteBuffer b,int material,float x,float y,float z,float X,float Y,float Z){
-        face(b,material,x,Y,z,x,Y,Z,X,Y,Z,X,Y,z);
-        face(b,material|1,x,y,z,X,y,z,X,y,Z,x,y,Z);
-        face(b,material|1,x,y,z,x,y,Z,x,Y,Z,x,Y,z);
-        face(b,material|1,X,y,Z,X,y,z,X,Y,z,X,Y,Z);
-        face(b,material|1,X,y,z,x,y,z,x,Y,z,X,Y,z);
-        face(b,material|1,x,y,Z,X,y,Z,X,Y,Z,x,Y,Z);
+    /**
+     * Rust sim voxel.rs: a full block's faces against a full neighbour are left out (bits up, down, -x, +x,
+     * -z, +z). Those seams gave the ledge probe a side face where the top should be (Adrii 06/11).
+     */
+    private static int covered(Level level,BlockPos pos){
+        int bits=0;var at=new BlockPos.MutableBlockPos();
+        Direction[] faces={Direction.UP,Direction.DOWN,Direction.WEST,Direction.EAST,Direction.NORTH,Direction.SOUTH};
+        for(int i=0;i<6;i++){
+            at.setWithOffset(pos,faces[i]);
+            if(!level.hasChunkAt(at))continue;
+            var next=level.getBlockState(at);
+            if(JakAssemblies.trackMesh(next)==null&&next.isCollisionShapeFullBlock(level,at))bits|=1<<i;
+        }
+        return bits;
+    }
+    private static void box(ByteBuffer b,int material,int wall,int hidden,float x,float y,float z,float X,float Y,float Z){
+        if((hidden&1)==0)face(b,material,x,Y,z,x,Y,Z,X,Y,Z,X,Y,z);
+        if((hidden&2)==0)face(b,material|wall,x,y,z,X,y,z,X,y,Z,x,y,Z);
+        if((hidden&4)==0)face(b,material|wall,x,y,z,x,y,Z,x,Y,Z,x,Y,z);
+        if((hidden&8)==0)face(b,material|wall,X,y,Z,X,y,z,X,Y,z,X,Y,Z);
+        if((hidden&16)==0)face(b,material|wall,X,y,z,x,y,z,x,Y,z,X,Y,z);
+        if((hidden&32)==0)face(b,material|wall,x,y,Z,X,y,Z,X,Y,Z,x,Y,Z);
     }
     private static void face(ByteBuffer b,int flags,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz,float dx,float dy,float dz){triangle(b,flags,ax,ay,az,bx,by,bz,cx,cy,cz);triangle(b,flags,ax,ay,az,cx,cy,cz,dx,dy,dz);}
     private static void triangle(ByteBuffer b,int flags,float ax,float ay,float az,float bx,float by,float bz,float cx,float cy,float cz){b.putFloat(ax).putFloat(ay).putFloat(az).putFloat(bx).putFloat(by).putFloat(bz).putFloat(cx).putFloat(cy).putFloat(cz).putInt(flags);}

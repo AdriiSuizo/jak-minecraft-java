@@ -94,14 +94,36 @@ Estados: HECHO · EN CURSO · PENDIENTE · FUERA (HUD/no pedido)
   - HellCat sobre agua, lava y eco oscuro: el líquido es un suelo plano para él y sale hacia arriba si se hunde.
   - Invisibilidad: oculta a Jak y a Daxter y los enemigos lo ven solo de cerca. Salto potenciado: más salto de Jak.
   - Primera persona: balanceo del arma al andar y retroceso al disparar.
-  - Saltador del skatepark de Jak 2 (bloque "Saltador del skatepark", con su malla original): de pie encima, Jak sale despedido 25 m.
-  - Sin probar en partida: lava, hambre, patadas, HellCat en líquidos, invisibilidad, balanceo y saltador (compilan y siguen el original, pero no hay escena para ellos).
+  - (Quitado el 06/11: el saltador del skatepark, nadie lo pidió; en su lugar el lanzador de eco azul.)
+  - Sin probar en partida: lava, hambre, patadas, HellCat en líquidos, invisibilidad y balanceo (compilan y siguen el original, pero no hay escena para ellos).
 
 - HECHO ✔ Con arma en las manos, la tabla a la espalda va con el torso (Adrii 06/11): la tabla cuelga de la cintura y se quedaba con la animación de andar mientras el torso hacía la de arma; ahora toma también la de arma, como en el original. Visto en las capturas de la prueba de armas.
 - HECHO Daxter con arma (Adrii 06/11: su brazo derecho atravesaba el pelo y la frente de Jak): Daxter seguía con su animación normal mientras Jak hacía la de arma. Ahora hace la suya del original (daxter-gun-stance, -walk, -fire, -takeout…), como en sidekick.gc. Visto solo desde detrás en la prueba; falta mirarlo de frente.
 - HECHO ✔ El Inversor de masa deja sin gravedad a todo, también a los objetos (Adrii 06/11): objetos tirados, flechas, barcas, vagonetas, bloques que caen, TNT y orbes de experiencia flotan igual que las criaturas (suben a 1 m del suelo, se quedan entre 1 y 3,5 m, 7–9 s, y luego caen). El campo crece hasta 30 m en su primer segundo, como el original. Los jugadores no. En la prueba de anillos atrapó 22 objetos; unas piedras, una barca y una vagoneta subieron 1 bloque.
 - Arreglado en la prueba de armas: un mundo nuevo empieza sin munición y las armas no disparaban; ahora carga munición de cada color. Con eso, las 12 disparan otra vez (la Super Nova rompe el suelo).
 - Sin comprobar en partida con medida propia: tinte de Jak oscuro y bono de Fuerza, nidos de la cueva, pánico del Flut Flut (sus escenas pasan, pero no miden eso).
+
+## Lote de Adrii 06/11 (18 puntos + esclusa)
+- HECHO Pasos sobre hojas de árbol suenan a hierba; agarre a bordes con la altura del Rust (1,9 bloques) y suelo bajo Jak buscado más abajo.
+- HECHO Menú creativo: el stick derecho es la rueda del ratón esté donde esté el puntero.
+- HECHO Decoración: mira hacia donde mira el jugador al ponerla; jarrón y palmera con caras por los dos lados; barriles opacos.
+- HECHO Iconos: los objetos y bloques de Jak sin icono propio usan su modelo 3D (43 objetos, 1.223 bloques).
+- HECHO Vista previa al 18 % de los objetos de más de un bloque (también las puertas 3x3).
+- HECHO Alcance para poner bloques ×3; el de romper y atacar, igual.
+- HECHO Fuego del bidón más grande y más bajo (escala de bloque del Rust).
+- HECHO Quitado el saltador del skatepark. Lanzador de eco azul de Jak 1 (citb-launcher): solo con eco azul; Jak se agacha, sale con el salto de lanzador de Jak 3 (target-launch → duck-high-jump 'launch, 40 m de muelle, launch-jump-mods).
+- HECHO Puerta iris de la Roca del Géiser, 3x3, solo las aspas: se abre con eco azul cerca (8 m) y se cierra al alejarse (stand-in: la original se queda abierta).
+- HECHO Esclusa de Villarefugio (com-airlock-outer y -inner espalda con espalda), 3x3: se abre a quien se acerque y se cierra al irse; cada cara con su animación de airlock.gc y sus sonidos de CTYWIDE1, de un bloque de grosor y acelerada para que abrir o cerrar dure como mucho 2,5 s (Adrii; stand-in: 8/12 m en vez de 35 m; no carga zonas).
+- HECHO JET-Board: el agua y el eco oscuro son suelo para la tabla (la lava no) y los lados de bloque cuentan como suelo para subir; la tabla a la espalda ya no se deforma (se copiaban las poses guardadas).
+- HECHO Jak luminoso con su propio pase opaco, sin transparencias (mismo coste que antes).
+- HECHO Villarefugio: hasta 48 guardias por ciudad en sus puestos, reaparecen de día; atacan a los mobs hostiles. Cada ciudadano toma una cama libre de la ciudad.
+- HECHO Tráfico: los zoomers con ruta no dan marcha atrás; si se atascan 2 s pasan del obstáculo que no es jugador; choques entre zoomers; vaivén suave del Rust.
+- HECHO Jak oscuro: los golpes normales no gastan eco; al volver a Jak con menos de un punto queda a 0 (antes quedaba un resto invisible); el HUD redondea hacia arriba.
+- HECHO Bomba oscura (X+Cuadrado, target-darkjak-bomb0): con 5 de eco oscuro o más (el 50 del original, a la décima como los golpes); sube, cae con gravedad extra y al tocar suelo explota en una esfera que crece hasta 30 m, 15 de daño; gasta 10 (100 en el original). Explosión oscura (X+Círculo, o agachado+Círculo como el original; target-darkjak-bomb1): sube, flota 1,5 s y lanza un rayo cada 0,1 s a cada criatura en 80 m, 15 de daño y la congela (congelación de Minecraft); gasta 10. Las dos dejan a Jak oscuro (Adrii; el original vuelve a Jak). La bomba dibuja su cúpula (bomb-blast y generic-blast de Jak 3: blanco, morado, negro en 30 cuadros).
+
+- HECHO Todo lo decorativo se fabrica: 1.288 piezas de Jak (vallas, tejados, escaleras, objetos sueltos…) en el cortapiedras desde un bloque del material de su lugar (arenisca en Spargus, ladrillo de piedra en Villarefugio, cuarzo en el palacio…) o de lo que es (madera, hierro, cristal, tela, hojas). Lanzador y puertas en la mesa de crafteo.
+- HECHO Desierto de Jak: sus texturas (arena, roca, acantilados, cuevas, hierba seca, piedras, palmeras, roca roja, tótem) no estaban en los niveles que lee el exportador y salían rayas de relleno; ahora son las de las páginas de texturas de Jak 3. La arena, a sus 128 texeles, se extiende sobre 4x4 bloques sin girar, como en Jak 3. Siguen de relleno vil1-medres-hutroof y snow-gate-wood (no están en ninguna página).
+- HECHO Tests: cada uno crea un mundo nuevo y borra todos los anteriores (los ajustes del mundo quedan en .local/test-world-template).
 
 ## Pendiente, por orden
 - Nada del Rust en la lista. Lo siguiente lo decide Adrii.

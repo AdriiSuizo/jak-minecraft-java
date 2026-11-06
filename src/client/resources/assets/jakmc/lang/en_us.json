@@ -196,7 +196,9 @@
   "block.jak.objeto_haven_puesto": "Puesto de los barrios de Jak II",
   "block.jak.objeto_haven_propaganda": "Poste de propaganda de Haven",
   "block.jak.objeto_haven_propaganda_ajustada": "Poste de propaganda de Haven",
-  "block.jakmc.skate_jump_pad": "Skatepark Jump Pad",
+  "block.jakmc.eco_launcher": "Blue Eco Launcher",
+  "block.jakmc.iris_door": "Precursor Iris Door",
+  "block.jakmc.airlock_door": "Haven Airlock",
   "entity.jakmc.kermit": "Swamp Frog",
   "item.jakmc.kermit_spawn_egg": "Spawn Swamp Frog"
 }

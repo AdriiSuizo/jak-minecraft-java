@@ -552,11 +552,11 @@ impl Jak {
                 self.clear_ground();
                 self.control.mod_surface = surface::TURN_AROUND;
             }
-            State::DuckHighJumpJump { min, max, .. } => {
+            State::DuckHighJumpJump { min, max, kind } => {
                 self.events.push(Event::Jump);
                 self.init_var_jump(min, max, true, false, 2.0);
                 self.clear_ground();
-                self.control.mod_surface = surface::foot::HIGH_JUMP;
+                self.control.mod_surface = if kind == HighJump::Launch { surface::foot::LAUNCH_JUMP } else { surface::foot::HIGH_JUMP };
             }
             State::Falling { uppercut } => {
                 self.control.mod_surface = if uppercut {
@@ -614,6 +614,10 @@ impl Jak {
                     c.bend_target = 1.0;
                 }
             }
+            State::AttackAir { from } if from == AirFrom::Jump && self.want_dark_bomb() => {
+                // stand-in: X+Circle (Adrii 06/11) as Jak 3's dark uppercut, into the Dark Blast.
+                return Some(State::DarkBlast);
+            }
             State::AttackAir { from } => {
                 self.clear_ground();
                 self.start_attack();
@@ -637,6 +641,17 @@ impl Jak {
                 self.control.gravity_length = 122880.0;
                 self.control.last_trans_any_surf = self.control.trans;
             }
+            State::AttackUppercut { .. } if self.want_dark_bomb() => return Some(State::DarkBlast),
+            State::DarkBlast => {
+                self.start_attack();
+                self.danger_set(Some(Danger::Uppercut));
+                self.control.mod_surface = surface::foot::UPPERCUT;
+            }
+            State::DarkBomb => {
+                self.clear_ground();
+                self.control.mod_surface = surface::foot::ROLL_FLIP;
+                self.bomb.scale = 0.0;
+            }
             State::AttackUppercut { .. } => {
                 self.start_attack();
                 self.danger_set(Some(Danger::Uppercut));
@@ -654,6 +669,8 @@ impl Jak {
                 self.start_attack();
                 self.danger_set(Some(Danger::Uppercut));
             }
+            // target-flop's enter: Dark Jak with darkjak-bomb-min of dark eco bombs.
+            State::Flop { .. } if self.want_dark_bomb() => return Some(State::DarkBomb),
             State::Flop { forward } => {
                 let speed = if forward {
                     self.control.ctrl_xz_vel

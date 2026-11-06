@@ -725,6 +725,39 @@ pub mod foot {
         flags: flag::CHECK_EDGE | flag::AIR,
         ..ZERO
     };
+    /// `*launch-jump-mods*` (`launch-jump`): off a launcher, fast across, no attacks.
+    pub const LAUNCH_JUMP: Surface = Surface {
+        name: Name::HighJump,
+        turnv: 131072.0,
+        turnvf: 30.0,
+        turnvv: 65536.0,
+        turnvvf: 30.0,
+        tiltv: 32768.0,
+        tiltvf: 150.0,
+        tiltvv: 262144.0,
+        tiltvvf: 15.0,
+        transv_max: 61440.0,
+        target_speed: 61440.0,
+        seek0: 0.9,
+        seek90: 0.9,
+        seek180: 0.9,
+        fric: 0.3,
+        nonlin_fric_dist: 1.0,
+        slip_factor: 1.0,
+        slide_factor: 1.0,
+        slope_up_factor: 1.0,
+        slope_down_factor: 1.0,
+        slope_slip_angle: 1.0,
+        impact_fric: 1.0,
+        bend_factor: 1.0,
+        bend_speed: 1.0,
+        alignv: 1.0,
+        slope_up_traction: 1.0,
+        align_speed: 1.0,
+        mode: Mode::Air,
+        flags: flag::NO_ATTACK | flag::CHECK_EDGE | flag::AIR,
+        ..ZERO
+    };
 
     pub const FORWARD_HIGH_JUMP: Surface = Surface {
         name: Name::HighJump,

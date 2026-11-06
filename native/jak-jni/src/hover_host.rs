@@ -163,6 +163,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hoverStep(
         let zoomer = &mut session.zoomer;
         let metres = BLOCK / jak_core::METER;
         zoomer.position -= Vec3::new(x, y, z) * metres;
+        zoomer.routed = buttons & 8 != 0;
         let mut control = Controls {
             steer: steer.clamp(-1., 1.),
             lean: lean.clamp(-1., 1.),
@@ -226,6 +227,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hoverStep(
             "position":(zoomer.position/metres).to_array(),"velocity":(zoomer.velocity/metres).to_array(),
             "seat":seat.to_array(),"rotation":orient.to_array(),"yaw":-zoomer.yaw.to_degrees(),
             "pitch":zoomer.pitch,"roll":zoomer.bank,"grounded":usize::from(zoomer.grounded),
+            "climb":zoomer.climb/metres,
             "steer":zoomer.steer,"lean":zoomer.lean,"throttle":zoomer.throttle,"brake":zoomer.brake,
             "boost":false,"thrusterPower":if engine==0{0.}else{zoomer.thrust.max(0.)},
             "high":zoomer.high,"lamps":session.lights.factor,"mask":spec.masks[stage],

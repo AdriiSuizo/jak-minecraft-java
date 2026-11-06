@@ -242,7 +242,8 @@ pub fn floor_of_block(id: &str, step: &str) -> Floor {
     if id == "mud" || id == "muddy_mangrove_roots" {
         return Floor::Swamp;
     }
-    if id == "grass_block" || id == "mycelium" || id.starts_with("moss_") || id.ends_with("_nylium") {
+    // Adrii 06/11: tree leaves walk like grass (the mashup gave them the forest floor).
+    if id == "grass_block" || id == "mycelium" || id.starts_with("moss_") || id.ends_with("_nylium") || id.ends_with("_leaves") {
         return Floor::Grass;
     }
     if matches!(id, "dirt" | "coarse_dirt" | "rooted_dirt" | "dirt_path" | "farmland" | "podzol" | "clay" | "packed_mud" | "soul_soil")
@@ -255,7 +256,7 @@ pub fn floor_of_block(id: &str, step: &str) -> Floor {
     if id.ends_with("sand") && !id.ends_with("sandstone") {
         return Floor::Sand;
     }
-    if id.ends_with("_leaves") || has("vine") || id == "azalea" || id == "flowering_azalea" {
+    if has("vine") || id == "azalea" || id == "flowering_azalea" {
         return Floor::Forest;
     }
     if id.ends_with("mushroom_block") || id == "mushroom_stem" || id == "shroomlight" || id.ends_with("wart_block") {
@@ -304,7 +305,8 @@ pub fn floor_of_block(id: &str, step: &str) -> Floor {
         "fungus" | "nylium" | "wart_block" | "shroomlight" | "roots" | "nether_sprouts" | "stem" => Floor::Mushroom,
         "metal" | "anvil" | "chain" | "lantern" | "netherite_block" | "copper" | "copper_bulb" | "copper_grate" | "heavy_core" | "vault"
         | "trial_spawner" => Floor::Metal,
-        "vine" | "azalea_leaves" | "cherry_leaves" => Floor::Forest,
+        "vine" => Floor::Forest,
+        "azalea_leaves" | "cherry_leaves" => Floor::Grass,
         _ => Floor::Stone,
     }
 }

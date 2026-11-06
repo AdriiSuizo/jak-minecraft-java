@@ -19,6 +19,7 @@
     "JakFreezePresentationMixin",
     "JakAvatarPositionMixin",
     "JakControllerUseMixin",
+    "JakReachMixin",
     "GemItemRendererMixin",
     "GemCollectMixin",
     "CitizenRenderStateMixin",

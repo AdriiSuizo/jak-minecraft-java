@@ -39,6 +39,8 @@ public final class JakPlayers {
         var s=LIVE.get(player.getUUID());return s==null?0:s.nativeId;
     }
     private static final int BOARD_BUTTON=1<<7;
+    /** Adrii 06/11: three times Minecraft's reach to place blocks; attacking keeps its own (entity) reach. */
+    public static final net.minecraft.resources.Identifier REACH=dev.jakmc.JakData.id("jak_block_reach");
     private static final net.minecraft.resources.Identifier VANILLA_SPRINT=
         net.minecraft.resources.Identifier.withDefaultNamespace("sprinting");
     private static final Map<net.minecraft.world.level.block.state.BlockState,Integer> FLOOR_SOUNDS=new IdentityHashMap<>();
@@ -282,7 +284,11 @@ public final class JakPlayers {
         b.putFloat(fresh&&flight==null?input.strafe():0).putFloat(fresh&&flight==null?input.forward():0);
         b.putFloat(fresh?input.rightX():0).putFloat(fresh?input.rightY():0).putFloat(fresh?input.brake():0).putFloat(fresh?input.throttle():0);
         b.putFloat(input.yaw()).putFloat(input.pitch());
+        s.collision.board(s.usingBoard);
         float water=waterSurface(p,s.origin,s.usingBoard);
+        var blockReach=p.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.BLOCK_INTERACTION_RANGE);
+        if(blockReach!=null&&!blockReach.hasModifier(REACH))blockReach.addTransientModifier(new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+            REACH,2,net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_MULTIPLIED_BASE));
         var movement=p.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
         var vanillaSprint=movement.getModifier(VANILLA_SPRINT);
         double speed=movement.getValue();
@@ -413,10 +419,14 @@ public final class JakPlayers {
         if(nativeState.equals("jump")&&!s.lastState.equals("jump"))p.causeFoodExhaustion(.05f);
         s.lastState=nativeState;strikeState=nativeState;
         burn(p,s);
-        // Rust native_skate.rs pad_contact (stand-in: the block under the feet): grounded on a pad, its spring.
+        BLUE_ECO.put(p,pose.has("blueEco")&&pose.get("blueEco").getAsBoolean());
+        // generic-obs.gc launcher (stand-in: the block under the feet): grounded on it with blue eco, its 'launch.
         if(flight==null&&s.mount==null&&(pose.get("status").getAsInt()&2)!=0
-            &&p.level().getBlockState(net.minecraft.core.BlockPos.containing(position.x,position.y-.05,position.z)).is(dev.jakmc.content.JakJumpPad.BLOCK))
-            NativeJak.padBounce(s.nativeId,dev.jakmc.content.JakJumpPad.SPRING_METRES);
+            &&p.level().getBlockState(net.minecraft.core.BlockPos.containing(position.x,position.y-.05,position.z)).is(dev.jakmc.content.JakEcoLauncher.BLOCK)
+            &&NativeJak.launch(s.nativeId,dev.jakmc.content.JakEcoLauncher.SPRING_METRES)){
+            var fire=net.minecraft.sounds.SoundEvent.createVariableRangeEvent(dev.jakmc.JakData.id("sfx/jak1/launch_fire"));
+            p.level().playSound(null,position.x,position.y,position.z,fire,net.minecraft.sounds.SoundSource.PLAYERS,1,1);
+        }
         p.setYRot(input.yaw());p.setXRot(input.pitch());p.setYBodyRot(pose.get("yaw").getAsFloat());s.last=position;s.pressed=0;
         if(controlled)probeSet(p,input.held(),0,input.forward());
         JakResources.consume(p,0,Math.max(0,Math.min(100,resources[0])-pose.get("darkEco").getAsFloat()));
@@ -451,6 +461,9 @@ public final class JakPlayers {
 
     /** A game metre in blocks (Jak at 0.64). */
     public static final double METRE=.64;
+    private static final java.util.Map<net.minecraft.world.entity.player.Player,Boolean> BLUE_ECO=new java.util.WeakHashMap<>();
+    /** Whether this Jak carries blue eco now (eco_power.rs has_eco), for the launchers and the iris doors. */
+    public static boolean blueEco(net.minecraft.world.entity.player.Player p){return BLUE_ECO.getOrDefault(p,false);}
     /** Jak set down at `at` moving at `velocity` (blocks a second): thrown by a blast. */
     public static void blownOff(ServerPlayer p,Vec3 at,Vec3 velocity){
         Session s=LIVE.get(p.getUUID());
@@ -516,9 +529,22 @@ public final class JakPlayers {
         }
         return (float)(surface.getY()-origin.y+fluid.getHeight(level,surface));
     }
+    private static final java.util.Map<ServerPlayer,Integer> LAST_FLOOR=new java.util.WeakHashMap<>();
     private static int floor(ServerPlayer p){
         if(p.isInWater())return p.isUnderWater()?22:21;
-        var state=p.level().getBlockState(net.minecraft.core.BlockPos.containing(p.getX(),p.getY()-.05,p.getZ()));
+        // Rust minecraft_world.rs: past air, 0.2, 0.7 and 1.2 below, and in the air the floor last stood on
+        // (a landing on leaves played stone, the air under him).
+        net.minecraft.world.level.block.state.BlockState state=null;
+        for(double below:new double[]{.05,.2,.7,1.2}){
+            var at=p.level().getBlockState(net.minecraft.core.BlockPos.containing(p.getX(),p.getY()-below,p.getZ()));
+            if(!at.isAir()){state=at;break;}
+        }
+        if(state==null)return LAST_FLOOR.getOrDefault(p,0);
+        int floor=floorOf(state);
+        LAST_FLOOR.put(p,floor);
+        return floor;
+    }
+    private static int floorOf(net.minecraft.world.level.block.state.BlockState state){
         return FLOOR_SOUNDS.computeIfAbsent(state,s->NativeJak.floor(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(s.getBlock()).getPath(),s.getSoundType().getStepSound().location().toString()));
     }
     public static Vec3 vector(JsonArray a){return new Vec3(a.get(0).getAsDouble(),a.get(1).getAsDouble(),a.get(2).getAsDouble());}
@@ -576,6 +602,12 @@ public final class JakPlayers {
                 case "Red3" -> 4;case "Dark1" -> 3;case "Dark3" -> JakWorldDamage.NUKE_POWER;case "Yellow3" -> 1.5f;default -> 0;
             };
             JakWorldDamage.explosion(p.level(),p,p,vector(e.getAsJsonArray("pos")).add(origin),power);
+            return;
+        }
+        if(kind.equals("freeze")){
+            // The Dark Blast's 'ice: Minecraft's freezing, as from powder snow, on what it struck.
+            if(p.level().getEntity(e.get("actor").getAsInt()) instanceof net.minecraft.world.entity.LivingEntity victim&&victim.canFreeze())
+                victim.setTicksFrozen(Math.max(victim.getTicksFrozen(),victim.getTicksRequiredToFreeze()+160));
             return;
         }
         if(kind.equals("ground_pound")){

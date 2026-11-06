@@ -32,7 +32,8 @@ public final class JakHud {
             }catch(java.io.IOException e){JakMod.LOG.error("Original eco HUD unavailable",e);}
         }
         int light=Math.clamp(Math.round(player.getAttachedOrCreate(JakData.LIGHT_ECO)),0,100);
-        int dark=Math.clamp(Math.round(player.getAttachedOrCreate(JakData.DARK_ECO)),0,100);
+        // Up, not round: a sliver of dark eco left still shows (and still keeps him Dark).
+        int dark=Math.clamp((int)Math.ceil(player.getAttachedOrCreate(JakData.DARK_ECO)),0,100);
         int pulse=(int)((System.nanoTime()/100_000_000L)%60);
         if(texture!=null){
             if(light!=lastLight||dark!=lastDark||pulse!=lastPulse){

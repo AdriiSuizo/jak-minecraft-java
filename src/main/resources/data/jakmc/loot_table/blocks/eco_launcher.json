@@ -6,7 +6,7 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "jakmc:skate_jump_pad"
+          "name": "jakmc:eco_launcher"
         }
       ],
       "conditions": [
@@ -16,5 +16,5 @@
       ]
     }
   ],
-  "random_sequence": "jakmc:blocks/skate_jump_pad"
+  "random_sequence": "jakmc:blocks/eco_launcher"
 }

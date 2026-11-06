@@ -46,7 +46,9 @@ def named_banks(root, decoder, clips, sounds):
     # CTYWIDE2 stream, which the decompiler's SFX export leaves out.
     for game, bank_name, prefixes in [('jak3', 'WASTOAD', ('toad_',)), ('jak3', 'WASSNAKE', ('snake_',)),
                                 ('jak3', 'WASCITY1', ('wlander_', 'was_', 'wasf_')),
-                                ('jak2', 'CTYWIDE2', ('bike_hop',))]:
+                                ('jak2', 'CTYWIDE2', ('bike_hop',)),
+                                # airlock.gc's sounds (Haven's airlock door) are Jak 2's CTYWIDE1 streams.
+                                ('jak2', 'CTYWIDE1', ('airlock_',))]:
         bank = root/f'{game}/data/iso_data/{game}/SBK/{bank_name}.SBK'
         if not bank.is_file():
             continue
