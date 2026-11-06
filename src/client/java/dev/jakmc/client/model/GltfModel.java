@@ -43,7 +43,7 @@ public final class GltfModel {
     private final Map<String,Matrix4f[]> prejoints=new HashMap<>();
     private final Map<String,Integer> namedNodes=new HashMap<>();
     private final Map<Integer,float[]> accessors=new HashMap<>();
-    private static final int[] QUAD_CORNERS={0,1,2,2};
+    private static final int[] QUAD_CORNERS={0,1,2,2},TRIANGLE_CORNERS={0,1,2};
     /** The environment pass's scratch vectors: the render thread's own, so no allocation per frame. */
     private static final Vector3f ENV_POSITION=new Vector3f(),ENV_NORMAL=new Vector3f(),ENV_VIEW=new Vector3f();
     private final Map<Posed,List<float[]>> prepared=new IdentityHashMap<>();
@@ -701,6 +701,11 @@ public final class GltfModel {
     private void submit(Posed posed,PoseStack stack,SubmitNodeCollector collector,int light,float alpha,int overlay,long shownMask,boolean dark,Vector3f[] rim,LightFormTexture.Form effect,FlutMaterial flut,boolean closedEyes){
         submit(posed,stack,collector,light,alpha,overlay,shownMask,dark,rim,effect,flut,closedEyes,surfaces);
     }
+    /**
+     * Every image of the model replaced by `png`, before its first draw: for an export whose texture came out as the
+     * common-white stand-in and whose real one is known (the water's ripples).
+     */
+    public void replaceImages(byte[] png){pendingTextures.replaceAll((id,old)->png);}
     /** Its images into Minecraft's textures, ahead of its first draw (or at it). */
     void uploadTextures(){
         if(!pendingTextures.isEmpty()){
@@ -760,16 +765,18 @@ public final class GltfModel {
             Identifier texture=eye!=null?eye:effect!=null?effect.texture():surface.skullGem?gemAtlas():rim!=null?lightTextures.get(surface.texture):
                 dark?darkTextures.getOrDefault(surface.texture,surface.texture):surface.texture;
             int gemFrame=Math.floorMod((int)Math.floor(seconds*60),60);
-            var renderType=effect!=null||additive?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?dev.jakmc.client.JakEffectTypes.lightBody(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
+            var renderType=effect!=null||additive?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?dev.jakmc.client.JakEffectTypes.lightBody(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):dev.jakmc.client.JakEffectTypes.cutoutTriangles(texture);
+            // Opaque surfaces as triangles; the translucent ones stay quads (Minecraft sorts those by quad).
+            int[] cornersOf=effect==null&&!additive&&rim==null&&!surface.skullGem&&!surface.translucent&&alpha>=1?TRIANGLE_CORNERS:QUAD_CORNERS;
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
-                var count=corners;if(count!=null)count.computeIfAbsent(fileName,_->new java.util.concurrent.atomic.LongAdder()).add(surface.indices.length/3*4);
+                var count=corners;if(count!=null)count.computeIfAbsent(fileName,_->new java.util.concurrent.atomic.LongAdder()).add(surface.indices.length/3*cornersOf.length);
                 Vector3f v=new Vector3f(),normal=new Vector3f();
                 // Each vertex moved to the camera once, then laid down for every corner that shares it (a vertex
                 // is shared by some six triangles' corners; 06/11 bench: the corner loop was most of the frame).
                 float[] cameraVertices=cameraVertices(pose,skinned,v,normal);
                 if(rim==null&&effect==null&&!surface.skullGem){
                     int[] colours=vertexColours(surface,alpha,tint,hurt);
-                    for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
+                    for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:cornersOf){
                         int i=surface.indices[triangle+corner],at=i*6;
                         buffer.addVertex(cameraVertices[at],cameraVertices[at+1],cameraVertices[at+2],colours[i],surface.uv[i*2],surface.uv[i*2+1],
                             overlay,light,cameraVertices[at+3],cameraVertices[at+4],cameraVertices[at+5]);

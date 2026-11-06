@@ -49,7 +49,20 @@ public final class WaterRippleRenderer {
     }
     private static boolean load(){
         if(model!=null||missing)return model!=null;
-        try{model=new GltfModel(RuntimeConfig.assets.resolve("levels/common").resolve(FILE),KEY,true);}
+        try{
+            model=new GltfModel(RuntimeConfig.assets.resolve("levels/common").resolve(FILE),KEY,true);
+            // The export binds common-white; the original's is level-default-sprite's "ripples" (alpha 0 to 128, 128 opaque).
+            var ripples=RuntimeConfig.assets.resolve("textures/level-default-sprite/ripples.png");
+            if(java.nio.file.Files.isRegularFile(ripples)){
+                var image=javax.imageio.ImageIO.read(ripples.toFile());
+                var full=new java.awt.image.BufferedImage(image.getWidth(),image.getHeight(),java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                for(int y=0;y<image.getHeight();y++)for(int x=0;x<image.getWidth();x++){
+                    int pixel=image.getRGB(x,y);full.setRGB(x,y,Math.min(255,(pixel>>>24)*2)<<24|pixel&0xffffff);
+                }
+                var png=new java.io.ByteArrayOutputStream();javax.imageio.ImageIO.write(full,"png",png);
+                model.replaceImages(png.toByteArray());
+            }
+        }
         catch(IOException failure){missing=true;dev.jakmc.JakMod.LOG.warn("Water ripple mesh missing",failure);}
         return model!=null;
     }

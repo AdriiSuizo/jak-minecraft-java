@@ -22,6 +22,17 @@ public final class JakEffectTypes {
   * depth as the Rust's body pass did. The translucent emissive type blended his back faces and inner
   * layers through him (Adrii 06/11: Light Jak all wrong).
   */
+ /**
+  * Minecraft's entity_cutout drawn as triangles. The models' triangles went out as quads with a corner repeated: a
+  * quarter of the vertices laid down for nothing (06/11 bench). No outline or crumbling: custom geometry gets neither.
+  */
+ private static final RenderPipeline CUTOUT_TRIANGLES=RenderPipelines.register(RenderPipeline.builder(RenderPipelines.ENTITY_SNIPPET)
+  .withLocation(JakData.id("pipeline/entity_cutout_triangles")).withShaderDefine("ALPHA_CUTOUT",0.1F).withShaderDefine("PER_FACE_LIGHTING")
+  .withBindGroupLayout(BindGroupLayouts.SAMPLER1).withCull(false).withColorTargetState(ColorTargetState.DEFAULT)
+  .withPrimitiveTopology(PrimitiveTopology.TRIANGLES).build());
+ private static final Map<Identifier,RenderType> CUTOUT_TRIANGLE_TYPES=new HashMap<>();
+ public static RenderType cutoutTriangles(Identifier texture){return CUTOUT_TRIANGLE_TYPES.computeIfAbsent(texture,k->RenderType.create("jak_entity_cutout_triangles",
+  RenderSetup.builder(CUTOUT_TRIANGLES).withTexture("Sampler0",texture).useLightmap().useOverlay().createRenderSetup()));}
  private static final RenderPipeline LIGHT_BODY=RenderPipelines.register(RenderPipeline.builder(RenderPipelines.ENTITY_EMISSIVE_SNIPPET)
   .withLocation(JakData.id("pipeline/light_body")).withShaderDefine("ALPHA_CUTOUT",0.1f)
   .withShaderDefine("NO_OVERLAY").withShaderDefine("NO_CARDINAL_LIGHTING").withColorTargetState(ColorTargetState.DEFAULT).build());

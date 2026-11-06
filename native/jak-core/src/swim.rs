@@ -662,6 +662,11 @@ impl Jak {
     }
 
     /// The ripple meshes alive: where, the root scale's x and z, and how long they have played (seconds).
+    /// Forgets his ripples (a teleport: drawn from him, they would follow him to the new place).
+    pub(crate) fn clear_ripples(&mut self) {
+        self.water_fx.ripples.clear();
+    }
+
     pub fn ripple_meshes(&self) -> Vec<(Vec3, f32, f32)> {
         self.water_fx
             .ripples

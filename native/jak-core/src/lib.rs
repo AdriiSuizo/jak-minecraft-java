@@ -861,6 +861,7 @@ impl Jak {
         self.pad_launch = false;
         self.projectiles.clear();
         self.weapons.clear();
+        self.clear_ripples();
         self.grind.ride = None;
         self.trace.peak = position.y;
         self.go(if board {

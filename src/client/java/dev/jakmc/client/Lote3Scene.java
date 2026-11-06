@@ -174,13 +174,18 @@ final class Lote3Scene {
         if(t>=168&&t<178)launcherLow=Math.min(launcherLow,feet);
         if(t==174)capture(c,"lote3-launcher.png");
         // Into water one block deep: the splash must stay on the water.
-        if(t==178){view=null;onServer(c,p->put(p,2,0,7.5,0));}
-        if(t==182){c.player.setYRot(0);onServer(c,p->JakPlayers.probeInput(p,0,0,1));look(at(8.5,3.2,7),at(2,-.2,11.5));}
-        if(t==188||t==192||t==196)capture(c,"lote3-shallow-"+t+".png");
-        if(t==200)onServer(c,p->JakPlayers.probeInput(p,0,0,0));
+        // Dropped into it from 2.5 blocks: the splash and its ripples must sit on the water's surface.
+        if(t==178){onServer(c,p->put(p,2,2.5,11.5,0));look(at(7,2.6,8),at(2,-.2,11.5));}
+        if(t==186||t==190||t==196)capture(c,"lote3-shallow-"+t+".png");
+        if(t>=178&&t<202){ripples(pose,"shallow");track(t,state,clip,feet,pose);}
         // The dive in four blocks of water: how fast he goes down, then up and out with no fall damage.
         if(t==202){view=null;onServer(c,p->{put(p,12,-.6,7,180);healthBefore=healthLow=p.getHealth();});}
-        if(t==212)onServer(c,p->JakPlayers.probeInput(p,2,2,0));
+        // Swimming on the deep pool's surface first: its ripples round him.
+        if(t==204)onServer(c,p->JakPlayers.probeInput(p,0,0,.5f));
+        if(t==205)look(at(15,2.5,9.5),at(12,-.2,6));
+        if(t>=204&&t<212){ripples(pose,"deep");track(t,state,clip,feet,pose);}
+        if(t==210)capture(c,"lote3-swim-ripples.png");
+        if(t==212){view=null;onServer(c,p->JakPlayers.probeInput(p,2,2,0));}
         if(t>=212&&t<252){diveTrack.add(Math.round(feet*100)/100.0);if(diveBottomAt<0&&feet<-3.7)diveBottomAt=(t-212)/20.0;}
         if(t==226)look(at(12,-.5,3.6),at(12,-2.5,7));
         if(t==232)capture(c,"lote3-dive.png");
@@ -258,6 +263,26 @@ final class Lote3Scene {
                 restore.run();
                 c.execute(()->{running=false;view=null;pad.close();pad=null;c.options.pauseOnLostFocus=pause;c.stop();});
             });
+        }
+    }
+    // The drop and the swim tick by tick: Jak's state, his feet, and each ripple's height over the surface.
+    private static void track(int t,String state,String clip,double feet,JakPoses.Pose pose){
+        if(!result.has("water_track"))result.add("water_track",new JsonArray());
+        var line=new StringBuilder(t+" "+state+"/"+clip+" feet "+Math.round(feet*100)/100.0);
+        if(pose!=null&&pose.raw().get("ripples") instanceof JsonArray list)for(var e:list){
+            var a=e.getAsJsonArray();line.append(" ripple ").append(Math.round((pose.position().y+a.get(1).getAsDouble()-at(0,-.11,0).y)*100)/100.0).append("@").append(Math.round(a.get(4).getAsDouble()*100)/100.0);
+        }
+        result.getAsJsonArray("water_track").add(line.toString());
+    }
+    // Each ripple's height over the water's surface (0.11 under the floor's top), and how many there were.
+    private static void ripples(JakPoses.Pose pose,String where){
+        if(pose==null||!(pose.raw().get("ripples") instanceof JsonArray list))return;
+        double surface=at(0,-.11,0).y;
+        for(var e:list){
+            var r=e.getAsJsonArray();double over=pose.position().y+r.get(1).getAsDouble()-surface;
+            result.addProperty(where+"_ripples",(result.has(where+"_ripples")?result.get(where+"_ripples").getAsInt():0)+1);
+            if(!result.has(where+"_ripple_over_max")||over>result.get(where+"_ripple_over_max").getAsDouble())result.addProperty(where+"_ripple_over_max",Math.round(over*1000)/1000.0);
+            if(!result.has(where+"_ripple_over_min")||over<result.get(where+"_ripple_over_min").getAsDouble())result.addProperty(where+"_ripple_over_min",Math.round(over*1000)/1000.0);
         }
     }
     private static JsonArray strings(java.util.Collection<String> values){var out=new JsonArray();values.forEach(out::add);return out;}
