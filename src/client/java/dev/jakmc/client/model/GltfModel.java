@@ -58,9 +58,12 @@ public final class GltfModel {
     /** merc's environment pass of a surface: its map and the base's alpha as strength. Its render type is made once. */
     private static final class EnvPass {
         final Identifier environment,strength;
-        private RenderType type;
-        EnvPass(Identifier environment,Identifier strength){this.environment=environment;this.strength=strength;}
+        /** An OPAQUE material: its alpha is only the strength, so the pass can be drawn in the base's own draw. */
+        final boolean whole;
+        private RenderType type,merged;
+        EnvPass(Identifier environment,Identifier strength,boolean whole){this.environment=environment;this.strength=strength;this.whole=whole;}
         RenderType type(){if(type==null)type=dev.jakmc.client.JakEffectTypes.envmap(environment,strength);return type;}
+        RenderType merged(){if(merged==null)merged=dev.jakmc.client.JakEffectTypes.envmapTriangles(environment,strength);return merged;}
     }
     private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,String material,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals,EnvPass envpass){}
     private record Channel(int node,String path,float[] times,float[] values,int components,boolean step){}
@@ -143,7 +146,7 @@ public final class GltfModel {
                 pendingTextures.putIfAbsent(environment,imageBytes(envSource));
                 var strength=JakData.id("local/"+key+"/alpha/"+baseSource);
                 pendingTextures.putIfAbsent(strength,imageBytes(baseSource));
-                envpass=new EnvPass(environment,strength);
+                envpass=new EnvPass(environment,strength,mode.equals("OPAQUE"));
             }
             var binding=new TextureBinding(texture,coverage);
             Identifier id=textures.get(binding);
@@ -768,6 +771,9 @@ public final class GltfModel {
             var renderType=effect!=null||additive?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?dev.jakmc.client.JakEffectTypes.lightBody(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):dev.jakmc.client.JakEffectTypes.cutoutTriangles(texture);
             // Opaque surfaces as triangles; the translucent ones stay quads (Minecraft sorts those by quad).
             int[] cornersOf=effect==null&&!additive&&rim==null&&!surface.skullGem&&!surface.translucent&&alpha>=1?TRIANGLE_CORNERS:QUAD_CORNERS;
+            // An opaque envmapped surface in its own texture (not Dark Jak's or a stand-in): base and shine in one draw.
+            boolean mergedEnv=cornersOf==TRIANGLE_CORNERS&&surface.envpass!=null&&surface.envpass.whole&&eye==null&&texture==surface.texture;
+            if(mergedEnv)renderType=surface.envpass.merged();
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
                 var count=corners;if(count!=null)count.computeIfAbsent(fileName,_->new java.util.concurrent.atomic.LongAdder()).add(surface.indices.length/3*cornersOf.length);
                 Vector3f v=new Vector3f(),normal=new Vector3f();
@@ -813,7 +819,7 @@ public final class GltfModel {
                     buffer.addVertex(v.x,v.y,v.z,hurt.tint(color),u,texV,overlay,light,normal.x,normal.y,normal.z);
                 }
             });
-            if(surface.envpass!=null&&rim==null&&effect==null&&eye==null&&alpha>=1){
+            if(!mergedEnv&&surface.envpass!=null&&rim==null&&effect==null&&eye==null&&alpha>=1){
                 // merc's environment pass (emerc), per vertex as the VU1 lays it: the sphere map of the reflected view, drawn
                 // added on, its strength the base colour's alpha. The base's own coordinates ride in the overlay slot.
                 collector.submitCustomGeometry(stack,surface.envpass.type(),(pose,buffer)->{

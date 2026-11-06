@@ -42,6 +42,11 @@ layout(location = 7) in vec2 texCoordGlint;
 #endif
 layout(location = 8) in vec3 jakSurface;
 layout(location = 9) in float jakWorld;
+#ifdef JAK_ENVMAP
+// The environment map (jak_envmap.fsh's Sampler0); Sampler0 here is the base unmapped, its alpha the strength.
+uniform sampler2D Sampler3;
+layout(location = 10) in vec2 jakEnvCoord;
+#endif
 
 #ifndef OIT_ALPHA_ONLY
 layout(location = 0) out vec4 fragColor;
@@ -85,6 +90,10 @@ void main() {
         discard;
     }
     vec4 color = texture(Sampler0, texCoord0);
+    #ifdef JAK_ENVMAP
+    // jak_envmap.fsh: the map's colour twice over by the base's alpha (128 one), unlit, added after the fog.
+    vec3 jakShine = texture(Sampler3, jakEnvCoord).rgb * color.a * 2.0;
+    #endif
 
     #ifdef OIT_ADDITIVE
     color.a = min(0.99, color.a);
@@ -120,5 +129,8 @@ void main() {
     executeAlphaOnlyPhase(gl_FragCoord.z, color.a);
     #else
     fragColor = calculateFinalColor(color);
+    #ifdef JAK_ENVMAP
+    fragColor.rgb += jakShine * (1.0 - total_fog_value(sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd));
+    #endif
     #endif
 }

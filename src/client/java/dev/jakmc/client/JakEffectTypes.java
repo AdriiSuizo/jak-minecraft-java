@@ -33,6 +33,18 @@ public final class JakEffectTypes {
  private static final Map<Identifier,RenderType> CUTOUT_TRIANGLE_TYPES=new HashMap<>();
  public static RenderType cutoutTriangles(Identifier texture){return CUTOUT_TRIANGLE_TYPES.computeIfAbsent(texture,k->RenderType.create("jak_entity_cutout_triangles",
   RenderSetup.builder(CUTOUT_TRIANGLES).withTexture("Sampler0",texture).useLightmap().useOverlay().createRenderSetup()));}
+ /**
+  * The triangle cutout with merc's environment pass in it (jak_envmap's shine added after the fog, entity.fsh JAK_ENVMAP),
+  * for opaque materials: their base alpha is no cover, only the strength, so Sampler0 is the base unmapped and nothing is
+  * cut. The environment map rides in Sampler3. One draw instead of the base and the added pass (06/11 bench).
+  */
+ private static final BindGroupLayout SAMPLER3=BindGroupLayout.builder().withUniform("Sampler3",UniformType.COMBINED_IMAGE_SAMPLER).build();
+ private static final RenderPipeline ENVMAP_TRIANGLES=RenderPipelines.register(RenderPipeline.builder(RenderPipelines.ENTITY_SNIPPET)
+  .withLocation(JakData.id("pipeline/entity_envmap_triangles")).withShaderDefine("PER_FACE_LIGHTING").withShaderDefine("JAK_ENVMAP")
+  .withBindGroupLayout(BindGroupLayouts.SAMPLER1).withBindGroupLayout(SAMPLER3).withCull(false).withColorTargetState(ColorTargetState.DEFAULT)
+  .withPrimitiveTopology(PrimitiveTopology.TRIANGLES).build());
+ public static RenderType envmapTriangles(Identifier environment,Identifier strength){return TYPES.computeIfAbsent(environment+"/"+strength+"/envmap-triangles",k->RenderType.create("jak_entity_envmap_triangles",
+  RenderSetup.builder(ENVMAP_TRIANGLES).withTexture("Sampler0",strength).withTexture("Sampler3",environment).useLightmap().useOverlay().createRenderSetup()));}
  private static final RenderPipeline LIGHT_BODY=RenderPipelines.register(RenderPipeline.builder(RenderPipelines.ENTITY_EMISSIVE_SNIPPET)
   .withLocation(JakData.id("pipeline/light_body")).withShaderDefine("ALPHA_CUTOUT",0.1f)
   .withShaderDefine("NO_OVERLAY").withShaderDefine("NO_CARDINAL_LIGHTING").withColorTargetState(ColorTargetState.DEFAULT).build());

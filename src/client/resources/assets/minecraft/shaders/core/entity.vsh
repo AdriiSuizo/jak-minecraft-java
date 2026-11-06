@@ -50,6 +50,10 @@ layout(location = 7) out vec2 texCoordGlint;
 // perspective (world) view, 0 in the GUI's orthographic one.
 layout(location = 8) out vec3 jakSurface;
 layout(location = 9) out float jakWorld;
+#ifdef JAK_ENVMAP
+// merc's environment pass in the same draw: the sphere map of the reflected view (GltfModel's env pass, per vertex).
+layout(location = 10) out vec2 jakEnvCoord;
+#endif
 
 void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
@@ -78,6 +82,13 @@ void main() {
 #endif
 
     texCoord0 = UV0;
+
+#ifdef JAK_ENVMAP
+    vec3 jakView = normalize(Position), jakNormal = length(Normal) > 0.0 ? normalize(Normal) : Normal;
+    vec3 jakReflect = jakView - 2.0 * dot(jakView, jakNormal) * jakNormal;
+    float jakM = 2.0 * sqrt(jakReflect.x * jakReflect.x + jakReflect.z * jakReflect.z + (jakReflect.y + 1.0) * (jakReflect.y + 1.0));
+    jakEnvCoord = jakM > 0.0 ? jakReflect.xz / jakM + 0.5 : vec2(0.5);
+#endif
 
 #ifdef APPLY_TEXTURE_MATRIX
     texCoord0 = (TextureMat * vec4(UV0, 0.0, 1.0)).xy;
