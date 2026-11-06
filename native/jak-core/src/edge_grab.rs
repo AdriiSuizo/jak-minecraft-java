@@ -110,7 +110,7 @@ impl Jak {
         }
         let mut cache = CollideCache::default();
         cache.fill_box(&mut Held(&tris), lo, hi);
-        let query = Query { tris: &tris, cache: &cache, trans: feet, hands, scale: s, min_height: self.edge_grab_min_height };
+        let query = Query { tris: &tris, cache: &cache, trans: feet, hands, scale: s, min_height: self.edge_grab_min_height, room: self.climb_room() };
         let edges = Edges::build(&query);
         // With the stick pushed, that way first; then the way he faces.
         let stick = (self.pad.stick0_speed != 0.0).then(|| self.pad_dir_world()).filter(|dir| *dir != Vec3::ZERO);
@@ -144,15 +144,22 @@ impl Jak {
         world.fill(lo, hi, &mut tris);
         let mut cache = CollideCache::default();
         cache.fill_box(&mut Held(&tris), lo, hi);
-        let query = Query { tris: &tris, cache: &cache, trans: feet, hands, scale: s, min_height: self.edge_grab_min_height };
+        let query = Query { tris: &tris, cache: &cache, trans: feet, hands, scale: s, min_height: self.edge_grab_min_height, room: self.climb_room() };
         let edges = Edges::build(&query);
         let found = edges.best(heading);
+        let block = 6400.0;
+        let local = (hands - feet) / block;
         format!(
-            "{} triangles, {} tops in reach, descending {}, found {:?}",
+            "{} triangles, {} tops in reach, descending {}, found {:?}, caught {:?}, hands over feet {:.2},{:.2},{:.2} ({})",
             tris.len(),
             edges.tris,
             self.control.transv.y < 0.0,
-            found.map(|g| (g.center.y, g.outward))
+            found.map(|g| (g.center.y / block, g.outward)),
+            self.find_ledge(world).map(|l| l.top / block),
+            local.x,
+            local.y,
+            local.z,
+            if self.hold.is_some() { "pose" } else { "stand-in" }
         )
     }
 
@@ -162,13 +169,21 @@ impl Jak {
     fn ledge_clear(&self, world: &mut dyn CollideWorld, ledge: &Ledge, leap: bool) -> bool {
         let s = self.body_size();
         let center = Vec3::new(ledge.wall.x, ledge.top, ledge.wall.z);
-        let spheres = edge_search::spheres(center, ledge.normal, s, leap);
+        let room = self.climb_room();
+        let spheres = edge_search::spheres(center, ledge.normal, s, leap, room);
         let lo = spheres.iter().fold(Vec3::splat(f32::MAX), |lo, &(at, r)| lo.min(at - Vec3::splat(r)));
         let hi = spheres.iter().fold(Vec3::splat(f32::MIN), |hi, &(at, r)| hi.max(at + Vec3::splat(r)));
         let mut cache = CollideCache::default();
         cache.fill_box(world, lo, hi);
         let limit = edge_search::floor_limit(ledge.top, self.edge_grab_min_height);
-        edge_search::body_clear(&cache, center, ledge.normal, s, !leap, leap, limit)
+        edge_search::body_clear(&cache, center, ledge.normal, s, !leap, leap, limit, room)
+    }
+
+    /// stand-in (Adrii 06/11): the room over a ledge for the climb is the original's leap-up spheres (2.36 blocks
+    /// at the host's size), but no higher than his body stands in the host: a tree's canopy two blocks over its
+    /// trunk refused him a top a Minecraft player stands on. Without a host body, the original's.
+    fn climb_room(&self) -> f32 {
+        if self.drawn_size.is_some() { self.control.standing_heights[2] + self.control.body_radius } else { f32::INFINITY }
     }
 
     /// Hanging from `ledge` at once (a host's test).
@@ -655,6 +670,26 @@ mod ledge_search {
             // Room enough: caught.
             let mut blocks = world(wall(0..=1, 3), true, &[([-3.0, 6.5, 3.0], [4.0, 7.0, 8.0])]);
             assert!(column_top(falling(1.0, feet, scale).find_ledge(&mut blocks)));
+        }
+    }
+
+    /// A tree's trunk under its canopy (Adrii 06/11, an acacia of five logs with its leaves two blocks over the top):
+    /// caught, since he stands in two blocks; with the leaves one block over, not.
+    #[test]
+    fn a_canopy_two_blocks_over_a_trunk_leaves_room_to_climb() {
+        let floor = |x: i32, y: i32, z: i32| y == -1 && (-6..=6).contains(&x) && (-6..=7).contains(&z);
+        for scale in SCALES {
+            let feet = feet_for(4.0, scale);
+            for (over, caught) in [(2, true), (1, false)] {
+                let solid = move |x: i32, y: i32, z: i32| floor(x, y, z) || (x == 0 && z == 4 && (0..4).contains(&y)) || (y == 4 + over && (x - 1).abs() + (z - 5).abs() <= 3);
+                let mut blocks = world(solid, true, &[]);
+                let jak = falling(0.5, feet, scale);
+                let ledge = jak.find_ledge(&mut blocks);
+                assert_eq!(ledge.is_some(), caught, "scale {scale}, leaves {over} over: {}", jak.ledge_why(&mut blocks));
+                if let Some(ledge) = ledge {
+                    assert!(jak.ledge_clear(&mut blocks, &ledge, false) && jak.ledge_clear(&mut blocks, &ledge, true));
+                }
+            }
         }
     }
 

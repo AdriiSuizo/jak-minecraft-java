@@ -62,11 +62,13 @@ pub(crate) const SPHERES: [[f32; 3]; 12] = [
 
 /// Where the six spheres hanging (`leap` false) or climbing (true) lie for a hold at `center` with `outward` (flat,
 /// unit) pointing away from the wall: `transform-vectors!` by the hanging matrix (outward, up, along the edge).
-pub(crate) fn spheres(center: Vec3, outward: Vec3, scale: f32, leap: bool) -> [(Vec3, f32); 6] {
+/// The climb's reach no higher over the edge than `room` (see [`Query::room`]).
+pub(crate) fn spheres(center: Vec3, outward: Vec3, scale: f32, leap: bool, room: f32) -> [(Vec3, f32); 6] {
     let from = if leap { 6 } else { 0 };
     std::array::from_fn(|i| {
         let [out, up, radius] = SPHERES[from + i];
-        (center + outward * (out * scale) + Vec3::Y * (up * scale), radius * scale)
+        let up = if leap { (up * scale).min(room - radius * scale) } else { up * scale };
+        (center + outward * (out * scale) + Vec3::Y * up, radius * scale)
     })
 }
 
@@ -91,6 +93,9 @@ pub(crate) struct Query<'a> {
     pub scale: f32,
     /// How high a ledge must be over the ground below for the host (two blocks of wall are to be hung from).
     pub min_height: f32,
+    /// stand-in: how much room over the edge the climb needs at most (his body's height in the host; infinite, the
+    /// original's spheres, without one).
+    pub room: f32,
 }
 
 /// Floor this far under a hold is the ground the wall stands on, which his legs' spheres reach for a ledge only
@@ -291,7 +296,7 @@ impl<'a> Edges<'a> {
             }
         }
         let limit = floor_limit(item.center.y, self.q.min_height);
-        if !body_clear(self.q.cache, item.center, edge.outward, s, true, true, limit) {
+        if !body_clear(self.q.cache, item.center, edge.outward, s, true, true, limit, self.q.room) {
             return None;
         }
         Some(Grab { center: item.center, outward: edge.outward })
@@ -380,13 +385,14 @@ pub(crate) fn body_clear(
     hanging: bool,
     leap: bool,
     floor_limit: f32,
+    room: f32,
 ) -> bool {
     let keep = |v: &[Vec3; 3], normal: Vec3| !(normal.y >= MIN_NORMAL_Y && v[0].y.max(v[1].y).max(v[2].y) <= floor_limit);
     for (wanted, set) in [(hanging, false), (leap, true)] {
         if !wanted {
             continue;
         }
-        if spheres(center, outward, scale, set).iter().any(|&(at, radius)| cache.overlaps_sphere_where(at, radius, keep)) {
+        if spheres(center, outward, scale, set, room).iter().any(|&(at, radius)| cache.overlaps_sphere_where(at, radius, keep)) {
             return false;
         }
     }

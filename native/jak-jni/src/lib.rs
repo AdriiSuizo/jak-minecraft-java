@@ -577,7 +577,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    let forward=q*Vec3::Z;
    json!({"pos":pos(at),"yaw":(-forward.x).atan2(forward.z).to_degrees()})
   });
-  let ledge_why=if *LEDGE_TRACE && matches!(s.jak.state,jak_core::State::Jump{..}|jak_core::State::Falling{..}){s.jak.ledge_why(&mut s.world)}else{String::new()};
+  let ledge_why=if *LEDGE_TRACE && matches!(s.jak.state,jak_core::State::Jump{..}|jak_core::State::DoubleJump{..}|jak_core::State::Falling{..}){s.jak.ledge_why(&mut s.world)}else{String::new()};
   let j=&s.jak;
   let ladder_cycle=j.chan.is_any(&[jak_core::anim::LADDER_UP,jak_core::anim::LADDER_DOWN]);
   let frame_period=if ladder_cycle||matches!(j.chan.func,jak_core::anim::NumFunc::Loop{..}) {
