@@ -204,6 +204,18 @@ impl CollideCache {
             .is_some()
     }
 
+    /// Whether a sphere at rest touches a cached triangle `keep` takes (given its vertices and its face
+    /// normal): `probe-using-spheres` over the part of the cache that counts.
+    pub fn overlaps_sphere_where(&self, center: Vec3, radius: f32, keep: impl Fn(&[Vec3; 3], Vec3) -> bool) -> bool {
+        let lo = center - Vec3::splat(radius);
+        let hi = center + Vec3::splat(radius);
+        self.tris.iter().any(|t| {
+            !(t.max.cmplt(lo).any() || t.min.cmpgt(hi).any())
+                && keep(&t.v, t.normal)
+                && moving_sphere_triangle(center, radius, Vec3::ZERO, t).is_some()
+        })
+    }
+
     /// Camera floor/ceiling protection: walls must not conceal a slab hit farther
     /// along the same sweep when the walls are visually cut away.
     pub fn probe_walkable_sphere(&self, start: Vec3, motion: Vec3, radius: f32) -> Option<TriHit> {

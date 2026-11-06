@@ -26,6 +26,15 @@ public final class NativeJak {
     public static native int configure(String originalExportRoot);
     public static native String animationMetadata(String originalExportRoot,String model,boolean jak1);
     public static native String ridingAnimations();
+    /** How long Jak's get-on animations run (seconds) and how many artist frames a second they count: target-pilot-get-on. */
+    public static native String pilotTimings();
+    /** target-pilot-get-off: this Jak, let off a vehicle, takes the original exit with the vehicle's velocity (blocks a second). */
+    public static native void pilotExit(long session,boolean bike,float vx,float vy,float vz);
+    /**
+     * vehicle-method-78 of a zoomer: its engine particles for {@code count} 60 Hz frames of 19 floats each (see hover_host.rs).
+     * Returns the sounds the frames ask for: 1 "damage-zaps", 2 "damage-pops".
+     */
+    public static native int fxVehicle(long session,int model,float[] records,int count);
     public static native String ladderAnimations();
     public static native String iceAnimations();
     public static native boolean mountReady();

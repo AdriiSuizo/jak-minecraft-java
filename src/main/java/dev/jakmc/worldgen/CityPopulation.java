@@ -34,13 +34,13 @@ import net.minecraft.world.phys.Vec3;
 public final class CityPopulation {
  static final double PEOPLED=150,EMPTIED=220;
  private static final Map<ResourceKey<Level>,Set<BlockPos>> PEOPLED_TOWNS=new HashMap<>();
- private static final Map<String,CityBlueprint> PLANS=new HashMap<>();
  /** The peopled Havens, for their garrison. */
  private record Town(String city,BlockPos origin,int turns,BoundingBox bounds){}
  private static final Map<ResourceKey<Level>,Map<BlockPos,Town>> TOWNS=new HashMap<>();
  /** stand-in (Adrii 06/11): a guard to each beat, up to this many; Rust kept 8 (jak_entities.rs). */
  static final int GARRISON=48;
- private static synchronized CityBlueprint plan(String city){return PLANS.computeIfAbsent(city,CityBlueprint::read);}
+ /** Null while the plan is still being read (off this thread); the town is tried again later. */
+ private static CityBlueprint plan(String city){return CityBlueprint.ready(city);}
  private CityPopulation(){}
 
  /** Rust: jak2_villagers.rs population (once per town: 7 to 10, an expanded town's 28 to 44; Spargus 6). */
@@ -107,6 +107,7 @@ public final class CityPopulation {
   var bounds=start.getBoundingBox();
   if(!loaded(level,bounds))return false;
   var plan=plan(city);
+  if(plan==null)return false;
   var box=AABB.of(bounds);
   boolean spargus=city.equals("spargus");
   // Rust: walking.min(housing::capacity), a resident to a bed.
@@ -158,6 +159,7 @@ public final class CityPopulation {
  private static void garrison(ServerLevel level,Town town){
   if(!level.isBrightOutside()||!loaded(level,town.bounds))return;
   var plan=plan(town.city);
+  if(plan==null)return;
   var box=AABB.of(town.bounds).inflate(0,24,0);
   var guards=level.getEntitiesOfClass(JakEnemy.class,box,e->e.isAlive()&&e.kind.guard());
   if(guards.size()>=Math.min(GARRISON,plan.patrols.size()))return;

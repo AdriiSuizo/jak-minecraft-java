@@ -16,6 +16,8 @@ pub struct BodyJoints {
     flut_main: Vec<Vec3>,
     fingers: Option<(usize,usize)>,
     crown: Option<usize>,
+    /// `Rtoes` and `Ltoes`, for the wade's steps.
+    toes: Option<(usize,usize)>,
 }
 
 impl BodyJoints {
@@ -86,14 +88,17 @@ impl BodyJoints {
         let fingers=index("lindA").zip(index("rindA"));
         // The top of his head (render_anim `Animator::crown`), for the water to float him by.
         let crown=index("MhairB").or_else(||index("neckB"));
-        Ok(Self { joints, clips, flut_main, fingers, crown })
+        let toes=index("Rtoes").zip(index("Ltoes"));
+        Ok(Self { joints, clips, flut_main, fingers, crown, toes })
     }
 
     pub fn sample(&self, jak: &mut jak_core::Jak, rotations: &mut Vec<Quat>) {
         jak.joints.resize(self.joints.len(), Vec3::ZERO);
         rotations.resize(self.joints.len(), Quat::IDENTITY);
-        let frames = self.clips.get(jak.chan.anim.name()).map(Vec::as_slice);
-        let frame = jak.chan.frame.max(0.0);
+        // The wade walk is its own cycle (`Jak::pose_anim`), else the base channel.
+        let (anim, frame) = jak.pose_anim();
+        let frames = self.clips.get(anim.name()).map(Vec::as_slice);
+        let frame = frame.max(0.0);
         let samples = frames.map(|frames| {
             let lo = (frame as usize).min(frames.len()-1);
             let hi = (lo+1).min(frames.len()-1);
@@ -126,5 +131,6 @@ impl BodyJoints {
         // Jak 3 center-hold, as used by render_anim::jak_pose::Animator::hold in the Rust port.
         jak.hold=self.fingers.map(|(left,right)|(jak.joints[left]+jak.joints[right])*0.5);
         jak.crown=self.crown.map(|crown|jak.joints[crown]);
+        jak.toe_joints=self.toes;
     }
 }

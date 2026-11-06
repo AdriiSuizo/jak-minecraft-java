@@ -71,7 +71,8 @@ final class VehicleEffects {
         }
         boolean engine=car.getFirstPassenger()!=null;
         float thrust=frame.get("throttle").getAsFloat();
-        for(int sub=0;sub<3;sub++){
+        // The hovers' engine particles are ZoomerEngineFx's, launched every 60 Hz frame at the pose drawn.
+        for(int sub=0;sub<(car.model.hover()?0:3);sub++){
             for(var entry:frame.getAsJsonArray("emitters")){
                 var emitter=entry.getAsJsonArray();
                 var overrides=Map.of("num",emitter.get(2).getAsFloat(),"alpha",new int[]{32,32},"scale",new int[]{8192,8192});

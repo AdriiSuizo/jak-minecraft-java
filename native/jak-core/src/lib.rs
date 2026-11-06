@@ -19,6 +19,8 @@ pub mod eco_blast;
 pub mod lightning_bolt;
 pub mod eco_power;
 pub mod edge_grab;
+pub(crate) mod edge_search;
+pub mod light_trail;
 pub mod flut_swim;
 pub mod flut;
 mod foot_code;
@@ -30,9 +32,11 @@ pub mod hurt;
 pub mod lightjak;
 pub mod math;
 pub mod pad;
+pub mod pilot;
 pub mod particles;
 pub mod projectile;
 pub mod reframe;
+pub mod roll;
 pub mod surface;
 pub mod step;
 pub mod ladder;
@@ -623,6 +627,9 @@ pub struct Jak {
     /// Jak's joints in his own frame as last posed (units), from the host
     /// when his model is there; the blows that strike from a hand use them.
     pub joints: Vec<Vec3>,
+    /// Which of [`Self::joints`] are his right and left toes (`Rtoes`, `Ltoes`), from the host with them: the wade's
+    /// steps splash from them ([`swim`]).
+    pub toe_joints: Option<(usize, usize)>,
     /// Between the bases of his index fingers in his own frame as last
     /// posed (units, at his own size), from the host: what hangs on a
     /// ledge ([`edge_grab`]).
@@ -645,6 +652,8 @@ pub struct Jak {
     /// (radians, head forward): level as he swims along, half down as he
     /// dives ahead.
     pub swim_tilt: f32,
+    /// What the water has seen of him, for the effects it launches ([`swim`]).
+    pub(crate) water_fx: swim::WaterFx,
     /// Until when he is being thrown (by lava): the stick does not steer
     /// him meanwhile (ticks).
     hurled_until: i64,
@@ -692,6 +701,8 @@ pub struct Jak {
     /// climbed (1 as he rises, easing off).
     pub(crate) step_lean: f32,
     edge_grab_off_time: i64,
+    /// When his hands were last put on the edge he hangs from (`last-successful-compute-edge-time`, ticks).
+    edge_grab_hold_time: i64,
     /// In the air, something right under his feet (for the "stuck counts
     /// as landed" rule: wedged on a block's edge beside a wall is not).
     pub(crate) support_below: bool,
@@ -766,6 +777,7 @@ impl Jak {
             water: None,
             swim: None,
             swim_tilt: 0.0,
+            water_fx: swim::WaterFx::default(),
             hurled_until: 0,
             invulnerable_until: 0,
             hit_alt: false,
@@ -783,9 +795,11 @@ impl Jak {
             foot_smooth_step: None,
             step_lean: 0.0,
             edge_grab_off_time: i64::MIN / 4,
+            edge_grab_hold_time: i64::MIN / 4,
             support_below: true,
             board_carried: true,
             hold: None,
+            toe_joints: None,
             crown: None,
             wade: None,
             size: 1.0,

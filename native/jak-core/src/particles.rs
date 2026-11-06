@@ -18,6 +18,7 @@ use glam::{Mat3, Quat, Vec3};
 mod callbacks;
 pub mod journal;
 pub mod vehicle_lights;
+pub mod vehicle_effects;
 pub mod wcars;
 mod lightning;
 use callbacks::{CurveState, Curves, TextureSequence};
@@ -630,6 +631,8 @@ pub struct Particles {
     next_id: u64,
     next_launch: u64,
     step_carry: f64,
+    /// The light trails being tracked ([`crate::light_trail`]), the water's wake.
+    trails: Vec<crate::light_trail::Trail>,
 }
 
 impl Particles {
@@ -666,6 +669,9 @@ impl Particles {
         for bolt in &mut self.bolts {
             bolt.reframe(frame);
         }
+        for trail in &mut self.trails {
+            trail.reframe(frame);
+        }
     }
 
     pub fn new(library: Arc<Library>) -> Self {
@@ -692,6 +698,7 @@ impl Particles {
             next_id: 0,
             next_launch: 0,
             step_carry: 0.0,
+            trails: Vec::new(),
         }
     }
 
@@ -935,7 +942,7 @@ impl Particles {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.live.is_empty()
+        self.live.is_empty() && self.trails.is_empty()
     }
 
     /// Advances `dt` seconds: launches, then moves, fades and retires.
@@ -951,6 +958,13 @@ impl Particles {
     }
 
     fn step_frame(&mut self, dt: f32) {
+        // Each tracked trail's `common-trans!` (after the tracker's crumb for the frame), and its end once it is nearly
+        // gone (`die`).
+        let ticks = (dt * 300.0).round() as i64;
+        for trail in &mut self.trails {
+            trail.common_trans(ticks);
+        }
+        self.trails.retain(|trail| !(trail.ending && trail.crumbs() <= 1));
         let frames = dt * 60.0;
         let ticks = dt * TICKS_PER_SECOND;
         let library = self.library.clone();
@@ -1435,6 +1449,18 @@ impl Particles {
     /// Part `part`'s field `field` set from outside for its launches from
     /// now on (`(set! (-> *part-id-table* N init-specs I initial-valuef)
     /// ...)`, as Light Jak's heal does), or back to its own with None.
+    /// An init-spec's `random-rangef` set from outside (`(set! (-> *part-id-table* 758 init-specs 2 random-rangef) ...)`):
+    /// the part's authored base stays; none puts the authored range back.
+    fn set_part_range_original(&mut self, part: u32, field: &str, range: Option<f32>) {
+        let Some(field) = Field::parse(field) else { return };
+        self.ranges.retain(|(p, f, _, _)| !(*p == part && *f == field));
+        let Some(range) = range else { return };
+        let authored = self.library.parts.get(&part).and_then(|p| p.fields.iter().rev().find(|(f, _)| *f == field)).map(|(_, v)| *v);
+        if let Some(Value::Range(base, _)) = authored {
+            self.ranges.push((part, field, base, range));
+        }
+    }
+
     fn set_part_value_original(&mut self, part: u32, field: &str, value: Option<f32>) {
         let Some(field) = Field::parse(field) else { return };
         self.overrides.retain(|(p, f, _)| !(*p == part && *f == field));
@@ -1671,6 +1697,11 @@ impl Particles {
     /// The `lightning-spec` bolts out this frame, drawn as `lightning-draw`
     /// draws them: two strips each, facing the camera (none before the host
     /// has told the camera, [`Self::set_view`]).
+    /// The light trails' ribbons (`build-prim-strip!`), each a triangle strip.
+    pub fn trail_strips(&self) -> Vec<crate::lightning_bolt::Strip> {
+        self.trails.iter().map(crate::light_trail::Trail::strip).filter(|strip| !strip.verts.is_empty()).collect()
+    }
+
     pub fn lightning_strips(&self) -> Vec<crate::lightning_bolt::Strip> {
         let Some((forward, up, _)) = self.view else {
             return Vec::new();
@@ -2190,10 +2221,10 @@ fn group_for(event: &crate::Event, kind: crate::GunKind) -> Vec<(&'static str, V
             K::Yellow3 => vec![("group-gun-yellow-saucer-fizz", *center, Mat3::IDENTITY)],
             _ => Vec::new(),
         },
-        // Into the water and out of it (`water-part.gc`).
+        // Into the water and out of it (`water-part.gc`), `spawn-ripples` setting it 40.96 over the surface.
         Event::Splash { pos, speed } => vec![(
             if *speed >= 0.0 { "group-part-water-splash" } else { "group-part-water-splash-small" },
-            *pos,
+            *pos + Vec3::Y * crate::swim::SURFACE_LIFT,
             Mat3::IDENTITY,
         )],
         _ => Vec::new(),
@@ -2252,6 +2283,14 @@ impl crate::Jak {
     pub(crate) fn gun_particles(&mut self, first_event: usize) {
         self.ambient_particles();
         let kind = self.gun.kind;
+        // His splashes (into the water and out of it): the splash group and the ripple mesh (`spawn-ripples`).
+        let splashes: Vec<(Vec3, f32)> = self.events[first_event.min(self.events.len())..]
+            .iter()
+            .filter_map(|event| if let crate::Event::Splash { pos, speed } = event { Some((*pos, *speed)) } else { None })
+            .collect();
+        for (pos, speed) in splashes {
+            self.splash_event(pos, speed);
+        }
         let Some(particles) = self.particles.as_mut() else {
             return;
         };
@@ -2259,10 +2298,8 @@ impl crate::Jak {
         particles.set_target(self.control.trans, self.gun.fire_point);
         particles.set_target_ground(self.control.ground_touch_point.y);
         for event in &self.events[first_event.min(self.events.len())..] {
-            if let crate::Event::Splash{pos,..}=event {
-                let depth=self.control.height_above_ground();
-                let intensity=0.3+0.7*((depth-0.5*METER)/(5.5*METER)).clamp(0.0,1.0);
-                let _=particles.configure_tracker("part-water-splash-callback",intensity,*pos);
+            if matches!(event, crate::Event::Splash { .. }) {
+                continue;
             }
             for (group, pos, basis) in group_for(event, kind) {
                 particles.spawn(
@@ -2402,12 +2439,13 @@ impl crate::Jak {
     /// blue swirl under it while he crouches to charge a jump
     /// (`group-target-board-duck-charge`: the flat `laser-hit2` 669, turned
     /// at random and shrinking), riding on the ground its blue glow and
-    /// streaks under it (672, 673), and on the water the
-    /// wake and the spray (`water-control`: the flat wake 762, denser the
-    /// faster he goes, the ripple 758 when slow, the drops 756).
+    /// streaks under it (672, 673), and in the water its wake, ripples and
+    /// drops ([`Jak::water_particles`]).
     fn ambient_particles(&mut self) {
         /// Light Jak's followed effects' tags, clear of the others'.
         const LIGHT_FX_TAGS: u64 = 0x4c4a_0000_0000;
+        // The water's own: its splash, his wake and ripples, the drops (`water-control`).
+        self.water_particles();
         if let Some(particles)=self.particles.as_mut() {
             particles.set_target_orientation(self.control.local_normal,self.control.y_angle());
         }
@@ -2415,7 +2453,6 @@ impl crate::Jak {
         let heading = crate::math::z_axis(self.control.quat);
         let flat = Vec3::new(heading.x, 0.0, heading.z).try_normalize().unwrap_or(Vec3::Z);
         let level = Mat3::from_cols(Vec3::Y.cross(flat), Vec3::Y, flat);
-        let speed = Vec3::new(self.control.transv.x, 0.0, self.control.transv.z).length();
         let charging = self.state.is_board() && self.board.charge_progress != 0.0;
         // Grinding, the sparks off the rail (`target-board-ride-edge`: part
         // 670 a metre back along the way he goes, its `num` from 0.1 to 2 as
@@ -2428,9 +2465,6 @@ impl crate::Jak {
                 let top = 0.3 * self.control.mod_surface.transv_max.max(METER);
                 (pos - v / speed * METER, 0.1 + 1.9 * (speed / top).min(1.0))
             });
-        let surface = self
-            .water
-            .filter(|&surface| (pos.y - surface).abs() < 0.6 * METER && !self.swim.is_some_and(|s| s.diving));
         // The shield's opening: Light Jak's sparkles rising round him
         // (`group-lightjak-shield-start`, on his joint 3).
         let shield_opened = self.lightjak.shield && !self.lightjak.shield_was;
@@ -2514,17 +2548,6 @@ impl crate::Jak {
             // The authored Y offset is already 0.25 m; do not add it twice.
             particles.launch(672,pos,board);
             particles.launch(673, pos, Mat3::IDENTITY);
-        }
-        if let Some(surface) = surface {
-            let at = Vec3::new(pos.x, surface + 40.96, pos.z);
-            // `num` set from the speed (part 762's own is 0.05 to 0.45).
-            particles.launch_flat(762, at, level, (speed * 0.000_004_15 + 0.2) / 0.25);
-            if speed < METER {
-                particles.launch_flat(758, at, level, 1.0);
-            }
-            if speed > 0.5 * METER {
-                particles.launch(756, at, Mat3::IDENTITY);
-            }
         }
     }
 
@@ -3098,6 +3121,13 @@ impl Particles {
  pub fn launch_blade(&mut self,id:u32,from:Vec3,dir:Vec3,normal:Vec3,length:f32,width:f32){self.record(journal::Command::Blade(id,from,dir,normal,length,width),|p|p.launch_blade_original(id,from,dir,normal,length,width))}
  pub fn launch_flat(&mut self,id:u32,pos:Vec3,basis:Mat3,count:f32){self.record(journal::Command::Flat(id,pos,basis,count),|p|p.launch_flat_original(id,pos,basis,count))}
  pub fn launch_scaled(&mut self,id:u32,pos:Vec3,basis:Mat3,scale:f32){self.record(journal::Command::Scaled(id,pos,basis,scale),|p|p.launch_scaled_original(id,pos,basis,scale))}
+ pub fn trail_crumb(&mut self,id:u64,pos:Vec3){self.record(journal::Command::TrailCrumb(id,pos),|p|{
+  // `water-control-method-17` spawns the tracker; its trail holds a quarter of the max age's ticks in crumbs.
+  if !p.trails.iter().any(|t|t.id==id){let appearance=crate::light_trail::WATER_WAKE;let max=(0.25*appearance.max_age as f32) as usize;p.trails.push(crate::light_trail::Trail::new(id,appearance,max,0));}
+  if let Some(trail)=p.trails.iter_mut().find(|t|t.id==id){if !trail.ending{trail.add_crumb(pos,5);}}
+ })}
+ pub fn trail_end(&mut self,id:u64){self.record(journal::Command::TrailEnd(id),|p|{if let Some(trail)=p.trails.iter_mut().find(|t|t.id==id){trail.ending=true;}})}
+ pub fn set_part_range(&mut self,part:u32,field:&str,range:Option<f32>){self.record(journal::Command::Range(part,field.to_owned(),range),|p|p.set_part_range_original(part,field,range))}
  pub fn set_part_value(&mut self,part:u32,field:&str,value:Option<f32>){self.record(journal::Command::Value(part,field.to_owned(),value),|p|p.set_part_value_original(part,field,value))}
  pub fn configure_tracker(&mut self,name:&str,userdata:f32,root:Vec3)->Result<(),String>{self.record(journal::Command::Tracker(name.to_owned(),userdata,root),|p|p.configure_tracker_original(name,userdata,root))}
  pub fn set_sources(&mut self,sources:impl IntoIterator<Item=(u64,Vec3)>){let sources:Vec<_>=sources.into_iter().collect();self.record(journal::Command::Sources(sources.clone()),|p|p.set_sources_original(sources));}

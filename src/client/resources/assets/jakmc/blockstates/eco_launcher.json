@@ -1,7 +1,9 @@
 {
-  "variants": {
-    "": {
-      "model": "jakmc:block/eco_vent"
+  "multipart": [
+    {
+      "apply": {
+        "model": "jakmc:block/eco_vent"
+      }
     }
-  }
+  ]
 }

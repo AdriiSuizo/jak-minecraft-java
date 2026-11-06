@@ -39,7 +39,7 @@ impl Jak {
             State::DuckHighJumpJump { kind, .. } => self.duck_high_jump_jump_code(kind),
             State::Falling { uppercut } => self.falling_code_foot(uppercut),
             State::EdgeGrab => self.edge_grab_code(),
-            State::EdgeGrabJump => self.edge_grab_jump_code(),
+            State::EdgeGrabJump => self.edge_grab_jump_code(world),
             State::EdgeGrabOff => self.edge_grab_off_code(),
             State::HitGround { .. } => self.hit_ground_code_foot(),
             State::Attack => self.attack_code(),
@@ -72,12 +72,18 @@ impl Jak {
             self.ja_push(seconds(0.05));
             self.ja_set(anim, NumFunc::seek_to(cutoff, 2.0), 0.0);
             self.goto(1);
-        } else if self.chan.done(&self.anims) {
+        }
+        // target-pilot-post: on the seat, going as the vehicle goes, until the animation has played.
+        self.control.transv = self.foot.pilot_velocity;
+        // (until (ja-done? 0) (suspend) (ja :num! (seek! cutoff 2.0)))
+        if self.ja_wait() {
             self.control.transv += self.pad_dir_world() * meters(4.0);
             self.control.transv = self.control.transv.clamp_length_max(meters(30.0));
+            // (go target-jump 10240.0 10240.0 *pilot-get-off-mods*)
+            self.foot.pilot_exit = true;
             return Some(State::Jump { min: meters(2.5), max: meters(2.5) });
         }
-        self.ja_loop()
+        None
     }
 
     fn eco_powerup_code(&mut self) -> Option<State> {

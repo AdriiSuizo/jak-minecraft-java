@@ -18,6 +18,7 @@ import dev.jakmc.content.JakProps;
 import net.minecraft.client.renderer.texture.*;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 /** Launch commands cross the network; original physics, axes, UVs and blending run locally. */
@@ -26,7 +27,15 @@ public final class JakEffects {
  private record Decoration(BlockPos pos,int kind){}
  private static final Map<Decoration,Owner> DECORATIONS=new HashMap<>();
  private static final List<Owner> BURSTS=new ArrayList<>();
+ /** sprite-glow.gc: this frame's glow sprites by texture index, their corners in the camera's space. */
+ private static final Map<Integer,Batch> GLOW=new LinkedHashMap<>();
+ /** A glow's quad widened this much about its centre: the blur reaches 0.2 of the texture past each edge (jak_effect.fsh). */
+ private static final float GLOW_SPREAD=1.4f;
  private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18,SPYDROID=19,DARK_ECO_DEATH=20,KERMIT_PULSE=21,KERMIT_IMPACT=22,LAUNCHER=23;
+ /** target-pilot-death's bursts (Jak 3 target-part.gc group-explode-death, group-lava-death). */
+ static final int EXPLODE_DEATH=24,LAVA_DEATH=25;
+ /** A burst of a one-shot world effect at a place (JakPilotDeath). */
+ static void burst(int kind,Vec3 at){long handle=NativeJak.fxCreateDecor(kind);if(handle!=0)BURSTS.add(new Owner(at,handle));}
  /** kermit.gc: each frog's pulse on its tongue, where it was last drawn. */
  private static final Map<Integer,Owner> PULSES=new HashMap<>();
  private static final Map<Integer,Vec3> PULSE_AT=new HashMap<>();
@@ -52,6 +61,7 @@ public final class JakEffects {
  }
  private static final class Batch {
   float[] data=new float[256];int used;
+  void put(float v){if(used==data.length)data=Arrays.copyOf(data,data.length*2);data[used++]=v;}
   void vertex(ByteBuffer buffer,int at){if(used+9>data.length)data=Arrays.copyOf(data,data.length*2);for(int i=0;i<9;i++)data[used++]=buffer.getFloat(at+i*4);}
  }
  public static void initialize(){
@@ -117,7 +127,62 @@ public final class JakEffects {
   fx.received=System.nanoTime();
  }
  public static void local(int entity,Vec3 origin,JsonArray commands){JsonObject packet=new JsonObject();packet.add("effects",commands);receive(entity,origin,packet);}
- public static void clear(){for(var fx:PULSES.values())fx.close();PULSES.clear();PULSE_AT.clear();closeSandstorm();weatherWorld=null;for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
+ /**
+  * A zoomer's engine particles (ZoomerEngineFx), launched natively into its entity's session for {@code count} 60 Hz
+  * frames of 19 numbers each, positions absolute in blocks (the session's own origin is taken off here). Returns the
+  * sounds those frames ask for: 1 "damage-zaps", 2 "damage-pops".
+  */
+ public static int vehicle(int entity,Vec3 origin,int model,double[] records,int count){
+  var fx=OWNERS.get(entity);
+  if(fx!=null&&fx.origin.distanceToSqr(origin)>4096*4096){fx.close();OWNERS.remove(entity);fx=null;}
+  if(fx==null){fx=new Owner(origin,NativeJak.fxCreate());OWNERS.put(entity,fx);}
+  float[] relative=new float[count*19];
+  for(int i=0;i<count;i++)for(int k=0;k<19;k++){
+   double value=records[i*19+k];
+   relative[i*19+k]=(float)(k==0||k==16?value-fx.origin.x:k==1||k==17?value-fx.origin.y:k==2||k==18?value-fx.origin.z:value);
+  }
+  int sounds=NativeJak.fxVehicle(fx.handle,model,relative,count);
+  fx.received=System.nanoTime();
+  return sounds;
+ }
+ public static void clear(){GLOW.clear();for(var fx:PULSES.values())fx.close();PULSES.clear();PULSE_AT.clear();closeSandstorm();weatherWorld=null;for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
+ /** The widening's scratch corners and centre (the render thread's own: no allocation per frame). */
+ private static final Vector3f[] GLOW_CORNER={new Vector3f(),new Vector3f(),new Vector3f(),new Vector3f()};
+ private static final Vector3f GLOW_CENTRE=new Vector3f();
+ /**
+  * sprite-glow.gc: each glow quad (4 vertices) widened about its centre by the blur's margin, appended to `out`. `pose`
+  * places the corners (null: they are already where they go).
+  */
+ private static void widenGlow(Batch out,float[] data,int used,Matrix4f pose){
+  for(int quad=0;quad+36<=used;quad+=36){
+   GLOW_CENTRE.zero();
+   for(int k=0;k<4;k++){int at=quad+k*9;if(pose==null)GLOW_CORNER[k].set(data[at],data[at+1],data[at+2]);else pose.transformPosition(data[at],data[at+1],data[at+2],GLOW_CORNER[k]);GLOW_CENTRE.add(GLOW_CORNER[k]);}
+   GLOW_CENTRE.mul(.25f);
+   for(int k=0;k<4;k++){
+    int at=quad+k*9;Vector3f p=GLOW_CORNER[k];
+    out.put(GLOW_CENTRE.x+(p.x-GLOW_CENTRE.x)*GLOW_SPREAD);out.put(GLOW_CENTRE.y+(p.y-GLOW_CENTRE.y)*GLOW_SPREAD);out.put(GLOW_CENTRE.z+(p.z-GLOW_CENTRE.z)*GLOW_SPREAD);
+    for(int c=3;c<7;c++)out.put(data[at+c]);
+    out.put((data[at+7]-.5f)*GLOW_SPREAD+.5f);out.put((data[at+8]-.5f)*GLOW_SPREAD+.5f);
+   }
+  }
+ }
+ /** sprite-glow.gc's glow quads, widened, into this frame's glow batch for their texture (`pose` is the stack they were submitted on). */
+ private static void deferGlow(int texture,Batch batch,Matrix4f pose){
+  widenGlow(GLOW.computeIfAbsent(texture,k->new Batch()),batch.data,batch.used,pose);
+ }
+ /** sprite-glow.gc's draw: this frame's glow sprites, after everything else of the frame. Nothing when there are none. */
+ private static void submitGlow(LevelRenderContext context){
+  for(var entry:GLOW.entrySet()){
+   Batch batch=entry.getValue();
+   if(batch.used==0)continue;
+   Identifier id=texture(entry.getKey());
+   if(id==null)continue;
+   float[] data=batch.data;int used=batch.used;
+   context.submitNodeCollector().submitCustomGeometry(context.poseStack(),JakEffectTypes.glow(id),(pose,consumer)->{
+    for(int i=0;i<used;i+=9)consumer.addVertex(data[i],data[i+1],data[i+2],pack(data[i+3],data[i+4],data[i+5],data[i+6]),data[i+7],data[i+8],OverlayTexture.NO_OVERLAY,0x00f000f0,0,1,0);
+   });
+  }
+ }
  private static Identifier texture(int index){
   if(TEXTURES.containsKey(index))return TEXTURES.get(index);if(MISSING.contains(index))return null;
   String name=names[index];
@@ -165,11 +230,18 @@ public final class JakEffects {
  }
  private static void manifest(){if(names==null){var manifest=JsonParser.parseString(NativeJak.fxManifest()).getAsJsonObject();names=new String[manifest.getAsJsonArray("textures").size()];for(int i=0;i<names.length;i++)names[i]=manifest.getAsJsonArray("textures").get(i).getAsString();JakMod.LOG.info("Original sparticles: {} parts, {} groups, {} textures",manifest.get("parts"),manifest.get("groups"),names.length);}}
  public static int submitGeometry(ByteBuffer vertices,int count,ByteBuffer lightning,int boltCount,com.mojang.blaze3d.vertex.PoseStack stack,net.minecraft.client.renderer.SubmitNodeCollector collector){return submitGeometry(vertices,count,lightning,boltCount,stack,collector,false);}
- public static int submitGeometry(ByteBuffer vertices,int count,ByteBuffer lightning,int boltCount,com.mojang.blaze3d.vertex.PoseStack stack,net.minecraft.client.renderer.SubmitNodeCollector collector,boolean gui){
+ public static int submitGeometry(ByteBuffer vertices,int count,ByteBuffer lightning,int boltCount,com.mojang.blaze3d.vertex.PoseStack stack,net.minecraft.client.renderer.SubmitNodeCollector collector,boolean gui){return submitGeometry(vertices,count,lightning,boltCount,stack,collector,gui,false);}
+ /** defer: the glow sprites wait for submitGlow, drawn after the frame's other sprites (sprite-draw's order). */
+ private static int submitGeometry(ByteBuffer vertices,int count,ByteBuffer lightning,int boltCount,com.mojang.blaze3d.vertex.PoseStack stack,net.minecraft.client.renderer.SubmitNodeCollector collector,boolean gui,boolean defer){
   manifest();Map<Integer,Batch> batches=new LinkedHashMap<>();collect(vertices,count,batches);collect(lightning,boltCount,batches);int drawn=0;
   for(var group:batches.entrySet()){
-   Identifier id=texture(group.getKey()>>>2);if(id==null)continue;int blend=group.getKey()&3;Batch batch=group.getValue();float[] data=Arrays.copyOf(batch.data,batch.used);drawn+=batch.used/9;
-   collector.submitCustomGeometry(stack,gui?JakEffectTypes.getGui(id,blend):JakEffectTypes.get(id,blend),(pose,consumer)->{
+   Identifier id=texture(group.getKey()>>>2);if(id==null)continue;int blend=group.getKey()&3;Batch batch=group.getValue();drawn+=batch.used/9;
+   if(defer&&!gui&&blend==3){deferGlow(group.getKey()>>>2,batch,stack.last().pose());continue;}
+   // A glow sprite drawn where it is submitted (an item's own stack) is widened in its own frame, and drawn soft.
+   float[] data;
+   if(blend==3&&!gui){Batch widened=new Batch();widenGlow(widened,batch.data,batch.used,null);data=Arrays.copyOf(widened.data,widened.used);}
+   else data=Arrays.copyOf(batch.data,batch.used);
+   collector.submitCustomGeometry(stack,gui?JakEffectTypes.getGui(id,blend):blend==3?JakEffectTypes.glow(id):JakEffectTypes.get(id,blend),(pose,consumer)->{
     Vector3f v=new Vector3f();for(int i=0;i<data.length;i+=9){pose.pose().transformPosition(data[i],data[i+1],data[i+2],v);consumer.addVertex(v.x,v.y,v.z,pack(data[i+3],data[i+4],data[i+5],data[i+6]),data[i+7],data[i+8],OverlayTexture.NO_OVERLAY,0x00f000f0,0,1,0);}
    });
   }return drawn;
@@ -226,6 +298,7 @@ public final class JakEffects {
   });
  }
  private static void submit(LevelRenderContext context){
+  for(Batch glow:GLOW.values())glow.used=0;
   drawnVertices=0;drawnLightningVertices=0;drawnDarkVertices=0;drawnBarrelVertices=0;drawnProjectorVertices=0;drawnBurstVertices=0;drawnVentVertices=0;
   drawnSandVertices=0;
   var client=Minecraft.getInstance();
@@ -289,9 +362,14 @@ public final class JakEffects {
    drawnBurstVertices+=drawnVertices-before;
    return false;
   });
+  submitGlow(context);
  }
  private static void closeSandstorm(){if(sandstorm!=null){sandstorm.close();sandstorm=null;}}
  private static void drawOwner(LevelRenderContext context,Minecraft client,Owner fx,Vector3f forward,Vector3f up,long now){
+  long profiled=dev.jakmc.entity.ZoomerProfile.begin();
+  try{drawOwnerTimed(context,client,fx,forward,up,now);}finally{dev.jakmc.entity.ZoomerProfile.end("client particle sessions (all)",profiled);}
+ }
+ private static void drawOwnerTimed(LevelRenderContext context,Minecraft client,Owner fx,Vector3f forward,Vector3f up,long now){
   var camera=context.levelState().cameraRenderState;
   Vec3 eye=camera.pos.subtract(fx.origin);
   VIEW.clear();VIEW.putFloat((float)eye.x).putFloat((float)eye.y).putFloat((float)eye.z);
@@ -312,7 +390,7 @@ public final class JakEffects {
   var stack=context.poseStack();
   stack.pushPose();
   stack.translate(-eye.x,-eye.y,-eye.z);
-  drawnVertices+=submitGeometry(SPRITES,(int)counts,BOLTS,(int)(counts>>>32),stack,context.submitNodeCollector());
+  drawnVertices+=submitGeometry(SPRITES,(int)counts,BOLTS,(int)(counts>>>32),stack,context.submitNodeCollector(),false,true);
   stack.popPose();
  }
  private static void collect(ByteBuffer buffer,int count,Map<Integer,Batch> batches){

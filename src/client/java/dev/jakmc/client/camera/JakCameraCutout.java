@@ -1,284 +1,358 @@
 package dev.jakmc.client.camera;
 
+import dev.jakmc.client.JakInput;
 import dev.jakmc.client.JakPoses;
-import java.util.ArrayList;
-import java.util.List;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import java.nio.ByteBuffer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.VoxelShape;
+import org.joml.Vector3fc;
 
 /**
- * The third-person camera's wall cutaway (Rust 28-29/10, cutout34-38): walls between
- * the camera and Jak are cut away by the terrain shader instead of pulling the
- * camera in; only floors and ceilings still stop it. Lengths are blocks: a Jak
- * metre is 4096/6400 of one (as in JakControllerCameraMixin), a map unit 1/25 m.
+ * Jak's third-person camera: collision, bounds, occlusion mask, room cutaway and fading of objects.
+ * Not a Jak port: Adrii chose (06/11) the camera of the series "Recreating Baldur's Gate 3's Camera System
+ * in UE5" (camera movement, collision, bounds, occlusion masking, environment masks, room collections,
+ * fading rooms, fading dynamic objects) to replace the earlier wall cutaway and its hard circle.
+ * - Collision (JakCameraProbe): thin walls, fences and leaves are looked through and masked; thick rock,
+ *   floors and walls the camera would sit in pull it in, filtered (look-ahead sphere, quick smooth pull-in,
+ *   wait, slow ease-out), never letting the near plane touch a block.
+ * - Bounds: under a low ceiling (or over a floor) the camera's pitch slides toward the horizontal instead
+ *   of diving into Jak's head; the pivot drops out of a ceiling it would touch.
+ * - Mask: a feathered, dithered ellipse around Jak on screen, only on blocks and entities nearer to the
+ *   camera than he is, faded in while something hides him (terrain.fsh, entity.fsh, jakmc:camera_mask).
+ * - Rooms (JakCameraRoom): indoors, the ceiling and everything above the floor plan, the walls above the
+ *   ceiling and the walls on the camera's side are cut, cross-faded when the room changes.
+ * The shader data rides in vanilla's Globals UBO (JakCameraFadeUboMixin, JakCameraFadeWriteMixin).
  */
 public final class JakCameraCutout {
-    static final double M=4096/6400.0,U=M/25,JAK_UNIT=1/6400.0;
-    private static boolean enabled,blocked,used;
-    private static float amount;
-    private static double reach=Double.MAX_VALUE;
-    private static Vec3 pivot;
-    private static double feet;
-    private static long lastReach,lastFrame;
-    private static final float[] FADE=new float[8];
-    private JakCameraCutout(){}
+    /** Globals UBO layout (std140 bytes): vanilla ends at 48, then four mask vec4 and two rooms. */
+    public static final int MASK_AT=48,ROOM_AT=112,ROOM_BYTES=32+2*JakCameraRoom.N*4,UBO_END=ROOM_AT+2*ROOM_BYTES;
+    /** Jak's body for the mask: centre height over the feet, and the ellipse half width/height at his depth. */
+    static final double BODY=.95,HALF_WIDTH=.85,HALF_HEIGHT=1.25;
+    /** Seconds a room cross-fade takes; mask fade rates (1/s) and how long it stays after the last hit. */
+    static final double ROOM_FADE=.35,MASK_IN=12,MASK_OUT=5,MASK_HOLD=.3;
 
-    /** What the terrain UBO carries: eye.xyz and opening, pivot.xyz and feet height, camera-relative. */
-    public static float[] fade(){return FADE;}
+    private static final float[] MASK=new float[16];
+    private static final float[][] ROOM={new float[8],new float[8]};
+    private static final int[][] ROOM_BITS={new int[2*JakCameraRoom.N],new int[2*JakCameraRoom.N]};
+
+    private static final JakCameraProbe.Boxes BOXES=new JakCameraProbe.Boxes();
+    private static final JakCameraProbe.Result HARD=new JakCameraProbe.Result(),SOFT=new JakCameraProbe.Result();
+    private static final JakCameraProbe.Rig RIG=new JakCameraProbe.Rig();
+    private static boolean used,looking;
+    private static long lastReach,lastFrame;
+    private static double pivotDrop,pitchOffset,pitchTarget;
+    private static Vec3 lastPivot;
+    private static Vec3 placedPivot;
+    private static float placedPitch;
+    private static double terrainAmount,entityAmount,terrainHold,entityHold;
+
+    private static final JakCameraRoom JOB=new JakCameraRoom();
+    private static JakCameraRoom.Shape room,previousRoom,pending;
+    private static boolean pendingReady;
+    private static double roomFade=1,refresh;
+    private static long roomKey=Long.MIN_VALUE;
+    private static Level roomLevel;
+
+    private JakCameraCutout(){}
 
     /** render_anim/src/jak.rs update: `cutout.enabled = voxel && zoom >= FIRST_PERSON` (Jak's own third-person camera). */
     public static boolean wanted(Entity entity){
         var client=Minecraft.getInstance();
         if(entity==null||entity!=client.player)return false;
-        // Rust jak.rs update: only Jak's own follow camera cuts walls; a fixed fixture view is not it.
+        // Rust jak.rs update: only Jak's own follow camera; a fixed fixture view is not it.
         if(dev.jakmc.client.InputScene.camera()!=null)return false;
         var type=client.options.getCameraType();
         return !type.isFirstPerson()&&!type.isMirrored()
             &&(JakPoses.presented()!=null||entity.getVehicle() instanceof dev.jakmc.entity.JakVehicle);
     }
 
+    /** HellCat flight or a Jak vehicle: their own chase cameras, no pitch bounds, rooms or entity fading. */
+    static boolean riding(Entity entity){
+        if(entity.getVehicle() instanceof dev.jakmc.entity.JakVehicle)return true;
+        var pose=JakPoses.rendered(entity.getId());
+        return pose!=null&&pose.raw().get("hellcat") instanceof com.google.gson.JsonObject;
+    }
+
+    /** The pivot the camera now orbits (dropped out of a ceiling), or null. Read by JakCameraCutoutMixin. */
+    public static Vec3 placedPivot(){return placedPivot;}
+    /** The pitch the camera now looks with (bounded under ceilings). */
+    public static float placedPitch(){return placedPitch;}
+
     /**
-     * render_anim/src/jak.rs update (the `cutout.enabled` branch) and follow_camera's
-     * `distance.min(camera.reach.max(0.15))`: replaces vanilla's wall clip.
+     * Replaces Camera.getMaxZoom for Jak: the distance along the view line from `at`, with the pivot and
+     * pitch adjustments left in placedPivot/placedPitch for the mixin to apply first.
      */
-    public static float maxZoom(Level level,Entity entity,Vec3 at,Vec3 forwards,float desired){
+    public static float maxZoom(Level level,Entity entity,Vec3 at,float yaw,float pitch,float desired){
         long now=System.nanoTime();
-        float dt=lastReach==0?0:Math.min(.1f,(now-lastReach)/1e9f);
+        double dt=lastReach==0?0:Math.min(.1,(now-lastReach)/1e9);
         lastReach=now;
+        refreshCells(level);
         Vec3 presented=JakPoses.presented();
         double feetY=presented!=null?presented.y:entity.getY();
-        Vec3 eye=at.subtract(forwards.scale(desired));
-        if(!enabled)reach=groundReach(level,at,eye);
-        boolean[] wall=new boolean[1];
-        double floorReach=cutoutObstruction(level,at,eye,feetY,wall);
-        blocked=wall[0];
-        // stand-in: the original eases per 60 Hz movement step (1-exp(-6*STEP)); here per rendered frame with its dt, the same rate.
-        double returning=Math.min(floorReach,40*M);
-        reach=floorReach<reach?floorReach:reach<1000*M?reach+(returning-reach)*(1-Math.exp(-6*dt)):floorReach;
-        enabled=true;used=true;pivot=at;feet=feetY;
-        return (float)Math.min(desired,Math.max(reach,.15*M));
+        boolean riding=riding(entity);
+        if(lastPivot==null||lastPivot.distanceToSqr(at)>9){RIG.reset();pitchOffset=pitchTarget=0;pivotDrop=0;}
+        lastPivot=at;
+
+        // Pivot room: drop out of a ceiling (stairs, low doorways) so the line never starts inside a block.
+        BOXES.clear();
+        collect(level,at.x-1.3,at.y-1.3,at.z-1.3,at.x+1.3,at.y+1.3,at.z+1.3);
+        double clear=JakCameraProbe.clearance(BOXES,at.x,at.y,at.z,1);
+        double drop=0;
+        if(clear<JakCameraProbe.HARD+.02){
+            for(int k=1;k<=10;k++){
+                double y=at.y-.1*k;
+                if(y<feetY+.5)break;
+                if(JakCameraProbe.clearance(BOXES,at.x,y,at.z,1)>=JakCameraProbe.HARD+.02){drop=.1*k;break;}
+            }
+        }
+        pivotDrop=drop>pivotDrop?drop:pivotDrop+(drop-pivotDrop)*(1-Math.exp(-8*dt));
+        Vec3 pivot=at.subtract(0,pivotDrop,0);
+        clear=JakCameraProbe.clearance(BOXES,pivot.x,pivot.y,pivot.z,1);
+        double hard=Math.max(.05,Math.min(JakCameraProbe.HARD,clear*.95));
+        double soft=Math.max(hard,Math.min(JakCameraProbe.SOFT,clear-.05));
+        double boost=room!=null&&roomAmount(0)>.5?1.4:0;
+
+        // Bounds: when a ceiling, a slope or the floor cuts the line short, the pitch slides instead.
+        if(!riding&&!JakInput.aiming()){
+            Vec3 from=pivot;
+            pitchTarget=JakCameraProbe.boundPitch(pitch,pitchTarget,desired,p->line(level,from,yaw,p,desired,hard,feetY,boost));
+        }else pitchTarget=0;
+        pitchOffset+=(pitchTarget-pitchOffset)*(1-Math.exp(-6*dt));
+        if(Math.abs(pitchOffset)<.01&&pitchTarget==0)pitchOffset=0;
+        float usedPitch=(float)(pitch+pitchOffset);
+
+        double[] back=JakCameraProbe.back(yaw,usedPitch);
+        Vec3 end=pivot.add(back[0]*desired,back[1]*desired,back[2]*desired);
+        BOXES.clear();
+        double grow=soft+.1;
+        if(!collect(level,Math.min(pivot.x,end.x)-grow,Math.min(pivot.y,end.y)-grow,Math.min(pivot.z,end.z)-grow,
+            Math.max(pivot.x,end.x)+grow,Math.max(pivot.y,end.y)+grow,Math.max(pivot.z,end.z)+grow)){
+            placedPivot=pivot;placedPitch=usedPitch;used=true;looking=false;
+            return desired;// a chase line too long to scan (flight at speed): leave it free
+        }
+        JakCameraProbe.decide(BOXES,pivot.x,pivot.y,pivot.z,back[0],back[1],back[2],desired,hard,feetY,looking,boost,HARD);
+        JakCameraProbe.decide(BOXES,pivot.x,pivot.y,pivot.z,back[0],back[1],back[2],desired,soft,feetY,looking,boost,SOFT);
+        looking=HARD.lookedThrough>0;
+        // The look-ahead sphere only starts the pull-in early: where it rests it gives back its extra radius.
+        double distance=RIG.step(HARD.distance,SOFT.distance+(soft-hard),desired,dt);
+        placedPivot=pivot;placedPitch=usedPitch;used=true;
+        return (float)distance;
     }
 
-    /** render_anim/src/jak.rs OcclusionCutout::advance and the `camera_fade` hand-off after it. */
+    /** One candidate view line's hard-sphere distance (the bounds search). */
+    private static double line(Level level,Vec3 pivot,float yaw,double pitch,double desired,double r,double feetY,double boost){
+        double[] back=JakCameraProbe.back(yaw,pitch);
+        double ex=pivot.x+back[0]*desired,ey=pivot.y+back[1]*desired,ez=pivot.z+back[2]*desired;
+        BOXES.clear();
+        double grow=r+.1;
+        if(!collect(level,Math.min(pivot.x,ex)-grow,Math.min(pivot.y,ey)-grow,Math.min(pivot.z,ez)-grow,
+            Math.max(pivot.x,ex)+grow,Math.max(pivot.y,ey)+grow,Math.max(pivot.z,ez)+grow))return desired;
+        JakCameraProbe.decide(BOXES,pivot.x,pivot.y,pivot.z,back[0],back[1],back[2],desired,r,feetY,looking,boost,HARD);
+        return HARD.distance;
+    }
+
+    /** After Camera.update: the mask and room data for this frame's shaders. */
     public static void frame(Camera camera){
         long now=System.nanoTime();
-        float dt=lastFrame==0?0:Math.min(.1f,(now-lastFrame)/1e9f);
+        double dt=lastFrame==0?0:Math.min(.1,(now-lastFrame)/1e9);
         lastFrame=now;
-        if(!used||!wanted(camera.entity())){enabled=false;blocked=false;pivot=null;}
+        Entity entity=camera.entity();
+        boolean on=used&&wanted(entity)&&camera.isDetached();
         used=false;
-        float wantedAmount=enabled&&blocked?1:0;
-        amount+=(wantedAmount-amount)*(1-(float)Math.exp(-Math.max(dt,0)*10));
-        java.util.Arrays.fill(FADE,0);
-        if(enabled&&amount>.001f&&pivot!=null){
-            Vec3 eye=camera.position();
-            FADE[3]=amount;
-            FADE[4]=(float)(pivot.x-eye.x);FADE[5]=(float)(pivot.y-eye.y);FADE[6]=(float)(pivot.z-eye.z);
-            FADE[7]=(float)(feet-eye.y);
+        if(!on){
+            RIG.reset();looking=false;lastPivot=null;pitchOffset=pitchTarget=pivotDrop=0;
+            terrainAmount=entityAmount=terrainHold=entityHold=0;
+            room=previousRoom=pending=null;pendingReady=false;roomFade=1;roomKey=Long.MIN_VALUE;
+            java.util.Arrays.fill(MASK,0);ROOM[0][3]=ROOM[1][3]=0;
+            return;
+        }
+        Level level=entity.level();
+        Vec3 eye=camera.position();
+        Vector3fc f=camera.forwardVector(),up=camera.upVector();
+        Vec3 presented=JakPoses.presented();
+        Vec3 feet=presented!=null?presented:entity.position();
+        boolean riding=riding(entity);
+        Vec3 centre=feet.add(0,BODY,0);
+
+        // Mask: on while the head or chest is hidden by a block above the kept wall foot, or by an entity.
+        refreshCells(level);
+        boolean blocked=looking;
+        for(double h:new double[]{1.0,1.55}){
+            if(blocked)break;
+            Vec3 target=feet.add(0,h,0);
+            BOXES.clear();
+            if(collect(level,Math.min(eye.x,target.x)-.1,Math.min(eye.y,target.y)-.1,Math.min(eye.z,target.z)-.1,
+                Math.max(eye.x,target.x)+.1,Math.max(eye.y,target.y)+.1,Math.max(eye.z,target.z)+.1))
+                blocked=JakCameraProbe.blocks(BOXES,eye.x,eye.y,eye.z,target.x,target.y,target.z,.03,.35,feet.y+.6);
+        }
+        boolean mobs=!riding&&entitiesHide(level,entity,eye,feet);
+        terrainHold=blocked?MASK_HOLD:terrainHold-dt;
+        entityHold=mobs?MASK_HOLD:entityHold-dt;
+        terrainAmount=approach(terrainAmount,terrainHold>0?1:0,dt);
+        entityAmount=approach(entityAmount,entityHold>0?1:0,dt);
+
+        updateRoom(level,feet,!riding,dt);
+
+        double cx=centre.x-eye.x,cy=centre.y-eye.y,cz=centre.z-eye.z;
+        double depth=cx*f.x()+cy*f.y()+cz*f.z();
+        MASK[0]=(float)cx;MASK[1]=(float)cy;MASK[2]=(float)cz;MASK[3]=(float)smooth(terrainAmount);
+        MASK[4]=f.x();MASK[5]=f.y();MASK[6]=f.z();MASK[7]=(float)(feet.y-eye.y);
+        MASK[8]=up.x();MASK[9]=up.y();MASK[10]=up.z();MASK[11]=(float)smooth(entityAmount);
+        MASK[12]=(float)HALF_WIDTH;MASK[13]=(float)HALF_HEIGHT;
+        // Terrain is cut up to just behind Jak's back; entities stop short of his whole body (his own model).
+        MASK[14]=(float)(depth-.3);
+        MASK[15]=(float)(depth-(BODY*Math.abs(f.y())+.45));
+        pack(0,room,roomAmount(0),eye,depth);
+        pack(1,previousRoom,roomAmount(1),eye,depth);
+    }
+
+    private static double approach(double value,double target,double dt){
+        double rate=target>value?MASK_IN:MASK_OUT;
+        return value+(target-value)*(1-Math.exp(-rate*dt));
+    }
+
+    private static double smooth(double x){x=Math.clamp(x,0,1);return x*x*(3-2*x);}
+
+    /** Mobs, players and props between the camera and Jak's body (his own vehicle and riders excluded). */
+    private static boolean entitiesHide(Level level,Entity jak,Vec3 eye,Vec3 feet){
+        Vec3 chest=feet.add(0,1.0,0),head=feet.add(0,1.55,0);
+        var box=new AABB(eye,head).minmax(new AABB(chest,chest)).inflate(1);
+        for(Entity e:level.getEntities(jak,box,e->e.isAlive()&&!e.isInvisible()&&e!=jak.getVehicle()
+            &&!e.isPassengerOfSameVehicle(jak)&&!e.hasPassenger(jak)&&!jak.hasPassenger(e))){
+            var bb=e.getBoundingBox();
+            for(Vec3 target:new Vec3[]{chest,head}){
+                var hit=bb.clip(eye,target);
+                if(hit.isPresent()&&hit.get().distanceTo(target)>.6)return true;
+            }
+        }
+        return false;
+    }
+
+    // --- Rooms ---
+
+    private static double roomAmount(int slot){
+        double s=smooth(roomFade);
+        return slot==0?(room==null?0:s):(previousRoom==null?0:1-s);
+    }
+
+    private static void updateRoom(Level level,Vec3 feet,boolean allowed,double dt){
+        if(level!=roomLevel){roomLevel=level;room=previousRoom=pending=null;pendingReady=false;roomFade=1;roomKey=Long.MIN_VALUE;}
+        int x=(int)Math.floor(feet.x),y=(int)Math.floor(feet.y+.01),z=(int)Math.floor(feet.z);
+        // The room is the one Jak's floor is in: a jump or a fall of up to four blocks keeps it.
+        for(int k=0;k<4;k++){
+            if(!level.getBlockState(ROOM_POS.set(x,y-1,z)).getCollisionShape(level,ROOM_POS).isEmpty())break;
+            y--;
+        }
+        long key=allowed?BlockPos.asLong(x,y,z):Long.MIN_VALUE+1;
+        refresh-=dt;
+        if(!allowed){
+            if(key!=roomKey){roomKey=key;pending=null;pendingReady=true;}
+        }else if(JOB.running()?Math.abs(JOB.startX()-x)+Math.abs(JOB.startY()-y)+Math.abs(JOB.startZ()-z)>2
+            :key!=roomKey||refresh<=0){
+            // A flood finishes before the next starts unless Jak has run off; a refresh each second catches edits.
+            roomKey=key;refresh=1;
+            JOB.start(x,y,z);
+        }
+        if(JOB.running()&&allowed){
+            var shape=JOB.step(ROOM_WORLD,JakCameraRoom.BUDGET);
+            if(shape!=JakCameraRoom.PENDING){pending=shape;pendingReady=true;}
+        }
+        roomFade=Math.min(1,roomFade+dt/ROOM_FADE);
+        if(pendingReady&&roomFade>=1){
+            pendingReady=false;
+            boolean same=pending==null?room==null:pending.sameAs(room);
+            if(!same){previousRoom=room;room=pending;roomFade=0;}
+        }
+        if(roomFade>=1)previousRoom=null;
+    }
+
+    private static final BlockPos.MutableBlockPos ROOM_POS=new BlockPos.MutableBlockPos();
+    private static final JakCameraRoom.World ROOM_WORLD=(x,y0,z,out)->{
+        int open=0,roof=0;
+        for(int i=0;i<JakCameraRoom.LEVELS;i++){
+            BlockState state=roomLevel.getBlockState(ROOM_POS.set(x,y0+i,z));
+            if(state.isAir()){open|=1<<i;continue;}
+            if(!state.isCollisionShapeFullBlock(roomLevel,ROOM_POS))open|=1<<i;
+            if(!state.is(BlockTags.LEAVES)&&!state.getCollisionShape(roomLevel,ROOM_POS).isEmpty())roof|=1<<i;
+        }
+        out[0]=open;out[1]=roof;
+    };
+
+    private static void pack(int slot,JakCameraRoom.Shape shape,double amount,Vec3 eye,double depth){
+        float[] data=ROOM[slot];
+        if(shape==null||amount<=.001){data[3]=0;return;}
+        data[0]=(float)(shape.ox-eye.x);data[1]=0;data[2]=(float)(shape.oz-eye.z);data[3]=(float)amount;
+        data[4]=(float)(shape.cutY-eye.y);data[5]=(float)(shape.floorY-eye.y);data[6]=(float)(depth-.5);data[7]=0;
+        System.arraycopy(shape.foot,0,ROOM_BITS[slot],0,JakCameraRoom.N);
+        System.arraycopy(shape.rim,0,ROOM_BITS[slot],JakCameraRoom.N,JakCameraRoom.N);
+    }
+
+    /** JakCameraFadeWriteMixin: this frame's data after vanilla's Globals (buffer positioned at the block start). */
+    public static void write(ByteBuffer buffer){
+        for(int i=0;i<16;i++)buffer.putFloat(MASK_AT+4*i,MASK[i]);
+        for(int slot=0;slot<2;slot++){
+            int at=ROOM_AT+slot*ROOM_BYTES;
+            for(int i=0;i<8;i++)buffer.putFloat(at+4*i,ROOM[slot][i]);
+            for(int i=0;i<2*JakCameraRoom.N;i++)buffer.putInt(at+32+4*i,ROOM_BITS[slot][i]);
         }
     }
 
-    /**
-     * render_anim/src/jak.rs cutout_obstruction: walls affect only the aperture;
-     * floor/ceiling clearance is the reach. Returns the reach (blocks, MAX for none).
-     */
-    static double cutoutObstruction(Level level,Vec3 target,Vec3 eye,double feetY,boolean[] blocked){
-        Vec3 motion=eye.subtract(target);
-        double length=motion.length();
-        if(length<JAK_UNIT){blocked[0]=false;return Double.MAX_VALUE;}
-        double radius=.65*M;
-        var tris=fill(level,target,motion,radius,new double[]{feetY,target.y});
-        Tri floor=probe(tris,target,motion,.3*M,WALKABLE);
-        double reach=floor==null?Double.MAX_VALUE:Math.max(length*floor.u-.2*M,.15*M);
-        Vec3 visible=reach!=Double.MAX_VALUE?motion.scale(Math.clamp(reach/length,0,1)):motion;
-        blocked[0]=probe(tris,target,visible,radius,WALL)!=null;
-        return reach;
+    // --- Block collision boxes, cached for two ticks ---
+
+    private record Cell(double[] boxes,boolean leaves){}
+    private static final Cell EMPTY=new Cell(new double[0],false);
+    private static final Long2ObjectOpenHashMap<Cell> CELLS=new Long2ObjectOpenHashMap<>();
+    private static final BlockPos.MutableBlockPos CELL_POS=new BlockPos.MutableBlockPos();
+    private static Level cellLevel;
+    private static long cellTick=Long.MIN_VALUE;
+
+    private static void refreshCells(Level level){
+        long tick=level.getGameTime();
+        if(level!=cellLevel||tick-cellTick>=2||tick<cellTick){CELLS.clear();cellLevel=level;cellTick=tick;}
     }
 
-    /** render_anim/src/jak.rs ground_reach: the full sweep the camera starts from on leaving first person. */
-    static double groundReach(Level level,Vec3 target,Vec3 eye){
-        Vec3 motion=eye.subtract(target);
-        double length=motion.length();
-        if(length<JAK_UNIT)return Double.MAX_VALUE;
-        var tris=fill(level,target,motion,.3*M,null);
-        Tri hit=probe(tris,target,motion,.3*M,SOLID);
-        return hit==null?Double.MAX_VALUE:Math.max(length*hit.u-.2*M,0);
-    }
-
-    static final class Tri {
-        final Vec3[] v;final Vec3 n,min,max;double u;Vec3 intersect;
-        Tri(Vec3 a,Vec3 b,Vec3 c,Vec3 n){v=new Vec3[]{a,b,c};this.n=n;min=min(min(a,b),c);max=max(max(a,b),c);}
-    }
-
-    /**
-     * jak_mode/src/collide.rs CollideCache::fill_line_sphere/fill_box over
-     * render_anim/src/jak.rs CameraBlockWorld (sim/src/voxel.rs camera_collision_triangles_in,
-     * block_triangles_for). `band` null is the plain block world (block_triangles).
-     */
-    static List<Tri> fill(Level level,Vec3 start,Vec3 motion,double radius,double[] band){
-        Vec3 end=start.add(motion);
-        Vec3 lo=min(start,end).subtract(radius,radius,radius),hi=max(start,end).add(radius,radius,radius);
-        var out=new ArrayList<Tri>();
-        int[] a={(int)Math.floor(lo.x),(int)Math.floor(lo.y),(int)Math.floor(lo.z)};
-        int[] b={(int)Math.floor(hi.x),(int)Math.floor(hi.y),(int)Math.floor(hi.z)};
-        long volume=1;for(int k=0;k<3;k++)volume*=b[k]-a[k]+1L;
-        if(volume>32*32*32)return out;
-        int ox=a[0]-2,oy=a[1]-2,oz=a[2]-2,sx=b[0]-a[0]+5,sy=b[1]-a[1]+5,sz=b[2]-a[2]+5;
-        VoxelShape[] shapes=new VoxelShape[sx*sy*sz];
-        var pos=new BlockPos.MutableBlockPos();
-        for(int x=0;x<sx;x++)for(int y=0;y<sy;y++)for(int z=0;z<sz;z++)
-            shapes[(x*sy+y)*sz+z]=level.getBlockState(pos.set(ox+x,oy+y,oz+z)).getCollisionShape(level,pos);
-        int[][] tangents={{1,2},{2,0},{0,1}};
-        for(int x=a[0]-1;x<=b[0]+1;x++)for(int z=a[2]-1;z<=b[2]+1;z++)for(int y=a[1]-1;y<=b[1]+1;y++){
-            VoxelShape shape=shapes[((x-ox)*sy+(y-oy))*sz+(z-oz)];
-            if(shape.isEmpty())continue;
-            double[] base={x,y,z};
-            // stand-in: Rust Jak pieces collide with their level triangles; Minecraft blocks collide with their boxes.
-            for(AABB box:shape.toAabbs()){
-                double[] bl={box.minX,box.minY,box.minZ},bh={box.maxX,box.maxY,box.maxZ};
-                for(int axis=0;axis<3;axis++){
-                    int u=tangents[axis][0],v=tangents[axis][1];
-                    for(int side=0;side<2;side++){
-                        boolean high=side==1;
-                        double at=high?bh[axis]:bl[axis];
-                        int[] step={0,0,0};step[axis]=high?1:-1;
-                        boolean onEdge=high?at>=1:at<=0;
-                        if(onEdge&&Block.isShapeFullBlock(shapes[((x+step[0]-ox)*sy+(y+step[1]-oy))*sz+(z+step[2]-oz)])){
-                            double height=base[1]+at;
-                            boolean physicalSlab=axis==1&&band!=null&&(height<=band[0]+.125*U||height>=band[1]+.125*U);
-                            if(!physicalSlab)continue;
-                        }
-                        Vec3[] quad={corner(base,axis,u,v,at,bl[u],bl[v]),corner(base,axis,u,v,at,bh[u],bl[v]),
-                            corner(base,axis,u,v,at,bh[u],bh[v]),corner(base,axis,u,v,at,bl[u],bh[v])};
-                        if(!high){Vec3 t=quad[0];quad[0]=quad[3];quad[3]=t;t=quad[1];quad[1]=quad[2];quad[2]=t;}
-                        add(out,quad[0],quad[1],quad[2],lo,hi);
-                        add(out,quad[0],quad[2],quad[3],lo,hi);
-                    }
+    private static Cell cell(Level level,int x,int y,int z){
+        long key=BlockPos.asLong(x,y,z);
+        Cell cell=CELLS.get(key);
+        if(cell!=null)return cell;
+        BlockState state=level.getBlockState(CELL_POS.set(x,y,z));
+        if(state.isAir())cell=EMPTY;
+        else{
+            var shape=state.getCollisionShape(level,CELL_POS);
+            if(shape.isEmpty())cell=EMPTY;
+            else{
+                var boxes=shape.toAabbs();
+                double[] v=new double[6*boxes.size()];
+                for(int i=0;i<boxes.size();i++){
+                    AABB b=boxes.get(i);
+                    v[6*i]=b.minX;v[6*i+1]=b.minY;v[6*i+2]=b.minZ;v[6*i+3]=b.maxX;v[6*i+4]=b.maxY;v[6*i+5]=b.maxZ;
                 }
+                cell=new Cell(v,state.is(BlockTags.LEAVES));
             }
         }
-        // stand-in: the original also adds sim::tri_world meshes and eco-vent triangles; in Java the vents are blocks with boxes (above) and there is no mesh world.
-        return out;
+        CELLS.put(key,cell);
+        return cell;
     }
 
-    static Vec3 min(Vec3 a,Vec3 b){return new Vec3(Math.min(a.x,b.x),Math.min(a.y,b.y),Math.min(a.z,b.z));}
-    static Vec3 max(Vec3 a,Vec3 b){return new Vec3(Math.max(a.x,b.x),Math.max(a.y,b.y),Math.max(a.z,b.z));}
-
-    private static Vec3 corner(double[] base,int axis,int u,int v,double at,double a,double b){
-        double[] p=new double[3];p[axis]=at;p[u]=a;p[v]=b;
-        return new Vec3(base[0]+p[0],base[1]+p[1],base[2]+p[2]);
-    }
-
-    /** jak_mode/src/collide.rs CollideCache::fill_box: the face normal, degenerate and out-of-box triangles dropped. */
-    private static void add(List<Tri> out,Vec3 a,Vec3 b,Vec3 c,Vec3 lo,Vec3 hi){
-        Vec3 n=c.subtract(b).cross(a.subtract(b));
-        double l=n.length();
-        if(Double.isNaN(l)||l<=1e-6*JAK_UNIT*JAK_UNIT||!Double.isFinite(n.x+n.y+n.z))return;
-        var t=new Tri(a,b,c,n.scale(1/l));
-        if(t.max.x<lo.x||t.max.y<lo.y||t.max.z<lo.z||t.min.x>hi.x||t.min.y>hi.y||t.min.z>hi.z)return;
-        out.add(t);
-    }
-
-    static final int SOLID=0,WALKABLE=1,WALL=2;
-
-    /**
-     * jak_mode/src/collide.rs probe_line_sphere (resolve_moving_sphere, solid) and
-     * probe_walkable_sphere / probe_wall_sphere (probe_camera_orientation).
-     */
-    static Tri probe(List<Tri> tris,Vec3 start,Vec3 motion,double radius,int mode){
-        Tri found=null;double best=2;
-        Vec3 lo=min(start,start.add(motion)).subtract(radius,radius,radius),hi=max(start,start.add(motion)).add(radius,radius,radius);
-        for(Tri t:tris){
-            if(mode==SOLID&&(t.max.x<lo.x||t.max.y<lo.y||t.max.z<lo.z||t.min.x>hi.x||t.min.y>hi.y||t.min.z>hi.z))continue;
-            if(mode!=SOLID&&((Math.abs(t.n.y)>.65)!=(mode==WALKABLE)||motion.dot(t.n)>=0))continue;
-            Hit hit=movingSphereTriangle(start,radius,motion,t);
-            if(hit==null||hit.u<0||hit.u>=best)continue;
-            if(mode==SOLID&&motion.dot(t.n)>=0)continue;
-            if(start.subtract(hit.p).dot(t.n)<0)continue;
-            best=hit.u;t.u=hit.u;t.intersect=hit.p;found=t;
+    /** Adds the collision boxes of every block in the region to BOXES; false when the region is too big to scan. */
+    private static boolean collect(Level level,double x0,double y0,double z0,double x1,double y1,double z1){
+        int ax=(int)Math.floor(x0),ay=(int)Math.floor(y0),az=(int)Math.floor(z0);
+        int bx=(int)Math.floor(x1),by=(int)Math.floor(y1),bz=(int)Math.floor(z1);
+        long volume=(long)(bx-ax+1)*(by-ay+1)*(bz-az+1);
+        if(volume>4096)return false;
+        for(int x=ax;x<=bx;x++)for(int y=ay;y<=by;y++)for(int z=az;z<=bz;z++){
+            Cell cell=cell(level,x,y,z);
+            double[] v=cell.boxes;
+            for(int i=0;i<v.length;i+=6)BOXES.add(x+v[i],y+v[i+1],z+v[i+2],x+v[i+3],y+v[i+4],z+v[i+5],cell.leaves);
         }
-        return found;
-    }
-
-    record Hit(double u,Vec3 p){}
-
-    /** jak_mode/src/collide.rs ray_sphere: where a ray enters the sphere (0 when it starts inside). */
-    static double raySphere(Vec3 origin,Vec3 dir,Vec3 sphere,double radius){
-        Vec3 o=origin.subtract(sphere);
-        double c=o.lengthSqr()-radius*radius;
-        if(c<0)return 0;
-        double a=dir.lengthSqr();
-        if(a==0)return -1;
-        double b=dir.dot(o);
-        if(b>=0)return -1;
-        double disc=b*b-a*c;
-        if(disc<0)return -1;
-        double u=(-b-Math.sqrt(disc))/a;
-        return u>1?-1:Math.max(u,0);
-    }
-
-    /** jak_mode/src/collide.rs ray_cylinder. */
-    static Hit rayCylinder(Vec3 origin,Vec3 dir,Vec3 base,Vec3 axis,double radius,double length){
-        Vec3 rel=origin.subtract(base);
-        double s0=rel.dot(axis),ds=dir.dot(axis),s1=s0+ds;
-        if(s0<0&&s1<0)return null;
-        if(s0>=length&&s1>=length)return null;
-        Vec3 perpO=rel.subtract(axis.scale(s0)),perpD=dir.subtract(axis.scale(ds));
-        double u=raySphere(perpO,perpD,Vec3.ZERO,radius);
-        if(u<0)return null;
-        double s=s0+ds*u;
-        if(s<0||s>=length)return null;
-        return new Hit(u,base.add(axis.scale(s)));
-    }
-
-    /** jak_mode/src/collide.rs inside_triangle. */
-    static boolean insideTriangle(Vec3 p,Tri t){
-        Vec3 a=t.v[0],b=t.v[1],c=t.v[2],n=t.n;
-        return b.subtract(a).cross(p.subtract(a)).dot(n)>=0&&c.subtract(b).cross(p.subtract(b)).dot(n)>=0
-            &&a.subtract(c).cross(p.subtract(c)).dot(n)>=0;
-    }
-
-    /** jak_mode/src/collide.rs moving_sphere_triangle. */
-    static Hit movingSphereTriangle(Vec3 center,double radius,Vec3 motion,Tri t){
-        Vec3 n=t.n;
-        double d=center.subtract(t.v[1]).dot(n),m=motion.dot(n);
-        if(Math.abs(d)<radius){
-            Vec3 p=center.subtract(n.scale(d));
-            if(insideTriangle(p,t))return new Hit(0,p);
-            return edgesAndCorners(center,radius,motion,t);
-        }
-        if(m==0)return null;
-        double ta=(radius-d)/m,tb=(-radius-d)/m;
-        if(ta<0&&tb<0)return null;
-        double u=Math.min(ta,tb);
-        if(u>=1)return null;
-        Vec3 at=center.add(motion.scale(u));
-        Vec3 p=at.subtract(n.scale(at.subtract(t.v[1]).dot(n)));
-        if(insideTriangle(p,t))return new Hit(u,p);
-        return edgesAndCorners(center,radius,motion,t);
-    }
-
-    /** jak_mode/src/collide.rs edges_and_corners. */
-    static Hit edgesAndCorners(Vec3 center,double radius,Vec3 motion,Tri t){
-        Hit best=null;
-        for(Vec3 v:t.v){
-            double u=raySphere(center,motion,v,radius);
-            if(u>=0&&(best==null||u<best.u))best=new Hit(u,v);
-        }
-        for(int i=0;i<3;i++){
-            Vec3 a=t.v[i],b=t.v[(i+1)%3],edge=b.subtract(a);
-            double length=edge.length();
-            if(length>0){
-                Hit hit=rayCylinder(center,motion,a,edge.scale(1/length),radius,length);
-                if(hit!=null&&hit.u>=0&&(best==null||hit.u<best.u))best=hit;
-            }
-        }
-        return best!=null&&best.u<=1?best:null;
+        return true;
     }
 }

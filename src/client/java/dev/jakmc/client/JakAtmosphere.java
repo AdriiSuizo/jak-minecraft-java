@@ -122,6 +122,25 @@ public final class JakAtmosphere {
         data.environmentalStart=Math.min(Math.max(0,data.environmentalStart*s),end*.72f);
         data.environmentalEnd=end;
         data.color.x=fog.x;data.color.y=fog.y;data.color.z=fog.z;
+        fogStart=data.environmentalStart;fogEnd=data.environmentalEnd;
+    }
+    /** The fog this frame's world was drawn with (blocks): what {@link #fogFade} reads {@code fog-dists} x and y as. */
+    private static volatile float fogStart=0,fogEnd=128;
+    /** One unit of the original's world in blocks: 6400 to the block. */
+    private static final double UNITS_PER_BLOCK=6400;
+    /**
+     * time-of-day.gc {@code calc-fade-from-fog}: how much of its light a vehicle's lamps and flames keep at {@code at},
+     * from the camera's distance to it: {@code fog-dists} z (fog-max, as a share of 255) up to the fog's start, falling
+     * linearly to w (fog-min) at its end. stand-in: z and w are mood-funcs.gc's common 240 and 130 (the moods differ,
+     * 130 to 175 in some) and the start and end are the distances this world's fog is drawn with, not a level mood's.
+     */
+    public static float fogFade(net.minecraft.world.phys.Vec3 at){
+        var camera=Minecraft.getInstance().gameRenderer.mainCamera();
+        double distance=at.distanceTo(camera.position())*UNITS_PER_BLOCK;
+        double start=fogStart*UNITS_PER_BLOCK,end=fogEnd*UNITS_PER_BLOCK;
+        double share=end>start?Math.clamp((distance-start)/(end-start),0,1):distance>=start?1:0;
+        double max=240*0.003921569,min=130*0.003921569;
+        return (float)(max+share*(min-max));
     }
     public static void applySky(ClientLevel level,SkyRenderState state){
         if(level!=world||skyMix<=0||state.skyColor==null)return;

@@ -20,8 +20,9 @@ pub mod button {
     pub const DOWN: u32 = 1 << 11;
     pub const LEFT: u32 = 1 << 12;
     pub const RIGHT: u32 = 1 << 13;
-    /// Not on the PS2 pad: the HellCat's roll, Q and E on the keyboard
-    /// while piloting (a controller rolls with L2 and R2 in open flight).
+    /// Not on the PS2 pad, and no host sends them yet: the HellCat's roll
+    /// asked with Q (left) and E (right) on a keyboard while piloting. The
+    /// left stick's X rolls it too (`hellcat.rs` `controls`).
     pub const ROLL_LEFT: u32 = 1 << 14;
     pub const ROLL_RIGHT: u32 = 1 << 15;
 

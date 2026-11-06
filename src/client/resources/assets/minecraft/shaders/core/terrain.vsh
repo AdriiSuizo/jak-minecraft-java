@@ -28,7 +28,7 @@ layout(location = 1) out float cylindricalVertexDistance;
 layout(location = 2) out vec4 vertexColor;
 layout(location = 3) out vec2 texCoord0;
 layout(location = 4) out float chunkVisibility;
-// Jak camera cutaway: the surface point, camera-relative (Rust `in.map`).
+// Jak's camera masks: the surface point, camera-relative (jakmc:camera_mask.glsl).
 layout(location = 5) out vec3 jakSurface;
 
 void main() {

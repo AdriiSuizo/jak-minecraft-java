@@ -95,6 +95,21 @@ public final class JakRenderer {
         return mesh;
     }
 
+    // Adrii 06/11 (frame budget): the game's Jak 3 body (jakb-c, 4,708 triangles) wearing only the cutscene head
+    // (jakc-highres / darkjak-highres: face, hair, brows, ears, teeth, eyes, goggles), and the game's Daxter.
+    private static boolean headPart(String material){
+        return material.contains("face")||material.contains("hair")||material.contains("eyebrow")||material.contains("horn")
+            ||material.contains("teeth")||material.startsWith("programmer_eye")||material.contains("gogglemetal")||material.contains("lens")
+            ||material.equals("common-white");
+    }
+    private static final java.util.function.Predicate<String> HEAD=JakRenderer::headPart,NOT_HEAD=m->!headPart(m);
+    /** Jak's body as `visible` picks it: the whole game mesh, or the game mesh's body under the cutscene mesh's head. */
+    private static void submitBody(GltfModel visible,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous,boolean closedEyes){
+        if(visible==body){body.submitJakBody(skeleton,stack,collector,light,dark,luminous,closedEyes);return;}
+        body.submitJakBody(skeleton,stack,collector,light,dark,luminous,closedEyes,NOT_HEAD);
+        visible.submitJakBody(skeleton,stack,collector,light,dark,luminous,closedEyes,HEAD);
+    }
+
     private static GltfModel bodyMesh(Entity actor,AvatarRenderState state,boolean dark){
         // Use the lighter original mesh for distant remote players whose facial details cannot be seen.
         if(actor!=Minecraft.getInstance().player&&state.distanceToCameraSq>16*16)return body;
@@ -102,7 +117,7 @@ public final class JakRenderer {
     }
 
     private static GltfModel daxterMesh(Entity actor,AvatarRenderState state){
-        return actor==Minecraft.getInstance().player||state.distanceToCameraSq<=16*16?cinematicDaxter:daxter;
+        return daxter;
     }
     static GltfModel boardModel(){
         if(board==null){
@@ -137,6 +152,8 @@ public final class JakRenderer {
             if(frame.hidden())hurtHiddenDraws++;
         }
         if(frame.hidden())return true;
+        // target-pilot-death: the burst has taken him (ja-channel-set! 0).
+        if(dev.jakmc.client.JakPilotDeath.hidden(state.id))return true;
         var previous=JakHurtVisuals.current();JakHurtVisuals.current(frame);
         try{return submitActor(state,stack,collector,camera,firstPerson);}
         finally{JakHurtVisuals.current(previous);}
@@ -148,7 +165,9 @@ public final class JakRenderer {
         var actor=client.level.getEntity(state.id);
         if(actor==null||!actor.getAttachedOrCreate(JakData.ENABLED))return false;
         if(!firstPerson&&actor.getVehicle() instanceof dev.jakmc.entity.JakVehicle car&&car.frame()!=null){
+            long profiled=dev.jakmc.entity.ZoomerProfile.begin();
             submitCarRider(actor,state,stack,collector,camera.pos,car,client.getDeltaTracker().getGameTimeDeltaPartialTick(false));
+            dev.jakmc.entity.ZoomerProfile.end("client rider draw",profiled);
             return true;
         }
         if(state.bedOrientation!=null&&actor instanceof net.minecraft.world.entity.LivingEntity living&&living.isSleeping()){
@@ -237,8 +256,18 @@ public final class JakRenderer {
             if(clip!=null&&body.hasClip(clip)){
                 float age=pose.raw().getAsJsonObject("transition").get("stateAge").getAsFloat()+elapsed;
                 program=clip;
+                // The wade walk is its own cycle in the core (target-wade-walk's loop!, the ground covered against what a cycle
+                // covers): the footsteps' ripples are read from it, so it is drawn from its frame too.
+                var wade=pose.raw().get("wadeFrame");
+                if(wade instanceof com.google.gson.JsonPrimitive wadeFrame&&clip.startsWith("jakb-wade-")){
+                    float shown=wadeFrame.getAsFloat()+(pose.raw().has("wadeRate")?pose.raw().get("wadeRate").getAsFloat()*elapsed:0);
+                    skeleton=JakChannels.cycle(body,clip,shown,body.frames(clip));
+                    String side="daxter-"+clip.substring(5);
+                    daxPose=daxter.hasClip(side)?JakChannels.cycle(daxter,side,shown,body.frames(clip)):JakChannels.loop(daxter,side,age);
+                }else{
                 skeleton=JakChannels.loop(body,clip,age);
                 daxPose=JakChannels.loop(daxter,ice?"daxter-stance-loop":"daxter-"+clip.substring(5),age);
+                }
             }else{
                 skeleton=JakChannels.sample(body,false,pose,boardFrame,frame);
                 daxPose=JakChannels.sample(daxter,true,pose,boardFrame,frame);
@@ -288,7 +317,7 @@ public final class JakRenderer {
                     firstPersonRetraction=(float)Math.clamp(fraction-.12/Math.max(.001,along),.04,1);
                     stack.last().pose().scaleLocal(firstPersonRetraction);
                 }
-                firstPersonArmTriangles=state.isInvisible?0:visibleBody.submitArms(body,skeleton,stack,collector,state.lightCoords,luminous);
+                firstPersonArmTriangles=state.isInvisible?0:body.submitArms(body,skeleton,stack,collector,state.lightCoords,luminous);
                 hand(state,true,skeleton,stack,collector,camera.pos,viewGun);
                 firstPersonSerial++;
                 float age=gunState.get("fireAge").getAsFloat()+elapsed;
@@ -297,9 +326,9 @@ public final class JakRenderer {
             stack.popPose();return true;
         }
         // Rust jak_pose.rs: Invisibility hides Jak, his cloth and Daxter (board, Flut Flut and gun stay).
-        if(!state.isInvisible)visibleBody.submitJakBody(skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,JakBlink.shut(actor.getId(),state.ageInTicks/20f));
+        if(!state.isInvisible)submitBody(visibleBody,skeleton,stack,collector,state.lightCoords,pose.dark(),luminous,JakBlink.shut(actor.getId(),state.ageInTicks/20f));
         if(warmFrames<3&&actor==client.player&&!luminous&&!pose.dark()){warmFrames++;warm(visibleBody,skeleton,stack,collector,state.lightCoords);}
-        if(visibleBody!=body&&visibleDaxter!=daxter&&actor==client.player)cinematicRenderSerial++;
+        if(visibleBody!=body&&actor==client.player)cinematicRenderSerial++;
         submitCloth(actor,state,skeleton,stack,collector,camera.pos,pose.raw().get("session").getAsLong());
         var wingState=pose.raw().get("wings");
         if(wingState!=null&&wingState.isJsonObject()){
@@ -389,7 +418,7 @@ public final class JakRenderer {
         stack.rotate(Axis.YP,heading-sleeping.heading);
         stack.scale(bodyScale,bodyScale,bodyScale);
         stack.mulPose(sleeping.bed);
-        bodyMesh(actor,state,false).submitJakBody(sleeping.jak,stack,collector,state.lightCoords,false,false,true);
+        submitBody(bodyMesh(actor,state,false),sleeping.jak,stack,collector,state.lightCoords,false,false,true);
         submitCloth(actor,state,sleeping.jak,stack,collector,camera,-1);
         stack.mulPose(sleeping.shoulder);
         daxterMesh(actor,state).submitEyes(sleeping.daxter,stack,collector,state.lightCoords,true);
@@ -408,16 +437,35 @@ public final class JakRenderer {
         var frame=car.presentationAfter();
         var controls=frame.deepCopy();
         for(String key:new String[]{"lean","throttle","brake"})if(before.has(key)&&frame.has(key))controls.addProperty(key,net.minecraft.util.Mth.lerp(partial,before.get(key).getAsFloat(),frame.get(key).getAsFloat()));
+        if(before.has("pilot")&&frame.has("pilot")){
+            // target-pilot-trans: the sitting loop's interpolants, stepped natively with the vehicle (jak_core::pilot).
+            var from=before.getAsJsonArray("pilot");var to=frame.getAsJsonArray("pilot");
+            var mixed=new com.google.gson.JsonArray();
+            for(int i=0;i<to.size();i++)mixed.add(net.minecraft.util.Mth.lerp(partial,from.get(i).getAsFloat(),to.get(i).getAsFloat()));
+            controls.add("pilot",mixed);
+        }
         controls.addProperty("steering",net.minecraft.util.Mth.lerp(partial,before.get("steer").getAsFloat(),frame.get("steer").getAsFloat()));
+        smackPose(before,frame,partial,controls);
         float age=frame.get("boarding").getAsFloat();
         var skeleton=body.jakForm(carPilotPose(body,"jakb",controls,age<0?0:(partial-1)/20,car.model),false,0);
         var passenger=carPilotPose(daxter,"daxter",controls,age<0?0:(partial-1)/20,car.model);
         var attitude=JakGuiContext.active()?new org.joml.Quaternionf().rotationY((float)Math.toRadians(-state.bodyRot)):JakVehicleRenderer.rotation(before).slerp(JakVehicleRenderer.rotation(frame),partial);
+        float boardingNow=JakGuiContext.active()?-1:car.presentationBoarding();
+        // target-pilot-post: the arm IK is on in the stance and its smacks, off while he gets on, and eases in over a quarter second.
+        if(!JakGuiContext.active()&&frame.has("hands")){
+            float ik=ikBlend(car.getId(),boardingNow<0);
+            if(ik>0)skeleton=handIk(skeleton,car,frame.getAsJsonArray("hands"),controls.get("steering").getAsFloat(),ik);
+        }
+        if(boardingNow>=0){
+            // target-pilot-get-on: his facing goes from the one he had to the vehicle's by the same quarter sine as his trans.
+            double arrive=Math.clamp(boardingNow*car.getOn().aframesPerSecond()/dev.jakmc.entity.JakVehicle.ARRIVE_AFRAME,0,1);
+            attitude=new org.joml.Quaternionf().rotationY((float)Math.toRadians(-car.presentationBoardingYaw())).slerp(attitude,(float)Math.sin(arrive*Math.PI/2));
+        }
         stack.pushPose();
         stack.mulPose(new Matrix4f().rotation(attitude));
         stack.scale(bodyScale,bodyScale,bodyScale);
         stack.translate(0,floorOffset,0);
-        bodyMesh(actor,state,false).submitJakBody(skeleton,stack,collector,state.lightCoords,false,false,false);
+        submitBody(bodyMesh(actor,state,false),skeleton,stack,collector,state.lightCoords,false,false,false);
         submitCloth(actor,state,skeleton,stack,collector,camera,-2L-car.getId());
         Vector3f shoulder=body.joint(skeleton,"LshoulderPad").getTranslation(new Vector3f());
         stack.translate(shoulder.x,shoulder.y,shoulder.z);
@@ -438,7 +486,62 @@ public final class JakRenderer {
         pilotLoaded=true;
     }
 
+    private static final java.util.Map<Integer,double[]> IK=new java.util.HashMap<>();
+    /** joint-mod-ik-callback's blend: 4 a second up while the IK is enabled (target-pilot-post) and 4 down when it is not. */
+    private static float ikBlend(int vehicle,boolean enabled){
+        long now=System.nanoTime();
+        var ik=IK.computeIfAbsent(vehicle,k->new double[]{0,now});
+        double dt=Math.clamp((now-ik[1])/1e9,0,.1);ik[1]=now;
+        ik[0]=Math.clamp(ik[0]+(enabled?4:-4)*dt,0,1);
+        float blend=(float)ik[0];
+        if(blend==0&&!enabled)IK.remove(vehicle);
+        return blend;
+    }
+    /** target-pilot-post: both forearms' IK (arm-ik 0 and 1: joints 18 and 27, 0.3 m from elbow to hand) set on the vehicle's hand points. */
+    private static GltfModel.Posed handIk(GltfModel.Posed pose,dev.jakmc.entity.JakVehicle car,com.google.gson.JsonArray hands,float steer,float blend){
+        var targets=JakVehicleRenderer.handTargets(car.model,hands,steer);
+        // Vehicle metres to this model's units: the model is drawn bodyScale to the block and lifted floorOffset, a metre is .64 blocks.
+        float scale=.64f/bodyScale;
+        for(var t:targets)t.mul(scale).sub(0,floorOffset,0);
+        pose=body.armIk(pose,"Larm","Lforarm",1228.8f/4096,targets[0],blend);
+        return body.armIk(pose,"Rarm","Rforarm",-1228.8f/4096,targets[1],blend);
+    }
+    /**
+     * target-pilot-impact: the smack the native pilot (jak_core::pilot) is taking at the instant drawn, from the two hover frames it
+     * is drawn between: the clip, its frame and how much of the pose it is (in over 0.05 s, out over 0.1 s).
+     */
+    private static void smackPose(com.google.gson.JsonObject before,com.google.gson.JsonObject after,float partial,com.google.gson.JsonObject controls){
+        var to=after.has("smack")?after.getAsJsonObject("smack"):null;
+        var from=before.has("smack")?before.getAsJsonObject("smack"):null;
+        var clip=to!=null?to:from;
+        if(clip==null)return;
+        float toFrame=to!=null?to.get("frame").getAsFloat():from.get("frame").getAsFloat();
+        float toWeight=to!=null?to.get("weight").getAsFloat():0;
+        boolean same=from!=null&&to!=null&&from.get("clip").getAsString().equals(to.get("clip").getAsString());
+        float fromFrame=same?from.get("frame").getAsFloat():toFrame;
+        float fromWeight=same||to==null?from.get("weight").getAsFloat():0;
+        var mixed=new com.google.gson.JsonObject();
+        mixed.addProperty("clip",clip.get("clip").getAsString());
+        mixed.addProperty("frame",net.minecraft.util.Mth.lerp(partial,fromFrame,toFrame));
+        mixed.addProperty("weight",net.minecraft.util.Mth.lerp(partial,fromWeight,toWeight));
+        controls.add("smackPose",mixed);
+    }
+
     private static GltfModel.Posed carPilotPose(GltfModel model,String actor,com.google.gson.JsonObject controls,float elapsed,dev.jakmc.entity.JakVehicle.Model vehicle){
+        var pose=carPilotLoop(model,actor,controls,elapsed,vehicle);
+        if(controls.has("smackPose")&&controls.get("boarding").getAsFloat()<0){
+            var smack=controls.getAsJsonObject("smackPose");
+            String name=actor+(vehicle.bike()?"-pilot-bike-":"-pilot-car-")+smack.get("clip").getAsString();
+            // target-pilot-impact: the smack clip over the sitting loop, in over 0.05 s and out over 0.1 s (the weight the native pilot reports).
+            if(model.hasClip(name))pose=model.blend(pose,model.pose(name,smack.get("frame").getAsFloat()),smack.get("weight").getAsFloat());
+        }
+        float seated=controls.has("seated")?controls.get("seated").getAsFloat()+elapsed:-1;
+        if(controls.get("boarding").getAsFloat()>=0||seated<0||seated>=dev.jakmc.entity.JakVehicle.SEAT_BLEND)return pose;
+        // target-pilot-*-anim-loop opens with (ja-channel-push! 3 (seconds 0.1)): a tenth of a second from the get-on's last pose.
+        var last=model.poseAtTime(actor+(vehicle.bike()?"-pilot-bike-get-on":"-pilot-car-get-on"),Float.MAX_VALUE);
+        return model.blend(last,pose,seated/dev.jakmc.entity.JakVehicle.SEAT_BLEND);
+    }
+    private static GltfModel.Posed carPilotLoop(GltfModel model,String actor,com.google.gson.JsonObject controls,float elapsed,dev.jakmc.entity.JakVehicle.Model vehicle){
         float boarding=controls.get("boarding").getAsFloat();
         if(vehicle.bike()&&boarding>=0)return model.poseAtTime(actor+"-pilot-bike-get-on",boarding+elapsed);
         if(boarding>=0)return pilotPose(model,actor,controls,elapsed);
@@ -446,6 +549,14 @@ public final class JakRenderer {
         float lean=controls.get("lean").getAsFloat();
         float thrust=controls.get("throttle").getAsFloat();
         String prefix=actor+(vehicle.bike()?"-pilot-bike-":actor.equals("jakb")&&!vehicle.hover()?"-pilot-wcar-":"-pilot-car-");
+        if(controls.has("pilot")){
+            // target-pilot-*-anim-loop: turn-back and turn-front at the turn frame, mixed by front-back, then up-down by its weight.
+            var loop=controls.getAsJsonArray("pilot");
+            var back=model.pose(prefix+"turn-back",loop.get(0).getAsFloat());
+            var front=model.pose(prefix+"turn-front",loop.get(0).getAsFloat());
+            var vertical=model.pose(actor+(vehicle.bike()?"-pilot-bike-up-down":"-pilot-car-up-down"),loop.get(2).getAsFloat());
+            return model.blend(model.blend(back,front,loop.get(1).getAsFloat()),vertical,loop.get(3).getAsFloat());
+        }
         if(vehicle.bike())turn=2-turn;
         var back=model.pose(prefix+"turn-back",turn);
         var front=model.pose(prefix+"turn-front",turn);
@@ -583,8 +694,8 @@ public final class JakRenderer {
     private static void warm(GltfModel visibleBody,GltfModel.Posed skeleton,PoseStack stack,SubmitNodeCollector collector,int light){
         stack.pushPose();
         stack.scale(1e-4f,1e-4f,1e-4f);
-        visibleBody.submitJakBody(skeleton,stack,collector,light,false,true,false);
-        visibleBody.submitJakBody(skeleton,stack,collector,light,true,false,false);
+        submitBody(visibleBody,skeleton,stack,collector,light,false,true,false);
+        submitBody(visibleBody,skeleton,stack,collector,light,true,false,false);
         String wingClip=wings==null?null:wings.anyClip();
         if(wingClip!=null){wings.submitLightEffect(wings.pose(wingClip,0),stack,collector,LightFormTexture.Form.WINGS,1);wings.submitLightEffect(wings.pose(wingClip,0),stack,collector,LightFormTexture.Form.WINGS,.5f);}
         for(String clip:new String[]{"jakb-shield-idle","jakb-shield-hit"})if(shield!=null&&shield.hasClip(clip)){

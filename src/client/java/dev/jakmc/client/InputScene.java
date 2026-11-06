@@ -32,6 +32,7 @@ public final class InputScene {
   if(RulesScene.camera()!=null)return RulesScene.camera();
   if(LandsScene.camera()!=null)return LandsScene.camera();
   if(PunchScene.camera()!=null)return PunchScene.camera();
+  if(BenchScene.camera()!=null)return BenchScene.camera();
   if(WreckScene.camera()!=null)return WreckScene.camera();
   if(ScaleScene.camera()!=null)return ScaleScene.camera();
   if(SitesScene.camera()!=null)return SitesScene.camera();
@@ -40,6 +41,7 @@ public final class InputScene {
   if(KermitScene.camera()!=null)return KermitScene.camera();
   if(LoteScene.camera()!=null)return LoteScene.camera();
   if(Lote2Scene.camera()!=null)return Lote2Scene.camera();
+  if(Lote3Scene.camera()!=null)return Lote3Scene.camera();
   if(VentScene.camera()!=null)return VentScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
   var enemy=EnemyScene.camera(Minecraft.getInstance());
@@ -560,7 +562,7 @@ public final class InputScene {
  private static volatile int slowStart,slowEnd,resumeStart,resumeEnd;
  private static boolean freezeSeen,pauseOnLostFocus;
  static int replayPad(){return running&&pad!=null?pad.id:0;}
- static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||PunchScene.backgroundPad(id)||id!=0&&replayPad()==id;}
+ static boolean backgroundPad(int id){return CarScene.backgroundPad(id)||PunchScene.backgroundPad(id)||BenchScene.backgroundPad(id)||Lote3Scene.backgroundPad(id)||id!=0&&replayPad()==id;}
  private static int darkScreenshot,shieldScreenshot,wingsScreenshot,betweenPackets,flightJump;
  private static Vec3 lastCamera;
  private static long lastFrameNanos;

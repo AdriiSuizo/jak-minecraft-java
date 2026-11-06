@@ -17,5 +17,6 @@ abstract class JakGradeMixin {
         JakGrade.apply(((GameRenderer)(Object)this).mainRenderTarget());
         dev.jakmc.client.sky.JakFreezeScreen.frame();
         dev.jakmc.client.sky.JakFreezeScreen.apply(((GameRenderer)(Object)this).mainRenderTarget());
+        dev.jakmc.client.sky.JakNukeScreen.apply(((GameRenderer)(Object)this).mainRenderTarget());
     }
 }

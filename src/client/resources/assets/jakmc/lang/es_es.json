@@ -197,6 +197,7 @@
   "block.jak.objeto_haven_propaganda": "Poste de propaganda de Haven",
   "block.jak.objeto_haven_propaganda_ajustada": "Poste de propaganda de Haven",
   "block.jakmc.eco_launcher": "Lanzador de eco azul",
+  "block.jakmc.eco_launcher.no_room": "El lanzador necesita un área libre de 5x5",
   "block.jakmc.iris_door": "Puerta iris precursora",
   "block.jakmc.airlock_door": "Esclusa de Villarrefugio",
   "entity.jakmc.kermit": "Rana del pantano",

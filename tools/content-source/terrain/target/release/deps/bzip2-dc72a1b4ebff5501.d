@@ -1,0 +1,11 @@
+C:\Users\vieir\Desktop\Repo\jak-minecraft-java\tools\content-source\terrain\target\release\deps\bzip2-dc72a1b4ebff5501.d: C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\lib.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\mem.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\bufread.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\read.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\write.rs
+
+C:\Users\vieir\Desktop\Repo\jak-minecraft-java\tools\content-source\terrain\target\release\deps\libbzip2-dc72a1b4ebff5501.rlib: C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\lib.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\mem.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\bufread.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\read.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\write.rs
+
+C:\Users\vieir\Desktop\Repo\jak-minecraft-java\tools\content-source\terrain\target\release\deps\libbzip2-dc72a1b4ebff5501.rmeta: C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\lib.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\mem.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\bufread.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\read.rs C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\write.rs
+
+C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\lib.rs:
+C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\mem.rs:
+C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\bufread.rs:
+C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\read.rs:
+C:\Users\vieir\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bzip2-0.5.2\src\write.rs:

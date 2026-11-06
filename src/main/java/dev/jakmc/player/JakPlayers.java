@@ -39,6 +39,15 @@ public final class JakPlayers {
         var s=LIVE.get(player.getUUID());return s==null?0:s.nativeId;
     }
     private static final int BOARD_BUTTON=1<<7;
+    /** target-pilot-get-off (pilot-states.gc): a pilot let off a vehicle takes the original exit, with the vehicle's velocity (blocks a second). */
+    private record PilotExit(boolean bike,Vec3 velocity,long tick){}
+    private static final java.util.Map<java.util.UUID,PilotExit> PILOT_EXITS=new java.util.HashMap<>();
+    /** The pilot is being let off: the Jak made for him next takes the get-off, then the jump, then the fall (NativeJak.pilotExit). */
+    public static void pilotExit(ServerPlayer player,boolean bike,Vec3 velocity){
+        PILOT_EXITS.put(player.getUUID(),new PilotExit(bike,velocity,player.level().getGameTime()));
+    }
+    /** Whether this player is leaving a vehicle by the original exit (the vehicle then puts him down on its seat). */
+    public static boolean pilotExiting(ServerPlayer player){return PILOT_EXITS.containsKey(player.getUUID());}
     /** Adrii 06/11: three times Minecraft's reach to place blocks; attacking keeps its own (entity) reach. */
     public static final net.minecraft.resources.Identifier REACH=dev.jakmc.JakData.id("jak_block_reach");
     private static final net.minecraft.resources.Identifier VANILLA_SPRINT=
@@ -216,6 +225,9 @@ public final class JakPlayers {
                 if(s!=null&&(s.owner!=p||mountLost||moved&&(s.mount!=null||s.craft!=null))) {s.close();LIVE.remove(p.getUUID());s=null;}
                 else if(moved)s.carry(p);
                 if(s==null){s=new Session(p);LIVE.put(p.getUUID(),s);}
+                var exit=PILOT_EXITS.remove(p.getUUID());
+                if(exit!=null&&p.level().getGameTime()-exit.tick()<=5)
+                    NativeJak.pilotExit(s.nativeId,exit.bike(),(float)exit.velocity().x,(float)exit.velocity().y,(float)exit.velocity().z);
                 try{step(p,s);}catch(RuntimeException failure){s.close();LIVE.remove(p.getUUID());p.setDeltaMovement(Vec3.ZERO);JakMod.LOG.error("Jak session stopped at last safe Minecraft pose for {}",p.getScoreboardName(),failure);}
             }
             var it=LIVE.entrySet().iterator();while(it.hasNext()){var e=it.next();if(!present.contains(e.getKey())){e.getValue().close();it.remove();}}

@@ -2,14 +2,50 @@
 use super::{Sexp, keyword, parse};
 use glam::Vec3;
 use std::collections::HashMap;
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Specs {
     pub heads: Vec<Vec3>,
     pub tails: Vec<Vec3>,
     pub damage_stages: usize,
     pub thrusters: Vec<Vec3>,
     pub exhaust: Vec<Vec3>,
+    /// `exhaust-local-dir`, `smoke-local-pos` and `smoke-local-vel` (vehicle-method-78), in Jak units.
+    pub exhaust_dir: Vec<Vec3>,
+    pub smoke_pos: Vec<Vec3>,
+    pub smoke_vel: Vec<Vec3>,
+    /// `thruster-flame-width` and `thruster-flame-length` (units), and the handling's `max-engine-thrust` (units a second).
+    pub flame_width: f32,
+    pub flame_length: f32,
+    pub max_engine_thrust: f32,
+    /// The rigid body (`rigid-body-info`) and what hvehicle-physics's roll reads of the constants: mass, gravity (units a
+    /// second squared), `inertial-tensor-box` (units), `cm-offset-joint`, `angular-damping`, `roll-control-factor`,
+    /// `player-weight` (force), `player-shift-x` and the roll thrusters (`roll-thruster-array`: local position and `rot`).
+    pub mass: f32,
+    pub gravity: f32,
+    pub inertial_box: Vec3,
+    pub cm_offset: Vec3,
+    pub angular_damping: f32,
+    pub roll_control: f32,
+    pub player_weight: f32,
+    pub player_shift_x: f32,
+    pub roll_thrusters: Vec<(Vec3, Vec3)>,
+    /// `h-bike-base`'s `vehicle-method-78` draws a flame at each roll thruster that fires; the cars have none.
+    pub roll_flame: bool,
+    /// The rider's place: `seat-array`'s first `position`, and the two `rider-hand-offset`s that `vehicle-method-113`
+    /// puts the pilot's hands at (target-pilot-post's arm IK): from the seat on a bike, from the steering wheel's joint on a car.
+    pub seat: Vec3,
+    pub hand_offsets: Vec<Vec3>,
     pub masks: [u64; 3],
+}
+/// The first value anywhere under `items` that follows `key` (the handling is nested in the constants).
+fn find<'a>(items: &'a [Sexp], key: &str) -> Option<&'a Sexp> {
+    if let Some(found) = keyword(items, key) {
+        return Some(found);
+    }
+    items.iter().find_map(|item| match item {
+        Sexp::List(inner) => find(inner, key),
+        _ => None,
+    })
 }
 pub fn read(source: &str) -> HashMap<String, Specs> {
     let mut out = HashMap::new();
@@ -83,6 +119,52 @@ pub fn read(source: &str) -> HashMap<String, Specs> {
         }
         let mut masks = [0;3];
         collect_masks(body, &mut masks);
+        let number = |key: &str| find(body, key).and_then(Sexp::number).unwrap_or(0.);
+        // `(new 'static 'vector :x .. :y .. :z ..)`
+        let vector = |at: &Sexp| match at {
+            Sexp::List(v) => Vec3::new(
+                keyword(v, ":x").and_then(Sexp::number).unwrap_or(0.),
+                keyword(v, ":y").and_then(Sexp::number).unwrap_or(0.),
+                keyword(v, ":z").and_then(Sexp::number).unwrap_or(0.),
+            ),
+            _ => Vec3::ZERO,
+        };
+        let inertial_box = match find(body, ":inertial-tensor-box") {
+            Some(Sexp::List(items)) => {
+                let sizes: Vec<f32> = items.iter().filter_map(|i| matches!(i, Sexp::List(_)).then(|| i.number()).flatten()).collect();
+                Vec3::new(*sizes.first().unwrap_or(&0.), *sizes.get(1).unwrap_or(&0.), *sizes.get(2).unwrap_or(&0.))
+            }
+            _ => Vec3::ZERO,
+        };
+        let hand_offsets: Vec<Vec3> = match find(body, ":rider-hand-offset") {
+            Some(Sexp::List(items)) => items.iter().filter(|i| matches!(i, Sexp::List(_))).map(&vector).take(2).collect(),
+            _ => Vec::new(),
+        };
+        let seat = match find(body, ":seat-array") {
+            Some(Sexp::List(items)) => items
+                .iter()
+                .find_map(|item| match item {
+                    Sexp::List(seat) => keyword(seat, ":position").map(&vector),
+                    _ => None,
+                })
+                .unwrap_or(Vec3::ZERO),
+            _ => Vec3::ZERO,
+        };
+        let roll_count = number(":roll-thruster-count") as usize;
+        let roll_thrusters: Vec<(Vec3, Vec3)> = match find(body, ":roll-thruster-array") {
+            Some(Sexp::List(items)) => items
+                .iter()
+                .filter_map(|item| match item {
+                    Sexp::List(point) => Some((
+                        keyword(point, ":local-pos").map_or(Vec3::ZERO, &vector),
+                        keyword(point, ":rot").map_or(Vec3::ZERO, &vector),
+                    )),
+                    _ => None,
+                })
+                .take(roll_count)
+                .collect(),
+            _ => Vec::new(),
+        };
         out.insert(
             model.into(),
             Specs {
@@ -91,6 +173,24 @@ pub fn read(source: &str) -> HashMap<String, Specs> {
                 damage_stages: stages(body).max(1),
                 thrusters: points(":thruster-local-pos", ""),
                 exhaust: points(":exhaust-local-pos", ""),
+                exhaust_dir: points(":exhaust-local-dir", ""),
+                smoke_pos: points(":smoke-local-pos", ""),
+                smoke_vel: points(":smoke-local-vel", ""),
+                flame_width: keyword(p, ":thruster-flame-width").and_then(Sexp::number).unwrap_or(0.),
+                flame_length: keyword(p, ":thruster-flame-length").and_then(Sexp::number).unwrap_or(0.),
+                max_engine_thrust: find(body, ":max-engine-thrust").and_then(Sexp::number).unwrap_or(0.),
+                mass: number(":mass"),
+                gravity: number(":gravity"),
+                inertial_box,
+                cm_offset: find(body, ":cm-offset-joint").map_or(Vec3::ZERO, &vector),
+                angular_damping: number(":angular-damping"),
+                roll_control: number(":roll-control-factor"),
+                player_weight: number(":player-weight"),
+                player_shift_x: number(":player-shift-x"),
+                roll_thrusters,
+                roll_flame: model.starts_with("bike"),
+                seat,
+                hand_offsets,
                 masks: masks.map(|mask|mask|1),
             },
         );

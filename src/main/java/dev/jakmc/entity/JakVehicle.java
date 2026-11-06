@@ -68,13 +68,48 @@ public final class JakVehicle extends Entity {
         public double parkingClearance(){return hover()?(bike()?2.3:2.5)*.64+.5:height*.65;}
     }
 
+    /** pilot-states.gc target-pilot-get-on: Jak is on the seat by artist frame 10 and the vehicle takes his controls from 20.5. */
+    public static final float ARRIVE_AFRAME=10f,READY_AFRAME=20.5f;
+    /** A get-on animation: how long it runs, and how many of the artist's frames it counts a second (the art group's own timing). */
+    public record GetOn(float seconds,float aframesPerSecond){}
+    private static GetOn bikeOn,carOn;
+    private static synchronized void loadGetOn(){
+        if(bikeOn!=null)return;
+        try{
+            var report=JsonParser.parseString(NativeJak.pilotTimings()).getAsJsonObject();
+            var bike=report.getAsJsonObject("bikeOn");var car=report.getAsJsonObject("carOn");
+            carOn=new GetOn(car.get("seconds").getAsFloat(),car.get("aframesPerSecond").getAsFloat());
+            bikeOn=new GetOn(bike.get("seconds").getAsFloat(),bike.get("aframesPerSecond").getAsFloat());
+        }catch(RuntimeException|LinkageError failure){
+            // stand-in: the export's own timings unavailable; the jak-pilot-hcar and jak-pilot art groups: 16 and 23 frames at 15 frames a second, 2 artist frames each.
+            JakMod.LOG.warn("Pilot get-on timings unavailable, using the art groups' known ones",failure);
+            carOn=new GetOn(22/15f,30f);
+            bikeOn=new GetOn(1f,30f);
+        }
+    }
+    /** How Jak gets on this vehicle (a bike's clip, else a car's: target-pilot-get-on picks by the vehicle's stance). */
+    public GetOn getOn(){loadGetOn();return model.bike()?bikeOn:carOn;}
+    /**
+     * target-pilot-get-on: where Jak is {@code aframe} artist frames into getting on, from where he stood to the seat
+     * (wherever the vehicle has taken it): horizontally the quarter sine of the ten frames, vertically straight.
+     * (jak_core::pilot::get_on_position is its twin.)
+     */
+    public static Vec3 getOn(Vec3 from,Vec3 seat,float aframe){
+        double t=Math.clamp(aframe/ARRIVE_AFRAME,0,1),sine=Math.sin(t*Math.PI/2);
+        return new Vec3(from.x+(seat.x-from.x)*sine,from.y+(seat.y-from.y)*t,from.z+(seat.z-from.z)*sine);
+    }
+
     private static final EntityDataAccessor<String> FRAME=SynchedEntityData.defineId(
         JakVehicle.class,EntityDataSerializers.STRING);
     public final Model model;
     private long handle,retryAt,lastInput,boardingAt;
     private WheeledCollision collision;
     private Vec3 nativePosition, velocity=Vec3.ZERO, seat=new Vec3(0,.5,0), boardingFrom;
-    private float boardingProgress=1;
+    /** Seconds into the get-on animation (pilot-states.gc target-pilot-get-on), -1 when on; and Jak's facing as he got on. */
+    private float boardingSeconds=-1,boardingYaw;
+    /** The tick the get-on animation ended: the sitting loop opens with a tenth of a second's blend from its last pose (target-pilot-*-anim-loop's ja-channel-push!). */
+    private long seatedAt=Long.MIN_VALUE/2;
+    public static final float SEAT_BLEND=.1f;
     private float pitch,roll,health;
     private int strikes;
     /** A town's traffic: the ring it drives round, none once a player rides it (Rust zoomers.rs route). */
@@ -83,6 +118,9 @@ public final class JakVehicle extends Entity {
     /** Ticks between blows that still count as in a row (Rust zoomers STRIKE_GAP 1.6 s). */
     private static final int STRIKE_GAP=32;
     private boolean high;
+    /** The player who last stepped off it and the tick he did: its hull is solid to him (see {@link #supportsLanding}). */
+    private java.util.UUID lastRider;
+    private long exitedAt=Long.MIN_VALUE/2;
     private JakPackets.Input controls;
     private JsonObject currentFrame,previousFrame;
     private final float[] trafficNote=new float[4];
@@ -96,6 +134,7 @@ public final class JakVehicle extends Entity {
     private double displayClock,displayInterval=50_000_000;
     private float displayFraction=1;
     private Vec3 displayPosition;
+    private double displayBob;
 
     public void samplePresentation(long now){
         if(displayFrames.isEmpty())return;
@@ -116,6 +155,8 @@ public final class JakVehicle extends Entity {
         displayFraction=right.tick==left.tick?1:(float)Math.clamp((displayClock-left.tick)/(right.tick-left.tick),0,1);
         displayPosition=displayVector(displayBefore,"worldPosition",position()).lerp(
             displayVector(displayAfter,"worldPosition",position()),displayFraction);
+        // Rust zoomers.rs: the hover's bob, sin(clock*2.1+phase)*0.07 m, its phase the zoomer's own.
+        displayBob=Math.sin(displayClock/20.0*2.1+(getId()*0.618%1)*Math.PI*2)*0.07/(6400.0/4096);
     }
     private static Vec3 displayVector(JsonObject frame,String key,Vec3 fallback){
         return frame!=null&&frame.has(key)?JakPlayers.vector(frame.getAsJsonArray(key)):fallback;
@@ -133,17 +174,40 @@ public final class JakVehicle extends Entity {
         return new org.joml.Quaternionf(q.get(0).getAsFloat(),q.get(1).getAsFloat(),q.get(2).getAsFloat(),q.get(3).getAsFloat());
     }
     private Vec3 displayedSeat(JsonObject frame){
-        Vec3 hull=displayVector(frame,"worldPosition",position());
-        Vec3 point=hull.add(displayVector(frame,"seat",seat));
-        float progress=frame==null?1:frame.get("boardingProgress").getAsFloat();
-        if(frame!=null&&frame.has("boardingFrom")&&progress<1){
-            point=displayVector(frame,"boardingFrom",point).lerp(point,progress*progress*(3-2*progress))
-                .add(0,Math.sin(progress*Math.PI)*.24,0);
-        }
-        return point;
+        return displayVector(frame,"worldPosition",position()).add(displayVector(frame,"seat",seat));
     }
+    /**
+     * The vertical offset the hover is drawn with: its bob and the step it has just climbed, eased away
+     * (Rust zoomers.rs root_of). The pilot sits on the seat of the vehicle as drawn, so it takes it too:
+     * the hull jumps up a whole block at once, the drawn bike and its rider rise together.
+     */
+    public double presentationLift(){
+        var a=presentationBefore();var b=presentationAfter();
+        float climb=a!=null&&b!=null&&a.has("climb")&&b.has("climb")?net.minecraft.util.Mth.lerp(displayFraction,a.get("climb").getAsFloat(),b.get("climb").getAsFloat()):0;
+        return displayBob-climb;
+    }
+    /** Seconds into getting on at the displayed instant, or -1 once on. */
+    public float presentationBoarding(){
+        var a=presentationBefore();var b=presentationAfter();
+        if(b==null||!b.has("boarding"))return -1;
+        float after=b.get("boarding").getAsFloat();
+        if(after<0)return -1;
+        float before=a!=null&&a.has("boarding")&&a.get("boarding").getAsFloat()>=0?a.get("boarding").getAsFloat():after;
+        return net.minecraft.util.Mth.lerp(displayFraction,before,after);
+    }
+    /** Jak's facing as he got on (degrees), for the slerp of target-pilot-get-on. */
+    public float presentationBoardingYaw(){var b=presentationAfter();return b!=null&&b.has("boardingYaw")?b.get("boardingYaw").getAsFloat():0;}
+    /**
+     * Where Jak is: the seat of the vehicle as it is drawn (Rust zoomers.rs root_of's lift and all),
+     * and, while he gets on, on his way to it (target-pilot-get-on).
+     */
     public Vec3 presentationRider(){
-        return displayedSeat(presentationBefore()).lerp(displayedSeat(presentationAfter()),displayFraction);
+        Vec3 point=displayedSeat(presentationBefore()).lerp(displayedSeat(presentationAfter()),displayFraction).add(0,presentationLift(),0);
+        float boarding=presentationBoarding();
+        var b=presentationAfter();
+        if(boarding>=0&&b!=null&&b.has("boardingFrom"))
+            point=getOn(displayVector(b,"boardingFrom",point),point,boarding*getOn().aframesPerSecond());
+        return point;
     }
     private final WheeledWeapons weapons=new WheeledWeapons(this);
 
@@ -201,7 +265,8 @@ public final class JakVehicle extends Entity {
             while(displayFrames.size()>8)displayFrames.removeFirst();
             frameReceived=now;
             seat=JakPlayers.vector(currentFrame.getAsJsonArray("seat"));
-            boardingProgress=currentFrame.get("boardingProgress").getAsFloat();
+            boardingSeconds=currentFrame.get("boarding").getAsFloat();
+            boardingYaw=currentFrame.has("boardingYaw")?currentFrame.get("boardingYaw").getAsFloat():0;
             boardingFrom=currentFrame.has("boardingFrom")?JakPlayers.vector(currentFrame.getAsJsonArray("boardingFrom")):null;
         }
     }
@@ -230,7 +295,9 @@ public final class JakVehicle extends Entity {
         if(player instanceof ServerPlayer&&driver()!=null){ejectDriver();route=null;ZoomerTraffic.forget(this);}
         if(player instanceof ServerPlayer&&player.startRiding(this)){
             boardingFrom=approach;
-            boardingProgress=0;
+            boardingYaw=player.getYRot();
+            boardingSeconds=0;
+            seatedAt=Long.MIN_VALUE/2;
             controls=null;
             press=0;
             boardingAt=level().getGameTime();
@@ -248,15 +315,17 @@ public final class JakVehicle extends Entity {
     }
     @Override protected void positionRider(Entity passenger,MoveFunction move) {
         Vec3 point=position().add(seat);
-        if(boardingFrom!=null&&boardingProgress<1){
-            double t=boardingProgress;
-            point=boardingFrom.lerp(point,t*t*(3-2*t)).add(0,Math.sin(t*Math.PI)*.24,0);
-        }
+        if(boardingFrom!=null&&boardingSeconds>=0)point=getOn(boardingFrom,point,boardingSeconds*getOn().aframesPerSecond());
         move.accept(passenger,point.x,point.y,point.z);
         if(passenger instanceof ServerPlayer player&&!player.getLastSectionPos().equals(net.minecraft.core.SectionPos.of(player)))
             player.level().getChunkSource().move(player);
     }
     @Override public Vec3 getDismountLocationForPassenger(LivingEntity passenger) {
+        // target-pilot-get-off leaves from the seat itself; Jak takes the jump from there.
+        if(model.hover()&&passenger instanceof ServerPlayer player&&JakPlayers.pilotExiting(player)){
+            Vec3 point=position().add(seat);
+            if(level().noCollision(passenger,passenger.getBoundingBox().move(point.subtract(passenger.position()))))return point;
+        }
         Vec3 side=Vec3.directionFromRotation(0,getYRot()+90).scale(model.length*.45);
         for(var offset:new Vec3[]{side,side.reverse(),new Vec3(0,model.height,0)}){
             Vec3 near=position().add(offset);
@@ -270,6 +339,10 @@ public final class JakVehicle extends Entity {
     }
 
     @Override public void tick() {
+        long profiled=ZoomerProfile.begin();
+        try{tickVehicle();}finally{ZoomerProfile.end(level().isClientSide()?"client vehicle tick":"server vehicle tick",profiled);}
+    }
+    private void tickVehicle() {
         super.tick();
         if(!(level() instanceof ServerLevel server)||server.getGameTime()<retryAt)return;
         // Under water (sunk, put down in it, flooded) it is taken apart into
@@ -280,9 +353,18 @@ public final class JakVehicle extends Entity {
             return;
         }
         var rider=getFirstPassenger() instanceof ServerPlayer player?player:null;
-        boolean fresh=rider!=null&&controls!=null&&server.getGameTime()-lastInput<7;
+        // target-pilot-get-on: the vehicle takes the pilot's controls (pilot-on) from artist frame 20.5, and he cannot get off before.
+        boardingSeconds=boardingFrom==null?-1:(server.getGameTime()-boardingAt)/20f;
+        if(boardingSeconds>=getOn().seconds()){boardingSeconds=-1;boardingFrom=null;seatedAt=server.getGameTime();}
+        boolean ready=boardingSeconds<0||boardingSeconds*getOn().aframesPerSecond()>=READY_AFRAME;
+        boolean fresh=rider!=null&&ready&&controls!=null&&server.getGameTime()-lastInput<7;
         int held=fresh?controls.held()|press:0;
-        if(fresh&&(press&8)!=0&&server.getGameTime()-boardingAt>6){
+        if(fresh&&(press&8)!=0){
+            // target-pilot-get-off: the original exit, taken from the seat by the Jak that comes of this.
+            if(model.hover()){
+                JakPlayers.pilotExit(rider,model.bike(),velocity);
+                lastRider=rider.getUUID();exitedAt=server.getGameTime();
+            }
             rider.stopRiding();
             if(!model.hover())playCue(model.asset+"-stop");
             rider=null;
@@ -291,9 +373,8 @@ public final class JakVehicle extends Entity {
         }
         int edges=fresh?press:0;
         press=0;
-        if(rider==null){controls=null;boardingFrom=null;}
+        if(rider==null){controls=null;boardingFrom=null;boardingSeconds=-1;}
         if(rider!=null&&route!=null){route=null;ZoomerTraffic.forget(this);}
-        boardingProgress=boardingFrom==null?1:Math.clamp((server.getGameTime()-boardingAt)/11f,0,1);
         if(rider==null&&route==null&&tickCount>20&&velocity.lengthSqr()<.00001&&tickCount%10!=0
             &&(!model.hover()||currentFrame==null||currentFrame.get("lamps").getAsFloat()<.01f))return;
         // A FULL collision chunk is not necessarily ready to tick/retain
@@ -326,7 +407,9 @@ public final class JakVehicle extends Entity {
             }
             String encoded;
             if(model.hover()){
-                int zoomer=(edges&1)|(held&6)|(traffic?8:0);
+                // 16: vehicle-flag riding, somebody aboard (their weight is on the roll thrusters).
+                // 32: he is in the stance (target-pilot-stance), the get-on over, so a hard hit smacks him (target-pilot-impact).
+                int zoomer=(edges&1)|(held&6)|(traffic?8:0)|(rider!=null?16:0)|(rider!=null&&boardingSeconds<0?32:0);
                 float hour=(server.getDefaultClockTime()%24000+6000)%24000/1000f;
                 encoded=NativeJak.hoverStep(handle,steer,lean,throttle,brake,zoomer,
                     (float)moved.x,(float)moved.y,(float)moved.z,hour%24,health/model.hitPoints,rider!=null||traffic);
@@ -338,6 +421,8 @@ public final class JakVehicle extends Entity {
             Vec3 step=JakPlayers.vector(frame.getAsJsonArray("position"));
             nativePosition=at.add(step);
             velocity=JakPlayers.vector(frame.getAsJsonArray("velocity"));
+            // The motion the world reads of it, in blocks a tick (ZoomerTraffic.clearPath looks a moving craft's way).
+            setDeltaMovement(velocity.scale(.05));
             seat=JakPlayers.vector(frame.getAsJsonArray("seat")).subtract(step);
             pitch=frame.get("pitch").getAsFloat();
             if(model.hover())high=frame.get("high").getAsBoolean();
@@ -362,10 +447,13 @@ public final class JakVehicle extends Entity {
             frame.add("grenades",shots);
             frame.add("seat",jsonVector(seat));
             frame.add("worldPosition",jsonVector(nativePosition));
+            // impact-pos, where the hull last hit something, as the world's own coordinates (the scrape's sparks).
+            if(frame.has("impactPos"))frame.add("impactWorld",jsonVector(at.add(JakPlayers.vector(frame.getAsJsonArray("impactPos")))));
             frame.addProperty("serverTick",server.getGameTime());
-            frame.addProperty("boardingProgress",boardingProgress);
-            frame.addProperty("boarding",boardingProgress<1?boardingProgress*.55f:-1);
-            if(boardingProgress<1)frame.add("boardingFrom",jsonVector(boardingFrom));
+            frame.addProperty("boarding",boardingSeconds);
+            float seated=(server.getGameTime()-seatedAt)/20f;
+            if(rider!=null&&seated<SEAT_BLEND+.05f)frame.addProperty("seated",seated);
+            if(boardingSeconds>=0&&boardingFrom!=null){frame.add("boardingFrom",jsonVector(boardingFrom));frame.addProperty("boardingYaw",boardingYaw);}
             currentFrame=frame;
             entityData.set(FRAME,frame.toString());
         }catch(RuntimeException failure){
@@ -373,6 +461,29 @@ public final class JakVehicle extends Entity {
             JakMod.LOG.error("Wheeled vehicle stopped at its last valid pose {}",getUUID(),failure);
             retryAt=server.getGameTime()+100;
         }
+    }
+
+    /**
+     * Whether its hull is solid to this actor's Jak: the one who stepped off it, for a minute and while he is within eight
+     * blocks. stand-in: the original's vehicles are solid to Jak always (he lands on a car's roof or beside it); here only the
+     * one he left is, because the others move in and out of the town's streets with nothing to carry him.
+     */
+    public boolean supportsLanding(Entity actor){
+        return model.hover()&&!isRemoved()&&actor!=null&&actor.getUUID().equals(lastRider)&&actor.getVehicle()!=this
+            &&level().getGameTime()-exitedAt<1200&&actor.distanceToSqr(this)<64;
+    }
+    /**
+     * stand-in: the hull of its collision (zoomer.rs half sizes, 0.8 x 0.6 x 1.5 m for a bike and 1.4 x 0.7 x 2.4 for a car, turned
+     * with it) from its bottom up to the seat Jak sat on, as a closed box in the session's coordinates, for
+     * {@link dev.jakmc.nativebridge.MinecraftCollision#triangles}. The visible body is not as tall as that hull, and the seat is
+     * where he was drawn, so he stands where he sat.
+     */
+    public void appendHull(Vec3 origin,java.nio.ByteBuffer data){
+        double metre=.64,yaw=Math.toRadians(getYRot());
+        double hx=(model.bike()?.8:1.4)*metre,hy=(model.bike()?.6:.7)*metre,hz=(model.bike()?1.5:2.4)*metre;
+        var at=position();
+        dev.jakmc.nativebridge.MinecraftCollision.turnedBox(data,at.x-origin.x,at.z-origin.z,-Math.sin(yaw),Math.cos(yaw),hx,hz,
+            at.y-hy-origin.y,at.y+Math.max(seat.y,-hy+.1)-origin.y);
     }
 
     static JsonArray jsonVector(Vec3 point){
@@ -388,6 +499,34 @@ public final class JakVehicle extends Entity {
         playCue(family+(speed>=32?"-impact-stn":"-glance-stn"));
         health-=speed>=70?model.hitPoints*2:speed>=32?10:speed>=21?4:0;
         if(health<=0)wreck();
+    }
+    /** A cue played where this vehicle is on this client only (the sounds the engine particles ask for), if the owned banks have it. */
+    public void clientCue(String name){cueAt(level(),position(),name);}
+    /** A cue played at a place on this client only, if the owned sound banks have it (a name they lack is silent, as in the game). */
+    public static void cueAt(Level level,Vec3 at,String name){
+        var cue=JakEnemySounds.find("jak3",name);
+        if(cue!=null)level.playLocalSound(at.x,at.y,at.z,cue,SoundSource.NEUTRAL,1,1,false);
+    }
+    /**
+     * pilot-states.gc target-pilot-hit and target-pilot-death: an attack that reaches Jak on his vehicle takes his health to -1000, and he dies
+     * ({@code mode} of the attack: 'explode, 'melt (lava, fire), 'endlessfall, else 'generic). So a pilot struck by what the original sends
+     * as an attack event dies at once, and the others see the burst of his death (JakPilotDeath).
+     * stand-in: the original's attack events are all that reach a pilot; here Minecraft's explosions, fire and lava, lightning and the
+     * void count, and the hits of mobs and arrows, which the vehicle's own shape takes in the original, still only hurt him.
+     */
+    public void riderHit(ServerPlayer player,DamageSource source){
+        if(!model.hover())return;
+        int mode;
+        if(source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION))mode=JakPackets.PilotDeath.EXPLODE;
+        else if(source.is(net.minecraft.world.damagesource.DamageTypes.FELL_OUT_OF_WORLD))mode=JakPackets.PilotDeath.ENDLESS_FALL;
+        else if(source.is(net.minecraft.world.damagesource.DamageTypes.LAVA)||source.is(net.minecraft.tags.DamageTypeTags.IS_FIRE))mode=JakPackets.PilotDeath.MELT;
+        else if(source.is(net.minecraft.world.damagesource.DamageTypes.LIGHTNING_BOLT))mode=JakPackets.PilotDeath.GENERIC;
+        else return;
+        if(!player.isDeadOrDying()){player.setHealth(0);player.die(source);}
+        var packet=new JakPackets.PilotDeath(level().dimension().identifier(),player.getId(),player.position(),mode);
+        for(var watcher:net.fabricmc.fabric.api.networking.v1.PlayerLookup.around((ServerLevel)level(),player.position(),96))
+            if(net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(watcher,packet.type()))
+                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(watcher,packet);
     }
     private void playCue(String name){
         var cue=JakEnemySounds.find("jak3",name);

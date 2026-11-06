@@ -825,6 +825,18 @@ pub mod foot {
         ..ZERO
     };
 
+    /// pilot-states.gc `*pilot-get-off-mods*`: `*forward-jump-mods*` with no friction (the vehicle's speed is kept all the way
+    /// down), no turning and a quicker tilt (its `mult-hook` only holds the camera's rapid tracking).
+    pub const PILOT_GET_OFF: Surface = Surface {
+        fric: 0.0,
+        nonlin_fric_dist: 0.0,
+        turnv: 0.0,
+        turnvv: 0.0,
+        tiltv: 131072.0,
+        tiltvf: 30.0,
+        ..FORWARD_JUMP
+    };
+
     pub const FORWARD_JUMP: Surface = Surface {
         name: Name::Jump,
         turnv: 131072.0,

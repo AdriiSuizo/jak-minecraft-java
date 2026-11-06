@@ -128,8 +128,9 @@ fn read_prefixes(bytes:&[u8],prefixes:&[&[u8]])->HashMap<String,ArtAnim>{
         };
         if 0.0 < speed
             && speed <= 4.0
+            // (`jakb-swim-down` and `-up` count 8.57 artist frames a frame, `powerup` 9.0.)
             && 0.0 < artist_step
-            && artist_step <= 8.0
+            && artist_step <= 12.0
             && artist_base.abs() < 1000.0
         {
             let matrices = u32_at(seg, anim + 32).and_then(|frames| matrices(seg, frames as usize));

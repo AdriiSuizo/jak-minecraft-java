@@ -197,6 +197,7 @@
   "block.jak.objeto_haven_propaganda": "Poste de propaganda de Haven",
   "block.jak.objeto_haven_propaganda_ajustada": "Poste de propaganda de Haven",
   "block.jakmc.eco_launcher": "Blue Eco Launcher",
+  "block.jakmc.eco_launcher.no_room": "The launcher needs a free 5x5 area",
   "block.jakmc.iris_door": "Precursor Iris Door",
   "block.jakmc.airlock_door": "Haven Airlock",
   "entity.jakmc.kermit": "Swamp Frog",

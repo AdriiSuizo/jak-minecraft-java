@@ -16,6 +16,11 @@ pub enum Command {
  BeamSized(u32,Vec3,Vec3,f32,f32),Blade(u32,Vec3,Vec3,Vec3,f32,f32),
  Flat(u32,Vec3,Mat3,f32),Scaled(u32,Vec3,Mat3,f32),Value(u32,String,Option<f32>),
  Tracker(String,f32,Vec3),Var(u32,Vec3,Mat3,Overrides,f32),
+ /// A tracked light trail's next crumb (`light-trail-tracker`'s `add-crumb!`; the trail is made by the first), and its
+ /// tracker's end (`die`); `water-control-method-17`'s wake.
+ TrailCrumb(u64,Vec3),TrailEnd(u64),
+ /// A part field's random range set (`random-rangef` of an init-spec) with its authored base kept; none puts the authored one back.
+ Range(u32,String,Option<f32>),
 }
 impl Command {
  pub fn apply(self,p:&mut Particles)->Result<(),String>{
@@ -39,6 +44,8 @@ impl Command {
    Self::Flat(a,b,c,d)=>p.launch_flat(a,b,c,d),Self::Scaled(a,b,c,d)=>p.launch_scaled(a,b,c,d),
    Self::Value(a,b,c)=>p.set_part_value(a,&b,c),Self::Tracker(a,b,c)=>p.configure_tracker(&a,b,c)?,
    Self::Var(a,b,c,d,mut carry)=>p.launch_var(a,b,c,d,&mut carry),
+   Self::TrailCrumb(a,b)=>p.trail_crumb(a,b),Self::TrailEnd(a)=>p.trail_end(a),
+   Self::Range(a,b,c)=>p.set_part_range(a,&b,c),
   }Ok(())
  }
 }

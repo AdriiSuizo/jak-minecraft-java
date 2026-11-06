@@ -178,7 +178,7 @@ abstract class JakControllerCameraMixin {
             Vec3 offset=new Vec3(camera.leftVector()).scale(-1.05*4096/6400)
                 .add(new Vec3(camera.upVector()).scale(.12*4096/6400)).scale(jakmc$aim);
             var hit=entity.level().clip(new ClipContext(pivot,pivot.add(offset),ClipContext.Block.VISUAL,ClipContext.Fluid.NONE,entity));
-            if(hit.getType()!=HitResult.Type.MISS&&!dev.jakmc.client.camera.JakCameraCutout.wanted(entity)){// jak.rs: cutout sets shoulder=1
+            if(hit.getType()!=HitResult.Type.MISS){// the shoulder pivot stays out of walls (JakCameraCutout collides from it)
                 offset=offset.normalize().scale(Math.max(0,pivot.distanceTo(hit.getLocation())-.12));
             }
             setPosition(pivot.add(offset));
@@ -205,7 +205,7 @@ abstract class JakControllerCameraMixin {
     @ModifyExpressionValue(method="alignWithEntity",at=@At(value="INVOKE",target="Lnet/minecraft/client/Camera;getMaxZoom(F)F"))
     private float jakmc$recoverFromWall(float clearDistance){
         if(!jakmc$active())return clearDistance;
-        if(dev.jakmc.client.camera.JakCameraCutout.wanted(entity)){jakmc$distance=clearDistance;return clearDistance;}// the cutout eases its own reach (jak.rs update)
+        if(dev.jakmc.client.camera.JakCameraCutout.wanted(entity)){jakmc$distance=clearDistance;return clearDistance;}// JakCameraCutout filters its own distance
         if(!Float.isFinite(jakmc$distance)||clearDistance<jakmc$distance)jakmc$distance=clearDistance;
         else jakmc$distance+=(clearDistance-jakmc$distance)*(1-(float)Math.exp(-10*jakmc$dt));
         return jakmc$distance;

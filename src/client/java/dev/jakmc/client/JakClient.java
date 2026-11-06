@@ -24,12 +24,13 @@ public final class JakClient implements ClientModInitializer {
   WeatherScene.initialize();
   dev.jakmc.client.model.JakFirstPerson.initialize();
   JakEffects.initialize();
+  JakPilotDeath.initialize();
   JakCreatureWater.initialize();
   DevBridge.initialize();
   ScaleScene.initialize();
   PortScene.initialize();
   EnemyScene.initialize();
-  SpydroidScene.initialize();KermitScene.initialize();LoteScene.initialize();Lote2Scene.initialize();
+  SpydroidScene.initialize();KermitScene.initialize();LoteScene.initialize();Lote2Scene.initialize();Lote3Scene.initialize();
   WeaponScene.initialize();
   InputScene.initialize();
   IntegrationScene.initialize();
@@ -52,12 +53,13 @@ public final class JakClient implements ClientModInitializer {
   RulesScene.initialize();
   LandsScene.initialize();
   PunchScene.initialize();
+  BenchScene.initialize();
   WreckScene.initialize();
   EquipmentScene.initialize();
   VehicleEffects.initialize();
   dev.jakmc.client.model.GltfItemRenderer.initialize();
   dev.jakmc.client.model.PropModels.initialize();
-  dev.jakmc.client.model.PlacementPreview.initialize();dev.jakmc.client.model.BombBlastRenderer.initialize();
+  dev.jakmc.client.model.PlacementPreview.initialize();dev.jakmc.client.model.BombBlastRenderer.initialize();dev.jakmc.client.model.WaterRippleRenderer.initialize();
   dev.jakmc.client.model.JakWorldTextures.initialize();
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
       dev.jakmc.content.JakBoardAltar.TYPE,ctx->new dev.jakmc.client.model.BoardAltarRenderer());

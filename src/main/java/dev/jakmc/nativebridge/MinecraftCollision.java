@@ -166,7 +166,9 @@ public final class MinecraftCollision {
         }
         var decks=level.getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,region.inflate(4),
             deck->deck!=actor&&!deck.wrecked()&&(actor==null||deck.pilotId()!=actor.getId()));
-        int bytes=Math.addExact(Math.multiplyExact(boxes.used/6,480),trackBytes);
+        // A zoomer he stepped off is solid to him (target-pilot-get-off lands him on or beside it): one turned box, 12 triangles.
+        var hulls=level.getEntitiesOfClass(dev.jakmc.entity.JakVehicle.class,region.inflate(4),hull->hull.supportsLanding(actor));
+        int bytes=Math.addExact(Math.addExact(Math.multiplyExact(boxes.used/6,480),trackBytes),Math.multiplyExact(hulls.size(),480));
         int capacity=decks.isEmpty()?bytes:Math.addExact(bytes,Math.multiplyExact(decks.size(),dev.jakmc.entity.JakHellcat.deckCapacity()));
         ByteBuffer data=arena==null?NativeJak.buffer(capacity):arena.acquire(capacity);
         for(int i=0;i<boxes.used;i+=6)box(data,boxes.materials[i/6],sides,boxes.hidden[i/6],boxes.values[i],boxes.values[i+1],boxes.values[i+2],boxes.values[i+3],boxes.values[i+4],boxes.values[i+5]);
@@ -175,8 +177,34 @@ public final class MinecraftCollision {
             track.mesh().write(data,level,pos,track.state(),pos.getX()-origin.x,pos.getY()-origin.y,pos.getZ()-origin.z);
         }
         for(var deck:decks)deck.appendDeck(origin,region,data);
+        for(var hull:hulls)hull.appendHull(origin,data);
         return data.slice(0,data.position()).order(java.nio.ByteOrder.LITTLE_ENDIAN);
     }
+    /**
+     * A box turned about the vertical: centre (cx,cz) and facing (fx,fz), half width {@code hx} across and {@code hz} along,
+     * from height {@code bottom} to {@code top} (all relative to the session's origin), its twelve triangles wound
+     * counterclockwise seen from outside as {@link #box} winds a block's, so they block from outside and let him through
+     * from within.
+     */
+    public static void turnedBox(ByteBuffer b,double cx,double cz,double fx,double fz,double hx,double hz,double bottom,double top){
+        double lx=fz,lz=-fx;
+        float[][] low=new float[4][],high=new float[4][];
+        // corners (-x,-z), (-x,+z), (+x,+z), (+x,-z): the order of the cell box's x/z edges.
+        double[][] side={{-1,-1},{-1,1},{1,1},{1,-1}};
+        for(int i=0;i<4;i++){
+            double px=cx+side[i][0]*hx*lx+side[i][1]*hz*fx,pz=cz+side[i][0]*hx*lz+side[i][1]*hz*fz;
+            low[i]=new float[]{(float)px,(float)bottom,(float)pz};
+            high[i]=new float[]{(float)px,(float)top,(float)pz};
+        }
+        // (x,z)=0 (-,-), 1 (-,+), 2 (+,+), 3 (+,-): top as box's face(x,Y,z, x,Y,Z, X,Y,Z, X,Y,z); the walls of the other five likewise.
+        quad(b,0,high[0],high[1],high[2],high[3]);
+        quad(b,1,low[0],low[3],low[2],low[1]);
+        quad(b,1,low[0],low[1],high[1],high[0]);
+        quad(b,1,low[2],low[3],high[3],high[2]);
+        quad(b,1,low[3],low[0],high[0],high[3]);
+        quad(b,1,low[1],low[2],high[2],high[1]);
+    }
+    private static void quad(ByteBuffer b,int flags,float[] a,float[] c,float[] d,float[] e){face(b,flags,a[0],a[1],a[2],c[0],c[1],c[2],d[0],d[1],d[2],e[0],e[1],e[2]);}
     /**
      * Rust sim voxel.rs: a full block's faces against a full neighbour are left out (bits up, down, -x, +x,
      * -z, +z). Those seams gave the ledge probe a side face where the top should be (Adrii 06/11).

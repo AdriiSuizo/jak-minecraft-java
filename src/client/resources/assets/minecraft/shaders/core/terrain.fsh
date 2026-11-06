@@ -6,6 +6,7 @@
 #include <minecraft:texture_sampling.glsl>
 #include <minecraft:oit.glsl>
 #include <minecraft:terrainglobals.glsl>
+#include <jakmc:camera_mask.glsl>
 #ifndef MULTIDRAW_TERRAIN
     #include <minecraft:chunksection.glsl>
 #endif
@@ -23,40 +24,12 @@ layout(location = 5) in vec3 jakSurface;
 layout(location = 0) out vec4 fragColor;
 #endif
 
-// Jak camera cutaway, ported from the Rust mashup's CAMERA_FADE_WGSL
-// (crates/render_gpu/src/drawsurf/minecraft_world.rs). Map units become blocks
-// at 25 units a metre and 4096/6400 blocks a metre: 2 units = 0.0512, 18 = 0.4608,
-// 1 = 0.0256, 0.05 = 0.00128. JakFadeEye.w is the opening (Rust half_width / 50).
-// stand-in: view_backface_hidden is not needed; Minecraft's terrain pipelines already cull every reverse face.
-// view_opacity: 1 where the surface stays, 0 where it is cut away.
-float jak_view_opacity(vec3 p) {
-    if (JakFadeEye.w <= 0.0) return 1.0;
-    float feet = JakFadeTarget.w;
-    if (p.y < feet + 0.0512) return 1.0;
-    vec3 eye = JakFadeEye.xyz;
-    vec3 line = JakFadeTarget.xyz - eye;
-    float span = max(length(line), 0.0256);
-    vec3 ahead = line / span;
-    float along = dot(p - eye, ahead);
-    float stop = span + 0.4608;
-    if (along < 0.0 || along > stop) return 1.0;
-    float across = length(p - eye - ahead * along);
-    float opening = clamp(JakFadeEye.w, 0.0, 1.0);
-    float radius = along * 0.42 * opening;
-    float soft = max(radius * 0.02, 0.00128);
-    float sideways = smoothstep(radius - soft, radius, across);
-    float lengthwise = smoothstep(stop - soft, stop, along);
-    return max(sideways, lengthwise);
-}
-
-// camera_fade_keep: a 4x4 ordered dither cuts partially faded surfaces without sorting.
-bool jak_fade_keep(float opacity, vec2 pixel) {
-    if (opacity >= 0.999) return true;
-    if (opacity <= 0.001) return false;
-    int x = int(pixel.x) & 3;
-    int y = int(pixel.y) & 3;
-    const float bayer[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
-    return opacity > (bayer[y * 4 + x] + 0.5) / 16.0;
+// Jak's third-person camera: occlusion mask and room cutaway (jakmc:camera_mask.glsl). The terrain mask
+// keeps the floor and the lowest 0.45 of walls over Jak's feet, so a cut never opens the hidden top
+// face of the block under a wall.
+float jak_terrain_cut(vec3 p) {
+    float wallFoot = smoothstep(JakMask1.w + 0.45, JakMask1.w + 0.65, p.y);
+    return max(jak_mask_cut(p, JakMask0.w, JakMask3.z) * wallFoot, jak_room_cut(p));
 }
 
 vec4 calculateFinalColor(vec4 color) {
@@ -70,9 +43,9 @@ vec4 calculateFinalColor(vec4 color) {
 }
 
 void main() {
-    float jakOpacity = jak_view_opacity(jakSurface);
-    // Opaque and cutout layers (Rust `opaque`): dithered discard. The translucent
-    // layer (ALPHA_CUTOUT 0.1, Rust `translucent`) multiplies its alpha instead.
+    float jakOpacity = 1.0 - jak_terrain_cut(jakSurface);
+    // Opaque and cutout layers: dithered discard. The translucent layer (ALPHA_CUTOUT 0.1)
+    // multiplies its alpha instead.
     bool jakTranslucent = false;
     #ifdef ALPHA_CUTOUT
     jakTranslucent = ALPHA_CUTOUT < 0.3;

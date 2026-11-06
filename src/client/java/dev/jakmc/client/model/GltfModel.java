@@ -10,6 +10,7 @@ import java.nio.file.*;
 import java.util.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.*;
 import net.minecraft.resources.Identifier;
@@ -43,6 +44,8 @@ public final class GltfModel {
     private final Map<String,Integer> namedNodes=new HashMap<>();
     private final Map<Integer,float[]> accessors=new HashMap<>();
     private static final int[] QUAD_CORNERS={0,1,2,2};
+    /** The environment pass's scratch vectors: the render thread's own, so no allocation per frame. */
+    private static final Vector3f ENV_POSITION=new Vector3f(),ENV_NORMAL=new Vector3f(),ENV_VIEW=new Vector3f();
     private final Map<Posed,List<float[]>> prepared=new IdentityHashMap<>();
     private final Map<String,Posed> terminalPoses=new HashMap<>();
     public long skinnedVertices;
@@ -52,7 +55,14 @@ public final class GltfModel {
     private static Identifier gemAtlas;
     private static Identifier gemAtlas(){if(gemAtlas!=null)return gemAtlas;try{int[] pixels=SkullGemTexture.bake(dev.jakmc.RuntimeConfig.assets.resolve("textures/level-default-tfrag"));var image=new NativeImage(64,64*60,false);for(int y=0;y<64*60;y++)for(int x=0;x<64;x++)image.setPixel(x,y,pixels[y*64+x]);gemAtlas=JakData.id("local/skull_gem_animated");Minecraft.getInstance().getTextureManager().register(gemAtlas,new DynamicTexture(()->"Original skull gem layers",image));return gemAtlas;}catch(IOException e){throw new UncheckedIOException(e);}}
     public static float materialSeconds(){var c=Minecraft.getInstance();return c.level==null?0:(c.level.getGameTime()+c.getDeltaTracker().getGameTimeDeltaPartialTick(false))/20f;}
-    private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,String material,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals){}
+    /** merc's environment pass of a surface: its map and the base's alpha as strength. Its render type is made once. */
+    private static final class EnvPass {
+        final Identifier environment,strength;
+        private RenderType type;
+        EnvPass(Identifier environment,Identifier strength){this.environment=environment;this.strength=strength;}
+        RenderType type(){if(type==null)type=dev.jakmc.client.JakEffectTypes.envmap(environment,strength);return type;}
+    }
+    private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,String material,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals,EnvPass envpass){}
     private record Channel(int node,String path,float[] times,float[] values,int components,boolean step){}
     private record Clip(List<Channel> channels,float duration,int frames){
         Clip(List<Channel> channels,float duration){this(channels,duration,channels.stream().mapToInt(c->c.times.length).max().orElse(1));}
@@ -63,8 +73,12 @@ public final class GltfModel {
     public GltfModel(Path file,String key)throws IOException {
         this(file,key,false);
     }
+    /** Benchmarks only (BenchScene): corners laid down per model file while set. */
+    public static volatile java.util.concurrent.ConcurrentHashMap<String,java.util.concurrent.atomic.LongAdder> corners;
+    private final String fileName;
     public GltfModel(Path file,String key,boolean compensateScale)throws IOException {
         this.compensateScale=compensateScale;
+        fileName=file.getFileName().toString();
         cinematic=key.endsWith("_cinematic");
         equipment=file.getFileName().toString().equals("gun-lod0.glb")||file.getFileName().toString().startsWith("gun-ammo-");
         boolean jakTextures=key.equals("jak")||key.equals("jak_cinematic")||key.equals("jak_dark_cinematic");
@@ -110,27 +124,27 @@ public final class GltfModel {
             var pbr=material.getAsJsonObject("pbrMetallicRoughness");
             float[] factor=pbr.has("baseColorFactor")?array(pbr.getAsJsonArray("baseColorFactor")):new float[]{1,1,1,1};
             color=color.clone();for(int i=0;i<color.length;i++)color[i]*=factor[i%4];
-            if(equipment&&material.has("extensions")&&material.getAsJsonObject("extensions").has("KHR_materials_specular")){
-                var spec=material.getAsJsonObject("extensions").getAsJsonObject("KHR_materials_specular");
-                if(spec.has("specularColorTexture")){
-                    int tex=spec.getAsJsonObject("specularColorTexture").get("index").getAsInt();
-                    int source=json.getAsJsonArray("textures").get(tex).getAsJsonObject().get("source").getAsInt();
-                    var image=json.getAsJsonArray("images").get(source).getAsJsonObject();byte[] reflectionBytes;
-                    if(image.has("uri"))reflectionBytes=Base64.getDecoder().decode(image.get("uri").getAsString().split(",",2)[1]);
-                    else{var view=json.getAsJsonArray("bufferViews").get(image.get("bufferView").getAsInt()).getAsJsonObject();int offset=intOr(view,"byteOffset",0);reflectionBytes=new byte[view.get("byteLength").getAsInt()];bin.get(offset,reflectionBytes);}
-                    try(var reflection=NativeImage.read(new ByteArrayInputStream(reflectionBytes))){
-                        double[] rgb=new double[3];for(int y=0;y<reflection.getHeight();y++)for(int x=0;x<reflection.getWidth();x++){
-                            int pixel=reflection.getPixel(x,y);for(int c=0;c<3;c++)rgb[c]+=(pixel>>>(16-c*8))&255;
-                        }
-                        double max=Math.max(rgb[0],Math.max(rgb[1],rgb[2]));
-                        if(max>0)for(int i=0;i<color.length;i++)if(i%4<3)color[i]*=(float)(rgb[i%4]/max);
-                    }
-                }
-            }
             int texture=pbr.getAsJsonObject("baseColorTexture").get("index").getAsInt();
             String mode=material.has("alphaMode")?material.get("alphaMode").getAsString():"OPAQUE";
-            int coverage=(!cinematic&&!equipment)||mode.equals("BLEND")?-1:mode.equals("MASK")
-                ?Math.round(255*(material.has("alphaCutoff")?material.get("alphaCutoff").getAsFloat():.5f)):0;
+            // Rust reference AlphaRule::Opaque: an OPAQUE material is drawn whole. Its alpha is no cover, and on envmapped
+            // surfaces (merc's envmap alpha) it is the reflection strength (0 to 128). Read as cover it cut holes through
+            // models (the JET-Board's underside lost half its iris). Masked and blended materials keep their rules.
+            int coverage=mode.equals("BLEND")?-1:mode.equals("OPAQUE")?0:(!cinematic&&!equipment)?-1
+                :Math.round(255*(material.has("alphaCutoff")?material.get("alphaCutoff").getAsFloat():.5f));
+            // merc's environment pass (emerc) for a material carrying an envmap in KHR_materials_specular: the map, and the
+            // base's own alpha, unmapped (the mapped one is cover), as the strength.
+            EnvPass envpass=null;
+            if(material.has("extensions")&&material.getAsJsonObject("extensions").has("KHR_materials_specular")
+                &&material.getAsJsonObject("extensions").getAsJsonObject("KHR_materials_specular").has("specularColorTexture")){
+                int envTexture=material.getAsJsonObject("extensions").getAsJsonObject("KHR_materials_specular").getAsJsonObject("specularColorTexture").get("index").getAsInt();
+                int envSource=json.getAsJsonArray("textures").get(envTexture).getAsJsonObject().get("source").getAsInt();
+                int baseSource=json.getAsJsonArray("textures").get(texture).getAsJsonObject().get("source").getAsInt();
+                var environment=JakData.id("local/"+key+"/envmap/"+envSource);
+                pendingTextures.putIfAbsent(environment,imageBytes(envSource));
+                var strength=JakData.id("local/"+key+"/alpha/"+baseSource);
+                pendingTextures.putIfAbsent(strength,imageBytes(baseSource));
+                envpass=new EnvPass(environment,strength);
+            }
             var binding=new TextureBinding(texture,coverage);
             Identifier id=textures.get(binding);
             if(id==null){
@@ -138,7 +152,7 @@ public final class GltfModel {
                 var image=json.getAsJsonArray("images").get(source).getAsJsonObject();byte[] png;
                 if(image.has("uri")){String uri=image.get("uri").getAsString();if(!uri.startsWith("data:"))throw new IOException("External texture requires asset resolver: "+uri);png=Base64.getDecoder().decode(uri.substring(uri.indexOf(',')+1));}
                 else {var view=json.getAsJsonArray("bufferViews").get(image.get("bufferView").getAsInt()).getAsJsonObject();int off=intOr(view,"byteOffset",0);png=new byte[view.get("byteLength").getAsInt()];bin.get(off,png);}
-                id=JakData.id("local/"+key+"/"+source+(cinematic?"/a"+(coverage+1):""));
+                id=JakData.id("local/"+key+"/"+source+(cinematic||coverage>=0?"/a"+(coverage+1):""));
                 pendingTextures.put(id,png);textures.put(binding,id);
                 if(coverage>=0)textureCoverage.put(id,coverage);
                 if(jakTextures){
@@ -165,7 +179,7 @@ public final class GltfModel {
             for(int m=0;m<targetCount;m++){if(morphPositions[m]!=null)morphPositions[m]=select(morphPositions[m],3,used);if(morphNormals[m]!=null)morphNormals[m]=select(morphNormals[m],3,used);}
             int[] compactBones=bone==null?null:toInts(select(toFloats(bone),4,used));
             if(compactBones!=null)for(int vertex=0;vertex<used.length;vertex++)for(int k=0;k<4;k++)if(weight[used[vertex]*4+k]>0&&(compactBones[vertex*4+k]<0||compactBones[vertex*4+k]>=joints.length))throw new IOException("Indexed vertex uses missing skin joint in "+file);
-            surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("name")?material.get("name").getAsString():"",material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals));
+            surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("name")?material.get("name").getAsString():"",material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals,envpass));
         }
         if(forwardEyes){
             eyes=ForwardEyes.build(artTextures,key,surfaces.stream().map(
@@ -535,10 +549,38 @@ public final class GltfModel {
         for(int i=0;i<skin.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
         return new Posed(globals,skin,pose.morphs,t,r,s);
     }
+    /**
+     * joint-mod-ik-callback (engine/anim/joint-mod.gc, see {@link ArmIk}), the arm's two-bone inverse kinematics of target-pilot-post: the
+     * shoulder (the {@code elbow}'s parent) and the elbow turn so that the hand, {@code handDist} along the elbow's own Y axis, reaches
+     * {@code target} (model space); {@code blend} is the callback's own blend (0 off, 1 whole). Everything under the elbow follows it.
+     * The pose is not changed.
+     */
+    public Posed armIk(Posed pose,String shoulderName,String elbowName,float handDist,Vector3f target,float blend){
+        Integer shoulder=namedNodes.get(shoulderName),elbow=namedNodes.get(elbowName);
+        if(shoulder==null||elbow==null||blend<=0||pose.translations==null||nodes[elbow].parent!=shoulder)return pose;
+        Matrix4f[] solved=ArmIk.solve(pose.globals[shoulder],pose.globals[elbow],handDist,target,blend);
+        if(solved==null)return pose;
+        var delta=new Matrix4f(solved[1]).mul(new Matrix4f(pose.globals[elbow]).invert());
+        Matrix4f[] globals=pose.globals.clone();
+        globals[shoulder]=solved[0];
+        for(int i=0;i<nodes.length;i++){
+            if(i==elbow){globals[i]=solved[1];continue;}
+            for(int a=nodes[i].parent;a>=0;a=nodes[a].parent)if(a==elbow){globals[i]=new Matrix4f(delta).mul(pose.globals[i]);break;}
+        }
+        var skin=new Matrix4f[joints.length];
+        for(int i=0;i<joints.length;i++)skin[i]=new Matrix4f(globals[joints[i]]).mul(inverseBind[i]);
+        return new Posed(globals,skin,pose.morphs,pose.translations,pose.rotations,pose.scales);
+    }
     private static Vector3f[] copy(Vector3f[] values){var out=new Vector3f[values.length];for(int i=0;i<out.length;i++)out[i]=new Vector3f(values[i]);return out;}
     private static Quaternionf[] copy(Quaternionf[] values){var out=new Quaternionf[values.length];for(int i=0;i<out.length;i++)out[i]=new Quaternionf(values[i]);return out;}
     public void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous,boolean closedEyes){
         submitJakBody(pose,stack,collector,light,dark,luminous,closedEyes,surfaces);
+    }
+    private final Map<java.util.function.Predicate<String>,List<Surface>> subsets=new java.util.concurrent.ConcurrentHashMap<>();
+    /** Only the surfaces whose material `keep` takes (a constant: it keys the subset). Adrii 06/11: the cutscene head on the game body. */
+    public void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous,boolean closedEyes,java.util.function.Predicate<String> keep){
+        var selected=subsets.computeIfAbsent(keep,k->surfaces.stream().filter(s->k.test(s.material)).toList());
+        if(!selected.isEmpty())submitJakBody(pose,stack,collector,light,dark,luminous,closedEyes,selected);
     }
     private void submitJakBody(Posed pose,PoseStack stack,SubmitNodeCollector collector,int light,boolean dark,boolean luminous,boolean closedEyes,List<Surface> selected){
         Vector3f[] rim=null;
@@ -585,7 +627,7 @@ public final class GltfModel {
                 for(int i=0;i<mn.length;i++)if(surface.morphNormals[i]!=null)mn[i]=select(surface.morphNormals[i],3,used);
                 result.add(new Surface(select(surface.positions,3,used),select(surface.normals,3,used),select(surface.uv,2,used),
                     select(surface.colors,4,used),select(surface.weights,4,used),toInts(select(toFloats(surface.joints),4,used)),
-                    indices.stream().mapToInt(Integer::intValue).toArray(),surface.texture,surface.material,surface.translucent,surface.skullGem,mp,mn));
+                    indices.stream().mapToInt(Integer::intValue).toArray(),surface.texture,surface.material,surface.translucent,surface.skullGem,mp,mn,surface.envpass));
             }
             armSurfaces=List.copyOf(result);
             if(armSurfaces.isEmpty())throw new IllegalStateException("Original cinematic arms could not be selected");
@@ -720,17 +762,24 @@ public final class GltfModel {
             int gemFrame=Math.floorMod((int)Math.floor(seconds*60),60);
             var renderType=effect!=null||additive?dev.jakmc.client.JakEffectTypes.get(texture,3):rim!=null?dev.jakmc.client.JakEffectTypes.lightBody(texture):surface.skullGem?GemMaterial.get(texture):surface.translucent||alpha<1?RenderTypes.entityTranslucent(texture):RenderTypes.entityCutout(texture);
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
+                var count=corners;if(count!=null)count.computeIfAbsent(fileName,_->new java.util.concurrent.atomic.LongAdder()).add(surface.indices.length/3*4);
                 Vector3f v=new Vector3f(),normal=new Vector3f();
-                float[] cameraVertices=cinematic?cameraVertices(pose,skinned,v,normal):null;
+                // Each vertex moved to the camera once, then laid down for every corner that shares it (a vertex
+                // is shared by some six triangles' corners; 06/11 bench: the corner loop was most of the frame).
+                float[] cameraVertices=cameraVertices(pose,skinned,v,normal);
+                if(rim==null&&effect==null&&!surface.skullGem){
+                    int[] colours=vertexColours(surface,alpha,tint,hurt);
+                    for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
+                        int i=surface.indices[triangle+corner],at=i*6;
+                        buffer.addVertex(cameraVertices[at],cameraVertices[at+1],cameraVertices[at+2],colours[i],surface.uv[i*2],surface.uv[i*2+1],
+                            overlay,light,cameraVertices[at+3],cameraVertices[at+4],cameraVertices[at+5]);
+                    }
+                    return;
+                }
                 for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
                     int i=surface.indices[triangle+corner],at=i*6;
-                    if(cameraVertices!=null){
-                        v.set(cameraVertices,at);
-                        normal.set(cameraVertices,at+3);
-                    }else{
-                        pose.pose().transformPosition(skinned[at],skinned[at+1],skinned[at+2],v);
-                        pose.transformNormal(skinned[at+3],skinned[at+4],skinned[at+5],normal);
-                    }
+                    v.set(cameraVertices,at);
+                    normal.set(cameraVertices,at+3);
                     int color=Math.clamp(Math.round(surface.colors[i*4+3]*alpha*255),0,255)<<24;for(int c=0;c<3;c++)color|=Math.clamp((int)(surface.colors[i*4+c]*((tint>>>(16-c*8))&255)),0,255)<<(16-c*8);
                     if(rim!=null){
                         float illumination=0;
@@ -757,7 +806,55 @@ public final class GltfModel {
                     buffer.addVertex(v.x,v.y,v.z,hurt.tint(color),u,texV,overlay,light,normal.x,normal.y,normal.z);
                 }
             });
+            if(surface.envpass!=null&&rim==null&&effect==null&&eye==null&&alpha>=1){
+                // merc's environment pass (emerc), per vertex as the VU1 lays it: the sphere map of the reflected view, drawn
+                // added on, its strength the base colour's alpha. The base's own coordinates ride in the overlay slot.
+                collector.submitCustomGeometry(stack,surface.envpass.type(),(pose,buffer)->{
+                    var counted=corners;if(counted!=null)counted.computeIfAbsent(fileName+" (env)",_->new java.util.concurrent.atomic.LongAdder()).add(surface.indices.length/3*4);
+                    // Per vertex once (the camera-space position, the unit normal, the sphere map's coordinates), then per corner.
+                    float[] at6=cameraVertices(pose,skinned,ENV_POSITION,ENV_NORMAL);
+                    int count=skinned.length/6;
+                    float[] sphere=envSphere(count*2);
+                    for(int i=0;i<count;i++){
+                        int at=i*6;
+                        ENV_POSITION.set(at6,at);
+                        ENV_NORMAL.set(at6,at+3);
+                        if(ENV_NORMAL.lengthSquared()>0)ENV_NORMAL.normalize();
+                        at6[at+3]=ENV_NORMAL.x;at6[at+4]=ENV_NORMAL.y;at6[at+5]=ENV_NORMAL.z;
+                        ENV_VIEW.set(ENV_POSITION).normalize();
+                        float d=2*ENV_VIEW.dot(ENV_NORMAL);
+                        float rx=ENV_VIEW.x-d*ENV_NORMAL.x,ry=ENV_VIEW.y-d*ENV_NORMAL.y,rz=ENV_VIEW.z-d*ENV_NORMAL.z;
+                        float m=2*(float)Math.sqrt(rx*rx+rz*rz+(ry+1)*(ry+1));
+                        sphere[i*2]=m>0?rx/m+.5f:.5f;sphere[i*2+1]=m>0?rz/m+.5f:.5f;
+                    }
+                    for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
+                        int i=surface.indices[triangle+corner],at=i*6;
+                        buffer.addVertex(at6[at],at6[at+1],at6[at+2],0xffffffff,sphere[i*2],sphere[i*2+1],
+                            envCoord(surface.uv[i*2])|envCoord(surface.uv[i*2+1])<<16,0xf000f0,at6[at+3],at6[at+4],at6[at+5]);
+                    }
+                });
+            }
         }
+    }
+    private static final ThreadLocal<int[]> VERTEX_COLOURS=ThreadLocal.withInitial(()->new int[0]);
+    private static final ThreadLocal<float[]> ENV_SPHERE=ThreadLocal.withInitial(()->new float[0]);
+    private static float[] envSphere(int length){
+        var buffer=ENV_SPHERE.get();
+        if(buffer.length<length){buffer=new float[length];ENV_SPHERE.set(buffer);}
+        return buffer;
+    }
+    /** The plain path's colour per vertex (its alpha, the submit's tint, the hurt flash), once per surface drawn. */
+    private static int[] vertexColours(Surface surface,float alpha,int tint,JakHurtVisuals.Frame hurt){
+        int count=surface.colors.length/4;
+        var buffer=VERTEX_COLOURS.get();
+        if(buffer.length<count){buffer=new int[count];VERTEX_COLOURS.set(buffer);}
+        float r=(tint>>>16)&255,g=(tint>>>8)&255,b=tint&255;
+        for(int i=0;i<count;i++){
+            int color=Math.clamp(Math.round(surface.colors[i*4+3]*alpha*255),0,255)<<24
+                |Math.clamp((int)(surface.colors[i*4]*r),0,255)<<16|Math.clamp((int)(surface.colors[i*4+1]*g),0,255)<<8|Math.clamp((int)(surface.colors[i*4+2]*b),0,255);
+            buffer[i]=hurt.tint(color);
+        }
+        return buffer;
     }
     private static float[] cameraVertices(PoseStack.Pose pose,float[] skinned,Vector3f vertex,Vector3f normal){
         var buffer=CAMERA_VERTICES.get();
@@ -821,6 +918,14 @@ public final class GltfModel {
         }accessors.put(id,out);return out;
     }
     private static int intOr(JsonObject j,String key,int fallback){return j.has(key)?j.get(key).getAsInt():fallback;}
+    /** Image `source`'s PNG: embedded as a data URI or in the binary chunk. */
+    private byte[] imageBytes(int source){
+        var image=json.getAsJsonArray("images").get(source).getAsJsonObject();
+        if(image.has("uri")){String uri=image.get("uri").getAsString();if(!uri.startsWith("data:"))throw new IllegalArgumentException("External texture requires asset resolver: "+uri);return Base64.getDecoder().decode(uri.substring(uri.indexOf(',')+1));}
+        var view=json.getAsJsonArray("bufferViews").get(image.get("bufferView").getAsInt()).getAsJsonObject();int off=intOr(view,"byteOffset",0);byte[] png=new byte[view.get("byteLength").getAsInt()];bin.get(off,png);return png;
+    }
+    /** A texture coordinate for the overlay slot: 1/4096 steps from 16384 (jak_envmap.vsh reads it back), packed as a short. */
+    private static int envCoord(float v){return Math.clamp(Math.round(v*4096f)+16384,0,32767)&0xffff;}
     private static float[] array(JsonArray a){float[] r=new float[a.size()];for(int i=0;i<r.length;i++)r[i]=a.get(i).getAsFloat();return r;}
     private static int[] ints(JsonArray a){int[] r=new int[a.size()];for(int i=0;i<r.length;i++)r[i]=a.get(i).getAsInt();return r;}
     private static int[] toInts(float[] a){int[] r=new int[a.length];for(int i=0;i<r.length;i++)r[i]=(int)a[i];return r;}

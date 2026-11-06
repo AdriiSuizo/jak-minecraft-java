@@ -57,7 +57,8 @@ public final class SpargusPatrols {
   // stand-in: Rust marks each leaper with its birth town, so a stolen animal still holds a patrol place; the town's box counts here.
   int riding=level.getEntitiesOfClass(JakLeaper.class,box,l->l.isAlive()&&l.getFirstPassenger() instanceof Villager v&&monk(v)).size();
   int onFoot=level.getEntitiesOfClass(Villager.class,box,v->v.isAlive()&&!v.isPassenger()&&monk(v)).size();
-  if(plan==null)plan=CityBlueprint.read("spargus");
+  if(plan==null)plan=CityBlueprint.ready("spargus");
+  if(plan==null)return;
   for(int k=riding+onFoot;k<2&&k<plan.patrols.size();k++)spawn(level,origin,turns,plan.patrols.get(k));
  }
  // As JakCityStructure.spawnLeaper places the generated patrols.

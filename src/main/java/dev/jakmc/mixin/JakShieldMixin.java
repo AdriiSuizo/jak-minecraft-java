@@ -26,7 +26,11 @@ abstract class JakShieldMixin {
     }
     @Inject(method="hurtServer",at=@At("RETURN"))
     private void jakmc$reaction(ServerLevel level,DamageSource source,float amount,CallbackInfoReturnable<Boolean> result){
-        if(result.getReturnValue()&&amount>0&&(Object)this instanceof ServerPlayer player)JakPlayers.hurt(player,source);
+        if(result.getReturnValue()&&amount>0&&(Object)this instanceof ServerPlayer player){
+            JakPlayers.hurt(player,source);
+            // pilot-states.gc target-pilot-hit: what reaches him on his zoomer takes him dead.
+            if(player.getVehicle() instanceof dev.jakmc.entity.JakVehicle car)car.riderHit(player,source);
+        }
     }
     @Inject(method="playHurtSound",at=@At("HEAD"),cancellable=true)
     private void jakmc$sourceHurtSound(DamageSource source,org.spongepowered.asm.mixin.injection.callback.CallbackInfo result){

@@ -56,7 +56,7 @@ Alimenta al Flut Flut con semillas, inténtalo domar con L2 o clic derecho con l
 
 ## HellCat
 
-Coloca el HellCat desde la pestaña de equipamiento de Jak y acércate al casco. L2 o clic derecho inicia la animación de subida. Ya sentado, R2 acelera y L2 frena y da marcha atrás. El stick izquierdo orienta el morro. Círculo y Cuadrado controlan el giro de la nave en sentidos opuestos. X activa el turbo mientras aceleras. R1 dispara el cañón y L1 el torpedo. Triángulo desmonta y deja la nave flotando con el motor encendido. Un golpe apaga el motor y las luces. Con teclado, W/S controlan aceleración y freno, y F desmonta.
+Coloca el HellCat desde la pestaña de equipamiento de Jak y acércate al casco. L2 o clic derecho inicia la animación de subida. Ya sentado, R2 acelera y L2 frena y da marcha atrás. El stick izquierdo gira la nave como un avión: a izquierda y derecha la gira y la ladea a la vez, y arriba y abajo inclina el morro. Círculo y Cuadrado ya no la giran. X activa el turbo mientras aceleras. R1 dispara el cañón y L1 el torpedo. Triángulo desmonta y deja la nave flotando con el motor encendido. Un golpe apaga el motor y las luces. Con teclado, W/S controlan aceleración y freno, A y D giran y ladean la nave como el stick izquierdo (el teclado no inclina el morro), y F desmonta.
 
 
 La turbotabla tiene casilla propia en los inventarios nativos de supervivencia y creativo. Puedes equiparla o retirarla con los mismos clics y transferencias rápidas que el resto del equipo, conservando durabilidad y encantamientos. La casilla no sustituye a la mano secundaria. Al morir respeta keepInventory y la maldición de desaparición.

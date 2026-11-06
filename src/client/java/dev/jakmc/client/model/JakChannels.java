@@ -58,6 +58,14 @@ final class JakChannels {
         return weight >= 1 ? other : rig.blendLocal(pose, other, weight);
     }
 
+    /** A looping clip at a frame of another clip's count (the wade walk's own cycle, Jak's frames for Daxter's too). */
+    static GltfModel.Posed cycle(GltfModel model,String clip,float frame,int sourceFrames){
+        float last=model.frames(clip)-1,span=sourceFrames-1;
+        if(last<=0||span<=0)return model.pose(clip,0);
+        float wrapped=frame%span;if(wrapped<0)wrapped+=span;
+        return model.pose(clip,wrapped/span*last);
+    }
+
     static GltfModel.Posed loop(GltfModel model,String clip,float age){
         float duration=model.duration(clip);
         return model.pose(clip,duration>0?age%duration/duration*(model.frames(clip)-1):0);

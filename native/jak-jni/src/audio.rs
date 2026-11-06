@@ -36,6 +36,10 @@ struct PlayerSounds {
     freezing: bool,
     healing: bool,
     gun: bool,
+    /// How loud `swim-bubbles` and `water-bubbles` are, and when it was last worked out (ticks): they fade away over
+    /// 960 ticks once their states are left (`set-param` volume -4, `auto-time` 960).
+    bubbles: [f32; 2],
+    bubbles_time: i64,
 }
 
 impl JakSoundQueue {
@@ -268,7 +272,15 @@ pub fn emit_jak_sounds_for(
             Event::DarkJak { on } => (if on { "DJAK_TRANSFORM" } else { "DJAK_OFF" }, at, 1.0, 1.0),
             Event::Flap => ("LTJAK_FLAP", at, 1.0, 1.0),
             Event::Splash { pos, speed } => (
-                if speed >= 0.0 { "SPLASH" } else { "SPLASH_OUT" },
+                // `enter-water` plays the water-control's `enter-water-sound`, "swim-enter" for Jak 3's Jak (`water-h.gc`);
+                // the Flut Flut keeps Jak 1's splash.
+                if speed < 0.0 {
+                    "SPLASH_OUT"
+                } else if jak.state.is_flut() {
+                    "SPLASH"
+                } else {
+                    "SWIM_ENTER"
+                },
                 map_position(pos),
                 1.0,
                 1.0,
@@ -321,7 +333,8 @@ pub fn emit_jak_sounds_for(
                     GunKind::Red3 => ("RED3_BLAST", 1.0, 1.0),
                     GunKind::Yellow3 => ("YELLOW3_ZAP", 1.0, 1.0),
                     GunKind::Dark1 => ("EXPLOSION", 1.0, 1.4),
-                    GunKind::Dark3 => ("HELLCAT_EXPLODE", 1.0, 0.6),
+                    // The Super Nova sounds its own streams as it goes off (weapons.rs).
+                    GunKind::Dark3 => continue,
                     _ => ("EXPLOSION", 1.0, 1.0),
                 };
                 // The Super Nova is heard from anywhere.
@@ -436,6 +449,23 @@ pub fn emit_jak_sounds_for(
     }
     if freezing {
         queue.loops().insert("LTJAK_CHILL", (at, 0.6));
+    }
+    // The water's bubbles: `swim-bubbles` at the surface and `water-bubbles` under it, each kept going every frame of its
+    // states and let fade over 960 ticks once they are left.
+    let (surface_bubbles, deep_bubbles) = jak.bubble_loops();
+    let gains = {
+        let me = &mut queue.players[player];
+        let elapsed = (jak.time - me.bubbles_time).clamp(0, jak_core::math::seconds(0.5)) as f32;
+        me.bubbles_time = jak.time;
+        for (gain, on) in me.bubbles.iter_mut().zip([surface_bubbles, deep_bubbles]) {
+            *gain = if on { 1.0 } else { (*gain - elapsed / 960.0).max(0.0) };
+        }
+        me.bubbles
+    };
+    for (name, gain) in ["SWIM_BUBBLES", "WATER_BUBBLES"].into_iter().zip(gains) {
+        if gain > 0.01 {
+            queue.loops().insert(name, (at, gain));
+        }
     }
     let me = &mut queue.players[player];
     me.last_anim = Some(anim);

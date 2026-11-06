@@ -104,5 +104,7 @@ tasks.register('distributionJar', Jar) {
 def devWorld = providers.gradleProperty("jakmcDevWorld").orElse("New World (1)")
 loom.runs.client {
  vmArg "-Djakmc.devBridge=true"
+ // Benchmarks only (tools/run_scene.py --scene bench): extra JVM arguments, e.g. the collector Adrii's install uses.
+ (System.getenv("JAKMC_JVM_ARGS") ?: "").split(" ").findAll { it }.each { vmArg it }
  programArgs "--width", "1280", "--height", "720", "--quickPlaySingleplayer", devWorld.get()
 }

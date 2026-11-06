@@ -48,7 +48,7 @@ public final class JakRescueClient {
     static void watch(Minecraft client){
         var player=client.player;
         var pose=player==null?null:JakPoses.get(player.getId());
-        if(pose==null){fallStuck=0;fallFrees=0;return;}
+        if(pose==null||pose.raw().has("hellcat")){fallStuck=0;fallFrees=0;return;} // Piloting a HellCat Jak sits in it, held "falling" by relocate: a craft at rest (a pause) is not a fall.
         Vec3 here=pose.position();
         boolean falling="falling".equals(pose.raw().get("state").getAsString());
         // One client tick is the original's frame time (time.delta_secs) here: 0.05 s.

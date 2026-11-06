@@ -515,7 +515,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   if flags & (1 << 16) != 0 { s.jak.light_shield_hit(); }
   let mut events=Vec::new();
   let mut effects:Vec<effects::WireCommand>=Vec::new();
-  let before_clip=s.jak.chan.anim;let before_frame=s.jak.chan.frame;
+  let before_clip=s.jak.chan.anim;let before_frame=s.jak.chan.frame;let before_pose=s.jak.pose_anim();
   let before_wings=s.jak.lightjak.wings.map(|w|w.chan);
   s.world.error=None;
   let mut trail:Vec<String>=Vec::new();
@@ -608,9 +608,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   let walk_mix=j.chan.mix.map(|mix|json!({
    "clips":mix.anims().map(|anim|anim.name()),"up":mix.up,"side":mix.side,"run":mix.run
   }));
-  let surface_clip=if let Some(depth)=j.wade.filter(|_|j.state==jak_core::State::Walk){
-   let deep=depth/j.size.max(0.1)>jak_core::math::meters(1.25);
-   Some(if deep{"jakb-wade-deep-walk"}else{"jakb-wade-shallow-walk"})
+  let surface_clip=if j.wade.is_some()&&j.state==jak_core::State::Walk{
+   Some(if j.wade_anim()==jak_core::anim::WADE_DEEP_WALK{"jakb-wade-deep-walk"}else{"jakb-wade-shallow-walk"})
   }else if !j.gun.out&&j.control.on_surface()&&j.control.ground_pat.material.is_ice(){
    match j.state {
     jak_core::State::Stance if j.control.ctrl_xz_vel>16384.=>Some("jakb1-ice-slide"),
@@ -651,7 +650,19 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    use jak_core::weapons::ShotAnim;let anim=match m.anim{ShotAnim::Rest=>json!({"mode":"rest"}),ShotAnim::Once{clip,age}=>json!({"mode":"once","clip":clip,"age":age}),ShotAnim::BurstFade{burst,fade,age}=>json!({"mode":"burst","burst":burst,"fade":fade,"age":age}),ShotAnim::At{clip,fraction}=>json!({"mode":"at","clip":clip,"fraction":fraction})};
    json!({"id":m.id,"model":m.model,"pos":pos(m.pos),"rotation":m.rot.to_array(),"scale":(m.scale*(4096./BLOCK)).to_array(),"alpha":m.alpha,"anim":anim})
   }).collect();
-  let mut out=json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"hurt":{"ticks":j.time,"invulnerableUntil":j.hurt_invulnerable_until(),"burnStart":j.hurt_fx.burn_start,"shockUntil":j.hurt_fx.shock_until},"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed});out["blueEco"]=json!(j.has_eco(jak_core::eco_power::EcoKind::Blue));out["ecoTimer"]=json!(j.eco_power_shown().map(|(kind,left)|{use jak_core::eco_power::EcoKind::*;[match kind{Yellow=>0.,Red=>1.,Blue=>2.,Green=>3.},left]}));out["bombBlast"]=json!(j.bomb.blast_at.map(|(at,time)|{let d=(at-j.trans())/BLOCK;[d.x,d.y,d.z,(j.time-time) as f32/300.]}));out["freezeClap"]=json!((j.lightjak.freeze_clap>jak_core::lightjak::LONG_AGO).then_some(j.lightjak.freeze_clap));out["nukeFlash"]=json!(j.weapons.flash.map(|at|(j.time-at) as f32/300.));out["darkVictims"]=json!(j.dark_shock.tints.iter().map(|(key,f)|json!([key,f])).collect::<Vec<_>>());if *LEDGE_TRACE {out["ledgeWhy"]=json!(ledge_why);out["trail"]=json!(trail);}Ok(out.to_string())
+  let mut out=json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"hurt":{"ticks":j.time,"invulnerableUntil":j.hurt_invulnerable_until(),"burnStart":j.hurt_fx.burn_start,"shockUntil":j.hurt_fx.shock_until},"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed});out["blueEco"]=json!(j.has_eco(jak_core::eco_power::EcoKind::Blue));out["ecoTimer"]=json!(j.eco_power_shown().map(|(kind,left)|{use jak_core::eco_power::EcoKind::*;[match kind{Yellow=>0.,Red=>1.,Blue=>2.,Green=>3.},left]}));out["bombBlast"]=json!(j.bomb.blast_at.map(|(at,time)|{let d=(at-j.trans())/BLOCK;[d.x,d.y,d.z,(j.time-time) as f32/300.]}));out["freezeClap"]=json!((j.lightjak.freeze_clap>jak_core::lightjak::LONG_AGO).then_some(j.lightjak.freeze_clap));out["nukeFlash"]=json!(j.weapons.flash.map(|at|(j.time-at) as f32/300.));out["nuke"]=json!(j.nuke_screen().map(|(at,age,small)|{let d=at/BLOCK;json!([d.x,d.y,d.z,age,small])}));out["darkVictims"]=json!(j.dark_shock.tints.iter().map(|(key,f)|json!([key,f])).collect::<Vec<_>>());// The ripple meshes `spawn-ripples` made (from Jak, in blocks: root scale, seconds played), and the wade walk's own frame.
+out["ripples"]=json!(j.ripple_meshes().iter().map(|(at,scale,age)|{let d=(*at-j.trans())/BLOCK;json!([d.x,d.y,d.z,scale,age])}).collect::<Vec<_>>());
+if j.wade.is_some()&&j.state==jak_core::State::Walk{
+ // The wade walk's own frame, and how fast it ran over these steps (frames a second, for the frames between).
+ let (wade_clip,wade_frame)=j.pose_anim();
+ out["wadeFrame"]=json!(wade_frame);
+ out["wadeRate"]=json!(if wade_clip==before_pose.0{
+  let period=j.anims.max(wade_clip);let mut delta=wade_frame-before_pose.1;
+  if period>0. {delta-=(delta/period).round()*period;}
+  (delta/(steps as f32/60.)).clamp(-240.,240.)
+ }else{0.});
+}
+if *LEDGE_TRACE {out["ledgeWhy"]=json!(ledge_why);out["trail"]=json!(trail);}Ok(out.to_string())
  })).unwrap_or_else(|_|Err("Jak simulation panicked; native call contained".into()));
  match packet {Ok(packet)=>match env.new_string(packet){Ok(s)=>s.into_raw(),Err(_)=>std::ptr::null_mut()},Err(e)=>{let _=env.throw_new("java/lang/IllegalArgumentException",e);std::ptr::null_mut()}}
 }
@@ -756,5 +767,279 @@ mod ledge_with_real_animations {
    if f>=40&&f<56 {{let c=&jak.control;let w=c.wall_contact_pt/b;let n=c.wall_contact_normal;log.push(format!("f{} {:.3},{:.3},{:.3},{} w{:.3},{:.3},{:.3} n{:.2},{:.2},{:.2}",f,jak.trans().y/b,jak.trans().z/b,c.transv.z/b,c.status,w.x,w.y,w.z,n.x,n.y,n.z));}}
   }
   eprintln!("real anims: {}",log.join(" "));
+ }
+}
+
+/// The water's effects with the real exports (the same assets the game reads: `JAKMC_ASSETS`, else the default
+/// install): the joints the host samples are what the drops and the wade's steps read, and the wake's trail and the
+/// ripple meshes come out as the pose and the particles carry them.
+#[cfg(test)]
+mod water_with_real_data {
+ use super::*;
+ use jak_core::collide::{Tri,Pat,PatMode,CollideWorld};
+ use jak_core::particles::journal::Command;
+ struct Floor(Vec<Tri>);
+ impl CollideWorld for Floor{fn fill(&mut self,_:Vec3,_:Vec3,out:&mut Vec<Tri>){out.extend_from_slice(&self.0);}}
+ fn floor()->Floor{
+  let b=BLOCK;let pat=Pat{mode:PatMode::Ground,..Default::default()};
+  let q=[Vec3::new(-40.*b,0.,-40.*b),Vec3::new(-40.*b,0.,40.*b),Vec3::new(40.*b,0.,40.*b),Vec3::new(40.*b,0.,-40.*b)];
+  Floor(vec![Tri{v:[q[0],q[1],q[2]],pat},Tri{v:[q[0],q[2],q[3]],pat}])
+ }
+ fn assets()->Option<std::path::PathBuf>{
+  let root=std::env::var_os("JAKMC_ASSETS").map(std::path::PathBuf::from).or_else(||std::env::var_os("USERPROFILE").map(|h|std::path::PathBuf::from(h).join(r"Documents\Jak OpenGOAL\active\jak3\data\decompiler_out\jak3")))?;
+  root.join("levels/common/jakb-c-lod0.glb").is_file().then_some(root)
+ }
+ fn jak_in_water(depth:f32)->Option<Jak>{
+  let root=assets()?;
+  static READY:OnceLock<Result<(),String>>=OnceLock::new();
+  READY.get_or_init(||configure_root(&root).map(|_|())).clone().unwrap();
+  let mut jak=Jak::new(Vec3::new(0.,0.,0.),0.);
+  jak.anims=ANIMS.get().unwrap().clone();
+  jak.set_particles(effects::LIBRARY.get().unwrap().clone());
+  jak.particles.as_mut().unwrap().start_journal();
+  jak.control.set_body_dimensions(0.3*BLOCK,1.8*BLOCK);jak.size=0.64;
+  jak.drawn_size=Some(1.94/2.510636*BLOCK/jak_core::METER);
+  jak.water=Some(depth*BLOCK);
+  Some(jak)
+ }
+ fn sample(jak:&mut Jak,rotations:&mut Vec<glam::Quat>){if let Some(body)=BODY_JOINTS.get(){body.sample(jak,rotations);}}
+
+ /// Swimming at the surface of deep water: the host's joints are there (and the toes among them), the drops come off
+ /// the ones under the water, the wake's trail follows him and the ripple meshes come with his splashes.
+ #[test]
+ fn a_swimmer_has_joints_drops_a_wake_trail_and_ripples(){
+  let Some(mut jak)=jak_in_water(6.) else{eprintln!("no exports");return;};
+  let mut world=floor();let mut rotations=Vec::new();
+  jak.control.trans.y=6.*BLOCK-jak_core::swim::SWIM_HEIGHT*jak.drawn_size.unwrap();
+  let mut journal=Vec::new();let mut meshes=0;
+  for f in 0..180 {
+   sample(&mut jak,&mut rotations);
+   let input=PadInput{left:[0.,if f>30{1.}else{0.}],..Default::default()};
+   jak.step(&input,&mut world,None);
+   journal.extend(jak.particles.as_mut().unwrap().take_journal());
+   meshes=meshes.max(jak.ripple_meshes().len());
+  }
+  assert!(jak.joints.len()>40,"{} joints sampled",jak.joints.len());
+  let toes=jak.toe_joints.expect("toes");
+  assert!(toes.0<jak.joints.len()&&toes.1<jak.joints.len());
+  // The drops: a part-756 launch from a joint under the surface, with the water level as its floor.
+  let drops=journal.iter().filter(|c|matches!(c,Command::Var(756,at,_,_,_) if at.y<6.*BLOCK)).count();
+  assert!(drops>0,"no drops from his joints");
+  assert!(journal.iter().any(|c|matches!(c,Command::Value(756,name,Some(y)) if name=="userdata"&&(*y-6.*BLOCK).abs()<1.)),"drops without the water's level");
+  // The wake: its trail followed him and the ripple's size range was set.
+  let crumbs=journal.iter().filter(|c|matches!(c,Command::TrailCrumb(..))).count();
+  assert!(crumbs>60,"{crumbs} trail crumbs");
+  assert!(journal.iter().any(|c|matches!(c,Command::Range(758,field,Some(r)) if field=="scale-x"&&(*r-1638.4).abs()<0.01)),"no ripple size range");
+  let strips=jak.particles.as_ref().unwrap().trail_strips();
+  assert!(!strips.is_empty()&&strips[0].texture=="level-default-water/water-wake");
+  assert!(meshes>0,"no ripple meshes");
+ }
+
+ /// Diving from the surface: `target-swim-down` plays `jakb-swim-walk-to-down` through with its own motion, sounds
+ /// "swim-dive" and splashes once as that animation passes its artist frame 73 (the first splash was at the press),
+ /// and only then does the dive proper go on.
+ #[test]
+ fn a_dive_plays_its_entry_with_the_splash_and_the_sound(){
+  let Some(mut jak)=jak_in_water(6.) else{eprintln!("no exports");return;};
+  let mut world=floor();let mut rotations=Vec::new();
+  jak.control.trans.y=6.*BLOCK-jak_core::swim::SWIM_HEIGHT*jak.drawn_size.unwrap();
+  for _ in 0..30 {sample(&mut jak,&mut rotations);jak.step(&PadInput::default(),&mut world,None);}
+  jak.particles.as_mut().unwrap().take_journal();jak.take_events();
+  let start=jak.trans().y;
+  let mut journal=Vec::new();let mut sounds=Vec::new();
+  let (mut entry_frames,mut first_sound,mut splash_at,mut deepest_in_entry)=(0,None,None,0f32);
+  let mut left=None;
+  for f in 0..400 {
+   sample(&mut jak,&mut rotations);
+   let input=PadInput{held:jak_core::pad::button::SQUARE,pressed:if f==0{jak_core::pad::button::SQUARE}else{0},..Default::default()};
+   jak.step(&input,&mut world,None);
+   let in_entry=jak.swim.is_some_and(|s|s.entry.is_some());
+   if in_entry{entry_frames+=1;deepest_in_entry=deepest_in_entry.max(start-jak.trans().y);}
+   else if left.is_none()&&f>0{left=Some(f);}
+   for event in jak.take_events(){if let Event::Sound{name,..}=event{sounds.push((f,name));if name=="SWIM_DIVE"&&first_sound.is_none(){first_sound=Some((f,jak.chan.aframe_num(&jak.anims),in_entry));}}}
+   let now=jak.particles.as_mut().unwrap().take_journal();
+   if splash_at.is_none()&&f>3&&now.iter().any(|c|matches!(c,Command::Spawn(name,..) if name.starts_with("group-part-water-splash"))){splash_at=Some(f);}
+   journal.extend(now);
+  }
+  eprintln!("entry {entry_frames} frames, left at {left:?}, went down {:.2} m in it, dive sound {first_sound:?}, splash at {splash_at:?}, sounds {sounds:?}",deepest_in_entry/jak_core::math::meters(1.0));
+  assert!(entry_frames>20,"the entry animation did not play: {entry_frames} frames");
+  let (_,aframe,during)=first_sound.expect("swim-dive never sounded");
+  assert!(during&&aframe>=73.,"swim-dive at aframe {aframe} (in the entry: {during})");
+  assert_eq!(sounds.iter().filter(|(_,name)|*name=="SWIM_DIVE").count(),1,"swim-dive once: {sounds:?}");
+  // The entry's own animation took him down some way before the dive went on.
+  assert!(deepest_in_entry>jak_core::math::meters(0.5),"the entry moved him {} m",deepest_in_entry/jak_core::math::meters(1.0));
+  assert!(jak.swim.unwrap().diving);
+ }
+
+ /// The spin out of the wade (circle) and the punch with his feet in the water (square) open with "swim-stroke"
+ /// (`target-wade-stance`, `target-wade-walk`, `target-running-attack`); out of the water they are silent of it.
+ #[test]
+ fn a_spin_or_a_punch_in_the_water_sounds_swim_stroke(){
+  use jak_core::pad::button::{CIRCLE,SQUARE};
+  let Some(mut jak)=jak_in_water(0.45*1.5625*0.64) else{eprintln!("no exports");return;};
+  let mut world=floor();let mut rotations=Vec::new();
+  jak.water=Some(jak_core::math::meters(0.9));
+  let mut press=|jak:&mut Jak,world:&mut Floor,rotations:&mut Vec<glam::Quat>,button:u32|{
+   let mut strokes=0;let mut states=std::collections::BTreeSet::new();
+   for f in 0..60 {
+    sample(jak,rotations);
+    let input=PadInput{held:if f<3{button}else{0},pressed:if f==0{button}else{0},..Default::default()};
+    jak.step(&input,world,None);
+    states.insert(jak.state.name());
+    strokes+=jak.take_events().iter().filter(|e|matches!(e,Event::Sound{name:"SWIM_STROKE",..})).count();
+   }
+   (strokes,states)
+  };
+  let (idle,_)=press(&mut jak,&mut world,&mut rotations,0);
+  assert_eq!(idle,0);
+  assert!(jak.wade.is_some(),"not wading");
+  let (spin,states)=press(&mut jak,&mut world,&mut rotations,CIRCLE);
+  assert_eq!(spin,1,"one swim-stroke for the spin: {states:?}");
+  let (punch,states)=press(&mut jak,&mut world,&mut rotations,SQUARE);
+  assert_eq!(punch,1,"one swim-stroke for the punch: {states:?}");
+  // Dry: neither.
+  jak.water=None;
+  let (spin,_)=press(&mut jak,&mut world,&mut rotations,CIRCLE);
+  let (punch,_)=press(&mut jak,&mut world,&mut rotations,SQUARE);
+  assert_eq!((spin,punch),(0,0));
+ }
+
+ /// Letting go of the dive: `target-swim-up` plays `jakb-swim-down-to-up` through (its motion lifting him), sounds
+ /// "swim-surface" as its artist frame 240 comes or his head is out, goes out to the stance when his feet are over the
+ /// float line (from frame 222 of it), and the stance plays `swim-up-to-stance` before it loops.
+ #[test]
+ fn a_rise_lifts_him_surfaces_with_its_sound_and_settles(){
+  use jak_core::pad::button::SQUARE;
+  use jak_core::anim::{SWIM_DOWN_TO_UP,SWIM_UP_TO_STANCE,SWIM_STANCE,SWIM_UP};
+  let Some(mut jak)=jak_in_water(6.) else{eprintln!("no exports");return;};
+  let mut world=floor();let mut rotations=Vec::new();
+  jak.control.trans.y=6.*BLOCK-jak_core::swim::SWIM_HEIGHT*jak.drawn_size.unwrap();
+  for _ in 0..30 {sample(&mut jak,&mut rotations);jak.step(&PadInput::default(),&mut world,None);}
+  // Down for two seconds (the entry, then the dive).
+  for f in 0..120 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput{held:SQUARE,pressed:if f==0{SQUARE}else{0},..Default::default()},&mut world,None);
+  }
+  let deepest=jak.trans().y;
+  assert!(jak.swim.unwrap().diving&&jak.swim.unwrap().entry.is_none(),"not diving");
+  jak.take_events();
+  let (mut seen,mut surface_sounds,mut first_surface,mut settled,mut bubbles)=(std::collections::BTreeSet::new(),0,None,false,Vec::new());
+  for f in 0..900 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput::default(),&mut world,None);
+   seen.insert(jak.chan.anim.name());
+   bubbles.push(jak.bubble_loops());
+   for event in jak.take_events(){if let Event::Sound{name:"SWIM_SURFACE",..}=event{surface_sounds+=1;first_surface.get_or_insert((f,jak.chan.aframe_num(&jak.anims),jak.swim.is_some_and(|s|s.lift.is_some())));}}
+   if jak.swim.is_some_and(|s|s.settle){settled=true;}
+   if settled&&jak.swim.is_some_and(|s|!s.settle){break;}
+  }
+  eprintln!("anims {seen:?}, surface sound {first_surface:?}, up from {:.2} m to {:.2} m",deepest/jak_core::math::meters(1.0),jak.trans().y/jak_core::math::meters(1.0));
+  assert!(seen.contains(SWIM_DOWN_TO_UP.name())&&seen.contains(SWIM_UP_TO_STANCE.name())&&seen.contains(SWIM_STANCE.name()),"{seen:?}");
+  let _=SWIM_UP;
+  assert_eq!(surface_sounds,1,"swim-surface once");
+  let (_,aframe,in_lift)=first_surface.unwrap();
+  assert!(!in_lift||aframe>=240.||jak.trans().y>deepest,"swim-surface at aframe {aframe}");
+  assert!(!jak.swim.unwrap().diving&&settled,"he did not come up to the stance");
+  // The bubbles: the deep ones all the way up, the surface ones only once he is at the stance.
+  assert!(bubbles.iter().take(10).all(|(surface,deep)|!surface&&*deep),"water-bubbles while rising");
+  assert!(bubbles.last().is_some_and(|(surface,deep)|*surface&&!deep),"swim-bubbles at the surface: {:?}",bubbles.last());
+ }
+
+ /// The ground must be two metres under his feet for the dive; a flop into deep water goes on as one with "swim-flop".
+ #[test]
+ fn shallow_water_does_not_dive(){
+  use jak_core::pad::button::SQUARE;
+  let Some(mut jak)=jak_in_water(2.) else{eprintln!("no exports");return;};
+  let mut world=floor();let mut rotations=Vec::new();
+  jak.control.trans.y=2.*BLOCK-jak_core::swim::SWIM_HEIGHT*jak.drawn_size.unwrap();
+  for f in 0..120 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput{held:SQUARE,pressed:if f==0{SQUARE}else{0},..Default::default()},&mut world,None);
+  }
+  assert!(jak.swim.is_some_and(|s|!s.diving),"dived in two blocks of water");
+ }
+
+ /// The water's sounds as the host plays them: "swim-enter" as he drops in (not Jak 1's splash), `swim-bubbles` at the
+ /// surface, `water-bubbles` from half a second into the dive, each fading away over 960 ticks once its state is left.
+ #[test]
+ fn the_water_sounds_follow_his_states(){
+  use jak_core::pad::button::SQUARE;
+  let Some(mut jak)=jak_in_water(6.) else{eprintln!("no exports");return;};
+  let mut world=floor();let mut rotations=Vec::new();
+  let mut queue=audio::JakSoundQueue::default();
+  // Dropped in from a block over the water.
+  jak.control.trans.y=7.*BLOCK;
+  let (mut enter,mut splash)=(0,0);
+  let mut loops=|jak:&Jak,queue:&mut audio::JakSoundQueue,events:Vec<Event>|{
+   audio::emit_jak_sounds(jak,&events,queue);
+   let names:Vec<_>=queue.take_requests().into_iter().map(|r|r.name).collect();
+   let live:std::collections::BTreeMap<_,_>=queue.loop_requests().into_iter().map(|r|(r.name,r.gain)).collect();
+   queue.advance();
+   (names,live)
+  };
+  for _ in 0..90 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput::default(),&mut world,None);
+   let events=jak.take_events();
+   let (names,_)=loops(&jak,&mut queue,events);
+   enter+=names.iter().filter(|n|**n=="SWIM_ENTER").count();splash+=names.iter().filter(|n|**n=="SPLASH").count();
+  }
+  assert_eq!((enter,splash),(1,0),"one swim-enter, no splash");
+  let (_,live)=loops(&jak,&mut queue,Vec::new());
+  assert!(live.get("SWIM_BUBBLES").is_some_and(|g|*g>0.99)&&!live.contains_key("WATER_BUBBLES"),"{live:?}");
+  // Dived: the deep ones from half a second in, the surface ones fading away.
+  let mut first_deep=None;
+  for f in 0..200 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput{held:SQUARE,pressed:if f==0{SQUARE}else{0},..Default::default()},&mut world,None);
+   let events=jak.take_events();
+   let (_,live)=loops(&jak,&mut queue,events);
+   if first_deep.is_none()&&live.contains_key("WATER_BUBBLES"){first_deep=Some((f,jak.time-jak.swim.unwrap().state_since));}
+  }
+  let (frame,age)=first_deep.expect("no water-bubbles");
+  assert!(age>=jak_core::math::seconds(0.5)&&frame>20,"water-bubbles at frame {frame}, {age} ticks in");
+  let (_,live)=loops(&jak,&mut queue,Vec::new());
+  assert!(live.get("WATER_BUBBLES").is_some_and(|g|*g>0.99)&&!live.contains_key("SWIM_BUBBLES"),"{live:?}");
+  // Let go and come up: the deep ones fade over 3.2 s after he is at the surface.
+  for _ in 0..900 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput::default(),&mut world,None);
+   let events=jak.take_events();
+   loops(&jak,&mut queue,events);
+   if !jak.swim.unwrap().diving{break;}
+  }
+  let (_,live)=loops(&jak,&mut queue,Vec::new());
+  let fading=live.get("WATER_BUBBLES").copied();
+  assert!(fading.is_none_or(|g|g<1.0),"water-bubbles still full at the surface: {live:?}");
+  for _ in 0..240 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput::default(),&mut world,None);
+   let events=jak.take_events();
+   loops(&jak,&mut queue,events);
+  }
+  let (_,live)=loops(&jak,&mut queue,Vec::new());
+  assert!(!live.contains_key("WATER_BUBBLES")&&live.contains_key("SWIM_BUBBLES"),"{live:?}");
+ }
+
+ /// Wading a hand deep in a flat floor's water: the wade cycle runs with his speed, the real clip's joints give the
+ /// toes, and his steps splash the small splash.
+ #[test]
+ fn a_wader_splashes_at_each_step(){
+  let Some(mut jak)=jak_in_water(0.) else{eprintln!("no exports");return;};
+  let mut world=floor();let mut rotations=Vec::new();
+  // The feet on the floor, the water over his ankles.
+  jak.water=Some(jak_core::math::meters(0.9));
+  let mut journal=Vec::new();let mut frames=std::collections::BTreeSet::new();
+  for f in 0..400 {
+   sample(&mut jak,&mut rotations);
+   let input=PadInput{left:[0.,if f>20{1.}else{0.}],..Default::default()};
+   jak.step(&input,&mut world,None);
+   journal.extend(jak.particles.as_mut().unwrap().take_journal());
+   if jak.wade.is_some()&&jak.state==jak_core::State::Walk{frames.insert((jak.pose_anim().1/4.) as i32);}
+  }
+  assert!(jak.wade.is_some(),"not wading: feet {} water {:?}",jak.trans().y,jak.water);
+  assert!(frames.len()>=4,"the wade cycle did not run: {frames:?}");
+  let steps=journal.iter().filter(|c|matches!(c,Command::Spawn(name,..) if name=="group-part-water-splash-small")).count();
+  assert!(steps>=3,"{steps} small splashes in a walk");
  }
 }

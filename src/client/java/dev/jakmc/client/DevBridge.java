@@ -105,6 +105,7 @@ public final class DevBridge {
                 case "rules_scene" -> {RulesScene.start(client);out.addProperty("scheduled",true);}
                 case "lands_scene" -> {LandsScene.start(client);out.addProperty("scheduled",true);}
                 case "punch_scene" -> {PunchScene.start(client);out.addProperty("scheduled",true);}
+                case "bench_scene" -> {BenchScene.start(client);out.addProperty("scheduled",true);}
                 case "wrecks_scene" -> {WreckScene.start(client);out.addProperty("scheduled",true);}
                 case "natural_cities_scene" -> {SitesScene.startCities(client);out.addProperty("scheduled",true);}
                 case "sites_scene" -> {SitesScene.start(client);out.addProperty("scheduled",true);}
@@ -141,6 +142,7 @@ public final class DevBridge {
                 case "kermit_scene" -> {KermitScene.start(client);out.addProperty("scheduled",true);}
                 case "lote_scene" -> {LoteScene.start(client);out.addProperty("scheduled",true);}
                 case "lote2_scene" -> {Lote2Scene.start(client);out.addProperty("scheduled",true);}
+                case "lote3_scene" -> {Lote3Scene.start(client);out.addProperty("scheduled",true);}
                 case "combat_scene" -> {EnemyScene.startCombat(client);out.addProperty("scheduled",true);}
                 case "quit" -> {out.addProperty("stopping",true);client.stop();}
                 default -> throw new IllegalArgumentException("Unknown development operation: "+op);

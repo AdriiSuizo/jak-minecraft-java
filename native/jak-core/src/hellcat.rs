@@ -3,8 +3,10 @@
 //! board again like the street HellCat (`h-hellcat`).
 //!
 //! Piloted, it drives like the street HellCat: it hovers over the ground,
-//! X accelerates up to 30 m/s, Square brakes and backs up, the stick steers
-//! and it banks into turns. It keeps the mission craft's weapons: R1
+//! R2 accelerates up to 30 m/s, L2 brakes and backs up, X boosts. The left
+//! stick steers it and banks it into turns like a plane (X banks and turns,
+//! Y tilts the nose; Circle and Square do nothing). It keeps the mission
+//! craft's weapons: R1
 //! fires the nose gun (four shots in any second), L1 a torpedo (eight,
 //! refilled one every 20 s) whose blast sweeps 60 m. Left alone it falls to
 //! the street HellCat's hover and settles 1.5 m over the ground.
@@ -120,7 +122,7 @@ impl Default for FlightEnv {
 /// the full orange jet.
 pub const BOOST: f32 = 4.0;
 
-/// The speed gears, X tapped twice up and Square tapped twice down while
+/// The speed gears, R2 tapped twice up and L2 tapped twice down while
 /// piloting (Adrii, 15/10): slow, normal and fast, the top speed, thrust,
 /// brakes and lift times this (the fast one is Minecraft's elytra with
 /// rockets, 48 m/s, over the street's 30). The speed eases to a new gear
@@ -170,7 +172,7 @@ pub struct HellCat {
     /// hover, its thrusters lit, until a blow shuts it off and it drops
     /// (Adrii, 16/10).
     pub idling: bool,
-    /// Which of [`GEARS`] it is in (X or Square tapped twice).
+    /// Which of [`GEARS`] it is in (R2 or L2 tapped twice).
     pub gear: u8,
     /// The gear's scale as it eases there.
     gear_scale: f32,
@@ -194,10 +196,8 @@ pub struct HellCat {
     /// How fast the nose pitched last frame, radians a second
     /// (`langvel` x: the flames bend with it too).
     pitch_rate: f32,
-    /// R2 held (+1) or L2 held (-1).
-    lift: f32,
-    /// The roll asked, -1 left to +1 right: Q and E on the keyboard, and in
-    /// open flight R2 and L2 too.
+    /// The roll asked, -1 left to +1 right: the left stick's X (A and D on
+    /// the keyboard), and the ROLL bits (Q and E, sent by no host yet).
     roll_in: f32,
     /// How fast the hull turns about its own axes in open flight (pitch,
     /// yaw, roll; radians a second), easing to what the stick asks.
@@ -277,7 +277,6 @@ impl HellCat {
             refill_time: 0,
             roll_rate: 0.0,
             pitch_rate: 0.0,
-            lift: 0.0,
             roll_in: 0.0,
             spin: Vec3::ZERO,
             climb: 0.0,
@@ -472,11 +471,11 @@ impl HellCat {
 
     /// The stick and buttons, smoothed as `hvehicle` does.
     fn controls(&mut self, input: &PadInput, dt: f32) {
-        // Circle and Square roll; X boosts, consistently with the cars.
-        self.lift = f32::from(u8::from(input.held & button::CIRCLE != 0))
-            - f32::from(u8::from(input.held & button::SQUARE != 0));
-        self.roll_in = f32::from(u8::from(input.held & button::ROLL_RIGHT != 0))
-            - f32::from(u8::from(input.held & button::ROLL_LEFT != 0));
+        // The left stick's X banks it as it steers it, like a plane (Adrii): pushed right it rolls right
+        // at Circle's old roll rate, and the steering below yaws it right. Circle and Square roll nothing; X boosts.
+        self.roll_in = (f32::from(u8::from(input.held & button::ROLL_RIGHT != 0))
+            - f32::from(u8::from(input.held & button::ROLL_LEFT != 0))
+            + analog(input.left[0])).clamp(-1.0, 1.0);
         let steer = -analog(input.left[0]);
         let lean = analog(input.left[1]);
         let throttle = input.pedal(true);
@@ -532,7 +531,7 @@ impl HellCat {
 
     /// Open flight, as the universe's starships fly: the stick pitches and
     /// yaws the hull about its own axes, all the way round if held (loops),
-    /// Q and E (Circle and Square) roll it (barrel rolls), the throttle pushes it
+    /// the left stick's X rolls it (barrel rolls, as it turns), the throttle pushes it
     /// along its nose. The handling is No Man's Sky's fighter's (its
     /// `GcPlayerSpaceshipControlData`, planet and space engines): about 95°
     /// a second of pitch in the air and 63° in space, 165° a second of roll,
@@ -549,9 +548,9 @@ impl HellCat {
         let turn = lerp(1.1, 1.65, g);
         // The stick's response: gentle near the middle, full at the edge.
         let curve = |v: f32| v * (0.35 + 0.65 * v * v);
-        // Right (E, R2) positive. Jak's x is the hull's left, so a turn
+        // Right positive (the stick's X to the right). Jak's x is the hull's left, so a turn
         // about +z lifts the left wing: a roll to the right.
-        let roll_in = (self.roll_in + self.lift).clamp(-1.0, 1.0);
+        let roll_in = self.roll_in;
         let want = Vec3::new(
             // Stick back (lean -1) lifts the nose (a turn about -x).
             turn * curve(self.lean),
@@ -618,7 +617,7 @@ impl HellCat {
             top * self.throttle
         } else if g > 0.05 {
             // Let go under gravity it slows to a stop (Adrii, 15/10: it
-            // went on by itself unless Square braked it).
+            // went on by itself unless L2 braked it).
             0.0
         } else {
             // Out in space it coasts.
@@ -1230,17 +1229,40 @@ mod gear_tests {
 
 #[cfg(test)] mod analog_vehicle_tests {
     use super::*;
-    #[test] fn architecture27_hellcat_uses_analog_pedals_and_remapped_roll() {
+    #[test] fn architecture27_hellcat_uses_analog_pedals_and_no_button_rolls() {
         let mut craft=HellCat::new(glam::Vec3::ZERO,0.);
         let throttle=PadInput{held:button::R2,triggers:[0.,0.515],..Default::default()};
         for _ in 0..120{craft.controls(&throttle,1./60.);}
-        assert!((craft.throttle-0.5).abs()<0.001);assert_eq!(craft.lift,0.);
+        assert!((craft.throttle-0.5).abs()<0.001);assert_eq!(craft.roll_in,0.);
         let brake=PadInput{held:button::L2,triggers:[0.2725,0.],..Default::default()};
         for _ in 0..120{craft.controls(&brake,1./60.);}
-        assert!((craft.brake-0.25).abs()<0.001);assert_eq!(craft.throttle,0.);assert_eq!(craft.lift,0.);
-        craft.controls(&PadInput{held:button::CIRCLE,..Default::default()},1./60.);assert_eq!(craft.lift,1.);
+        assert!((craft.brake-0.25).abs()<0.001);assert_eq!(craft.throttle,0.);assert_eq!(craft.roll_in,0.);
+        // Circle and Square roll nothing now: the left stick's X banks it (next test).
+        craft.controls(&PadInput{held:button::CIRCLE,..Default::default()},1./60.);assert_eq!(craft.roll_in,0.);
         craft.controls(&PadInput{held:button::X|button::R2,..Default::default()},1./60.);
-        assert!(craft.boosting);assert_eq!(craft.lift,0.);
-        craft.controls(&PadInput{held:button::SQUARE,..Default::default()},1./60.);assert_eq!(craft.lift,-1.);
+        assert!(craft.boosting);assert_eq!(craft.roll_in,0.);
+        craft.controls(&PadInput{held:button::SQUARE,..Default::default()},1./60.);assert_eq!(craft.roll_in,0.);
+    }
+
+    /// Adrii: the left stick's X alone banks the HellCat and turns it, like a plane. Pushed right, its left wing
+    /// rises (a roll to the right) and its heading turns right (towards -x, facing +z); pushed left it does the
+    /// mirror image; let go, it levels again.
+    #[test] fn stick_x_alone_banks_and_turns_the_craft() {
+        let mut world=crate::TriangleGrid::new(Vec::new(),meters(4.0));
+        let mut craft=HellCat::new(Vec3::Y*meters(20.0),0.);
+        craft.board();
+        let right=PadInput{left:[1.,0.],..Default::default()};
+        for _ in 0..12{craft.step(&right,&mut world,None);}
+        assert_eq!(craft.roll_in,1.);
+        let left_wing=craft.orientation()*Vec3::X;
+        assert!(left_wing.y>0.2,"pushed right, the left wing rises: {left_wing:?}");
+        assert!(craft.heading().x< -0.01,"and it turns right: {:?}",craft.heading());
+        for _ in 0..240{craft.step(&PadInput::default(),&mut world,None);}
+        assert!((craft.orientation()*Vec3::X).y.abs()<0.02,"let go, it levels: {:?}",craft.orientation()*Vec3::X);
+        let turned=craft.heading().x;
+        let left=PadInput{left:[-1.,0.],..Default::default()};
+        for _ in 0..12{craft.step(&left,&mut world,None);}
+        assert!((craft.orientation()*Vec3::X).y< -0.2,"pushed left, the left wing drops");
+        assert!(craft.heading().x>turned+0.01,"and it turns left: {:?}",craft.heading());
     }
 }

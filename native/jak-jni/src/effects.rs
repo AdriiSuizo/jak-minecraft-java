@@ -10,7 +10,10 @@ const BARREL_FIRE:&str="group-ctysluma-barrel-fire";
 const PROPAGANDA:&str="group-ctywide-baron-propoganda-holo";
 const DISMANTLE:&str="group-vehicle-explosion";
 #[derive(Clone,Copy,PartialEq)]
-enum Decor { Barrel, Projector, Dismantle, DroidExplosion, Vent(u8), Sandstorm, DarkEcoDeath, KermitPulse, KermitImpact, Launcher }
+enum Decor { Barrel, Projector, Dismantle, DroidExplosion, Vent(u8), Sandstorm, DarkEcoDeath, KermitPulse, KermitImpact, Launcher, ExplodeDeath, LavaDeath }
+/// target-part.gc (Jak 3): the bursts of target-pilot-death's 'explode and 'melt, 0.2 s after the blow.
+const EXPLODE_DEATH:&str="group-explode-death";
+const LAVA_DEATH:&str="group-lava-death";
 /// generic-obs.gc launcher init: outside the beach and the swamp (the citadel's citb-launcher too) its part is group-jungle-launcher.
 const LAUNCHER:&str="group-jungle-launcher";
 /// kermit.gc: the pulse running down the swamp frog's tongue (kermit-pulse-idle spawns it every frame) and its touch (kermit-pulse-impact).
@@ -24,9 +27,9 @@ const DARK_ECO_DEATH:&str="group-dark-eco-death";
 /// 0.375 blocks a metre (Adrii 06/11: the flames were a third of that and sat too high).
 const BARREL_SCALE:f32=0.375*BLOCK/jak_core::METER;
 impl Decor {
- fn one_shot(self)->bool{matches!(self,Self::Dismantle|Self::DroidExplosion|Self::DarkEcoDeath|Self::KermitImpact)}
- fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::DroidExplosion=>"group-kg-small-explosion",Self::Vent(index)=>VENT_GROUPS[index as usize],Self::DarkEcoDeath=>DARK_ECO_DEATH,Self::KermitPulse=>KERMIT_PULSE,Self::KermitImpact=>KERMIT_IMPACT,Self::Launcher=>LAUNCHER,Self::Sandstorm=>unreachable!()}}
- fn scale(self)->f32{match self{Self::Barrel=>BARREL_SCALE,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion|Self::KermitPulse|Self::KermitImpact|Self::Launcher=>CREATURE,Self::Vent(0..=3)|Self::Sandstorm|Self::DarkEcoDeath=>1.,Self::Vent(_)=>0.62}}
+ fn one_shot(self)->bool{matches!(self,Self::Dismantle|Self::DroidExplosion|Self::DarkEcoDeath|Self::KermitImpact|Self::ExplodeDeath|Self::LavaDeath)}
+ fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::DroidExplosion=>"group-kg-small-explosion",Self::Vent(index)=>VENT_GROUPS[index as usize],Self::DarkEcoDeath=>DARK_ECO_DEATH,Self::KermitPulse=>KERMIT_PULSE,Self::KermitImpact=>KERMIT_IMPACT,Self::Launcher=>LAUNCHER,Self::ExplodeDeath=>EXPLODE_DEATH,Self::LavaDeath=>LAVA_DEATH,Self::Sandstorm=>unreachable!()}}
+ fn scale(self)->f32{match self{Self::Barrel=>BARREL_SCALE,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion|Self::KermitPulse|Self::KermitImpact|Self::Launcher=>CREATURE,Self::Vent(0..=3)|Self::Sandstorm|Self::DarkEcoDeath|Self::ExplodeDeath|Self::LavaDeath=>1.,Self::Vent(_)=>0.62}}
 }
 
 const VENT_GROUPS:[&str;8]=[
@@ -64,7 +67,7 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  let desert=read("levels/desert/desert-part.gc")?;
  library.read(&crate::particle_subset::particle_subset(&desert,&[],&[1439,1443],&[]));
  let text=read("engine/target/target-part.gc")?;
- let subset=crate::particle_subset::particle_subset(&text,&["group-target-hit","group-lightning-glow","group-land-poof-stn","group-darkjak-bomb"],&[157,173,187],&["lightning-darkjak-attack","lightning-darkjak-transform"]);
+ let subset=crate::particle_subset::particle_subset(&text,&["group-target-hit","group-lightning-glow","group-land-poof-stn","group-darkjak-bomb",EXPLODE_DEATH,LAVA_DEATH],&[157,173,187],&["lightning-darkjak-attack","lightning-darkjak-transform"]);
  library.read(&subset.replace("(sp-item 70 :period (seconds 0.5) :length (seconds 0.017))",""));
  if let Some(active)=root.ancestors().find(|p|p.file_name().is_some_and(|n|n=="active")){
   let jak2=active.join("jak2/data/goal_src/jak2");
@@ -122,7 +125,7 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  if let Some(haven)=HAVEN.get(){textures.extend(haven.textures());}
  if let Some(vents)=JAK1_VENTS.get(){textures.extend(vents.textures());}
  // Arc Wielder's lightning-new appearances also reference the original page.
- for name in ["level-default-sprite/pal-lightning","level-default-sprite/lightning-tile","level-default-sprite/glow-soft","level-default-sprite/gun-yellow-beam","level-default-sprite/gun-blue-beam"] {if !textures.iter().any(|s|s==name){textures.push(name.into());}}
+ for name in ["level-default-water/water-wake","level-default-sprite/pal-lightning","level-default-sprite/lightning-tile","level-default-sprite/glow-soft","level-default-sprite/gun-yellow-beam","level-default-sprite/gun-blue-beam"] {if !textures.iter().any(|s|s==name){textures.push(name.into());}}
  textures.sort();textures.dedup();TEXTURES.set(textures).map_err(|_|"texture configuration raced")?;
  LIBRARY.set(Arc::new(library)).map_err(|_|"particle configuration raced")?;Ok(())
 }
@@ -130,7 +133,7 @@ fn texture(name:&str)->Option<usize>{TEXTURES.get()?.binary_search_by(|s|s.as_st
 fn translate(c:&mut Command,offset:Vec3){
  use Command::*;match c {
   Target(a,b)=>{*a+=offset;*b+=offset;},Ground(a)=>*a+=offset.y,
-  Sources(a)=>for(_,p)in a{*p+=offset;},From(_,_,p,_)|Peace(_,p,_)|Spawn(_,p,_)|Tagged(_,p,_,_)|Keep(_,_,p,_)|Attached(_,_,p,_)|Launch(_,p,_)|Beam(_,p,_,_)|BeamSized(_,p,_,_,_)|Blade(_,p,_,_,_,_)|Flat(_,p,_,_)|Scaled(_,p,_,_)|Tracker(_,_,p)|Var(_,p,_,_,_)=>*p+=offset,
+  Sources(a)=>for(_,p)in a{*p+=offset;},From(_,_,p,_)|Peace(_,p,_)|Spawn(_,p,_)|Tagged(_,p,_,_)|Keep(_,_,p,_)|Attached(_,_,p,_)|Launch(_,p,_)|Beam(_,p,_,_)|BeamSized(_,p,_,_,_)|Blade(_,p,_,_,_,_)|Flat(_,p,_,_)|Scaled(_,p,_,_)|Tracker(_,_,p)|Var(_,p,_,_,_)|TrailCrumb(_,p)=>*p+=offset,
   Move(_,a)=>for(_,p)in a{*p+=offset;},Lightning(a)=>for r in a{r.from+=offset;r.to+=offset;},
   Value(756|757,name,Some(y)) if name=="userdata"=>*y+=offset.y,
   _=>{}
@@ -161,6 +164,7 @@ fn create(library:&OnceLock<Arc<Library>>,decor:Option<Decor>)->Result<jlong,Str
    14..=17=>(&LIBRARY,Decor::Vent((kind-10)as u8)),
    18=>(&LIBRARY,Decor::Sandstorm),19=>(&LIBRARY,Decor::DroidExplosion),20=>(&JAK1_VENTS,Decor::DarkEcoDeath),
    21=>(&JAK1_VENTS,Decor::KermitPulse),22=>(&JAK1_VENTS,Decor::KermitImpact),23=>(&JAK1_VENTS,Decor::Launcher),
+   24=>(&LIBRARY,Decor::ExplodeDeath),25=>(&LIBRARY,Decor::LavaDeath),
    _=>return Err("Unknown world effect".into())
   };
   if library.get().is_none(){return Ok(0);}
@@ -324,7 +328,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_fxVentPickup(mut en
   let tex=texture("level-default-sprite/glow-soft").ok_or("Missing gravity ring texture")?;
   for quad in f.weapons.ring_quads(){if(count+4)*44>out.len(){break;}for v in quad{write_vertex(out,&mut count,v.pos/BLOCK,[0.,0.,0.,v.rgba[3]/255.],v.st,tex,0)?;}}
   let mut vertices=0;
-  'strips: for strip in f.particles.lightning_strips().into_iter().chain(f.weapons.strips(up)){let qualified=if strip.texture.contains('/') {strip.texture.clone()}else{format!("level-default-sprite/{}",strip.texture)};let Some(tex)=texture(&qualified).or_else(||texture(&strip.texture))else{continue};for i in 2..strip.verts.len(){let tri=if i%2==0{[i-2,i-1,i]}else{[i-1,i-2,i]};if (vertices+4)*44>bolt_out.len(){break 'strips;}for k in [0,1,2,2]{let v=&strip.verts[tri[k]];let mut at=vertices*44;
+  'strips: for strip in f.particles.lightning_strips().into_iter().chain(f.particles.trail_strips()).chain(f.weapons.strips(up)){let qualified=if strip.texture.contains('/') {strip.texture.clone()}else{format!("level-default-sprite/{}",strip.texture)};let Some(tex)=texture(&qualified).or_else(||texture(&strip.texture))else{continue};for i in 2..strip.verts.len(){let tri=if i%2==0{[i-2,i-1,i]}else{[i-1,i-2,i]};if (vertices+4)*44>bolt_out.len(){break 'strips;}for k in [0,1,2,2]{let v=&strip.verts[tri[k]];let mut at=vertices*44;
    for x in [v.pos.x/BLOCK,v.pos.y/BLOCK,v.pos.z/BLOCK,v.rgba[0]/255.,v.rgba[1]/255.,v.rgba[2]/255.,v.rgba[3]/255.,v.st[0],v.st[1]]{bolt_out[at..at+4].copy_from_slice(&x.to_le_bytes());at+=4;}
    for x in [tex as u32,if strip.additive{2u32}else{0u32}]{bolt_out[at..at+4].copy_from_slice(&x.to_le_bytes());at+=4;}vertices+=1;
   }}}
@@ -373,9 +377,36 @@ fn write_vertex(out:&mut[u8],count:&mut usize,pos:Vec3,rgba:[f32;4],uv:[f32;2],t
  for v in [texture as u32,blend]{out[at..at+4].copy_from_slice(&v.to_le_bytes());at+=4;}*count+=1;Ok(())
 }
 
+/// A zoomer's engine particles (hover_host fxVehicle) launch straight into its session's particles.
+pub(crate) fn with_particles(id:u64,f:impl FnOnce(&mut Particles))->Result<(),String>{
+ let mut e=lock_fx()?;
+ let fx=e.live.get_mut(&id).ok_or("Stale FX session")?;
+ f(&mut fx.particles);
+ Ok(())
+}
+/// Whether particle session `id` is still there.
+pub(crate) fn exists(id:u64)->bool{lock_fx().is_ok_and(|e|e.live.contains_key(&id))}
+
 #[cfg(test)]
 mod tests {
  use super::*;
+
+ /// target-pilot-death's bursts are Jak 3's own groups, read with the rest of its target-part.gc.
+ #[test]
+ fn the_pilots_death_bursts_come_from_the_original_groups(){
+  let Ok(root)=std::env::var("JAKMC_ASSETS") else {eprintln!("JAKMC_ASSETS unset");return;};
+  // As configure reads them (its own globals are shared with the other tests, so a library of this test's own).
+  let source=std::path::Path::new(&root).parent().and_then(|p|p.parent()).unwrap().join("goal_src/jak3/engine/target/target-part.gc");
+  let text=std::fs::read_to_string(source).expect("target-part.gc");
+  let mut library=Library::default();
+  library.read(&crate::particle_subset::particle_subset(&text,&[EXPLODE_DEATH,LAVA_DEATH],&[],&[]));
+  for group in [EXPLODE_DEATH,LAVA_DEATH]{
+   assert!(library.group(group).is_some(),"{group} missing");
+  }
+  // 152 to 155 are the burst's parts (the lava one all four, the explosion 153 and 154).
+  for part in [152,153,154,155]{assert!(library.has_part(part),"part {part} missing");}
+  assert_eq!(library.unsupported_callbacks().len(),0,"{:?}",library.unsupported_callbacks());
+ }
 
  #[test]
  fn praxis_glyphs_stay_upright_in_the_upper_cell(){

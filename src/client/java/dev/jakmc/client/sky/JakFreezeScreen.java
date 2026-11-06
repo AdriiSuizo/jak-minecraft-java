@@ -34,7 +34,7 @@ public final class JakFreezeScreen {
   .withBindGroupLayout(BindGroupLayouts.IN_SAMPLER).withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
   .withPrimitiveTopology(PrimitiveTopology.TRIANGLES).withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT)).build());
  private static TextureTarget picture,shown;
- private static long clapped=Long.MIN_VALUE,smushStart,nukeSeen=Long.MIN_VALUE,nukeSmushAt=Long.MAX_VALUE,nukeFlashStart=Long.MIN_VALUE;
+ private static long clapped=Long.MIN_VALUE,smushStart,nukeSeen=Long.MIN_VALUE,nukeSmushAt=Long.MAX_VALUE;
  private static boolean smushing;
  // The running smush-control's activate! arguments: amplitude (blocks), period and duration (300ths of a second), the two multipliers.
  private static double smushAmplitude;private static float smushPeriod,smushDuration,smushAmpMul,smushPeriodMul;
@@ -68,25 +68,18 @@ public final class JakFreezeScreen {
     smushStart(.2,15,75,1,.9f);
    }
   }
-  // Jak 3 gun-dark-shot.gc, the Super Nova's impact: the white flash, the pad's buzz (255, fading over a
-  // second) and at 1 s `activate! *camera-smush-control* 1228.8 45 1275 1.0 0.9`.
-  if(pose!=null&&pose.raw().get("nukeFlash") instanceof com.google.gson.JsonPrimitive age){
-   long now=System.nanoTime(),start=now-(long)(age.getAsFloat()*1e9);
-   if(Math.abs(start-nukeSeen)>200_000_000L){nukeSeen=start;nukeFlashStart=start;nukeSmushAt=start+1_000_000_000L;JakInput.hurtFeedback(1);}
+  // Jak 3 gun-dark-shot.gc, the Super Nova's `impact` (or `impact-small`) state from its start: the white
+  // screen, the pad's buzz (impact only) and at 1 s `activate! *camera-smush-control* 1228.8 45 1275 1.0 0.9`.
+  JakNukeScreen.frame(pose);
+  if(pose!=null&&JakNukeScreen.started()!=Long.MIN_VALUE){
+   long start=JakNukeScreen.started();
+   if(start!=nukeSeen){nukeSeen=start;nukeSmushAt=start+1_000_000_000L;
+    // do-vibration: buzz 255 fading to none over 6 s. stand-in: the pad here buzzes at one strength, so it
+    // buzzes for the 3 s the original's stays over half.
+    if(!JakNukeScreen.small())JakInput.hurtFeedback(3);}
   }
   if(System.nanoTime()>=nukeSmushAt){nukeSmushAt=Long.MAX_VALUE;smushStart(.3,45,1275,1,.9f);}
  }
- /** The Super Nova's white flash now, 0..1: up to full by 5 % of its 2 s, held to 20 %, 0.78 at 50 %, gone at the end. */
- public static float nukeFlash(){
-  if(nukeFlashStart==Long.MIN_VALUE)return 0;
-  float t=(System.nanoTime()-nukeFlashStart)/2e9f;
-  if(t<0||t>=1)return 0;
-  if(t<.05f)return t/.05f;
-  if(t<.2f)return 1;
-  if(t<.5f)return 1+(.78f-1)*(t-.2f)/.3f;
-  return .78f*(1-(t-.5f)/.5f);
- }
-
  /** smush-control update!: a sine of the period, fading over the duration; its period shrinks by 0.9 a cycle. Blocks up. */
  public static double smush(){
   if(!smushing)return 0;

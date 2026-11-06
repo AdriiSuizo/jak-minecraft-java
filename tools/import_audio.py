@@ -99,6 +99,86 @@ def named_banks(root, decoder, clips, sounds):
     return imported
 
 
+# Jak 2/3 streamed sounds (VAG/VAGDIR.AYB, VAGWAD.*): the decompiler's export leaves them out.
+# Jak 3's directory (OpenGOAL streamed_audio.cpp read_audio_dir): 'VGWADDIR', version, count, then one
+# u64 per stream (a 42-bit base-38 name, stereo, international, param, a 16-bit offset in 0x8000s).
+VAG_STREAMS = {'jak3': ('PG3NXPLO', 'PG3WXPLO')}  # gun-dark-shot.gc: the Super Nova's explode(-wall)-sound
+VAG_CHARS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'
+ADPCM = ((0, 0), (60, 0), (115, -52), (98, -55), (122, -60))
+
+def vag_name(packed):
+    chars, out = packed & 0x1fffff, [''] * 8
+    for i in range(8):
+        if i == 4:
+            chars = (packed >> 21) & 0x1fffff
+        out[7 - i] = VAG_CHARS[chars % 38]
+        chars //= 38
+    return ''.join(out).rstrip()
+
+def decode_vag(data):
+    """Mono PS-ADPCM after a 48-byte 'pGAV'/'VAGp' header, to 16-bit samples, up to its end flag."""
+    import struct
+    big = data[:4] == b'VAGp'
+    size, rate = struct.unpack_from('>II' if big else '<II', data, 12)
+    samples, s1, s2 = [], 0, 0
+    for at in range(48, 48 + size, 16):
+        frame = data[at:at + 16]
+        if len(frame) < 16:
+            break
+        shift, flt, flags = frame[0] & 15, min(frame[0] >> 4, 4), frame[1]
+        k0, k1 = ADPCM[flt]
+        for byte in frame[2:]:
+            for nib in (byte & 15, byte >> 4):
+                v = (nib - 16 if nib >= 8 else nib) << 12
+                v = (v >> shift) + ((s1 * k0 + s2 * k1 + 32) >> 6)
+                v = max(-32768, min(32767, v))
+                samples.append(v); s2, s1 = s1, v
+        if flags & 1:
+            break
+    return rate, samples
+
+def vag_streams(root, clips, sounds):
+    import struct
+    local = P/'.local/vehicle-audio'
+    local.mkdir(parents=True, exist_ok=True)
+    imported = []
+    for game, wanted in VAG_STREAMS.items():
+        vag = root/f'{game}/data/iso_data/{game}/VAG'
+        directory = vag/'VAGDIR.AYB'
+        if not directory.is_file():
+            continue
+        d = directory.read_bytes()
+        if d[:8] != b'VGWADDIR':
+            continue
+        count, = struct.unpack_from('<I', d, 12)
+        for i in range(count):
+            packed, = struct.unpack_from('<Q', d, 16 + 8 * i)
+            name = vag_name(packed & ((1 << 42) - 1))
+            if name not in wanted:
+                continue
+            stereo, international, offset = (packed >> 42) & 1, (packed >> 43) & 1, (packed >> 48) & 0xffff
+            if stereo:
+                raise RuntimeError(f'{name}: stereo streams are not read here')
+            wad = vag/('VAGWAD.INT' if international else 'VAGWAD.COM')
+            with open(wad, 'rb') as f:
+                f.seek(0x8000 * offset)
+                head = f.read(48)
+                size = struct.unpack_from('>I' if head[:4] == b'VAGp' else '<I', head, 12)[0]
+                data = head + f.read(size)
+            rate, samples = decode_vag(data)
+            stem = f'{game}-vag-{name.lower()}'
+            clip = local/f'{stem}.wav'
+            with wave.open(str(clip), 'wb') as out:
+                out.setnchannels(1); out.setsampwidth(2); out.setframerate(rate)
+                out.writeframes(struct.pack(f'<{len(samples)}h', *samples))
+            digest = hashlib.sha256(clip.read_bytes()).hexdigest()
+            # Streams play at their own level (no bank volume), so no mix gain.
+            clips.setdefault((digest, 1), clip)
+            event = {'sounds': [{'name': f'jakmc:{resource(digest, 1)}', 'attenuation_distance': 32}]}
+            sounds[f'sfx/{game}/{key(name)}'] = event
+            imported.append({'name': name, 'game': game, 'wad': str(wad), 'offset': offset, 'samples': len(samples), 'wav_sha256': digest})
+    return imported
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--opengoal', type=Path, default=Path.home()/'Documents/Jak OpenGOAL/active')
@@ -134,6 +214,7 @@ def main():
     for name, event in defaults.items():
         sounds[f'sfx/{name}'] = event
     owned_banks = named_banks(args.opengoal, args.vgmstream, clips, sounds) if args.vgmstream.is_file() else []
+    owned_banks += vag_streams(args.opengoal, clips, sounds)
     target = out/'sounds/sfx'
     target.mkdir(parents=True, exist_ok=True)
     def convert(pair):

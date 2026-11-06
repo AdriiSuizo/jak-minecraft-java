@@ -33,7 +33,7 @@ public final class JakInput {
     private static long lastFrame,dropStarted;
     private static boolean droppedStack;
     private static int controllerId;
-    private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower,vehicleUseLock,wasBoard,spinTriangle;
+    private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower,vehicleUseLock,wasBoard,spinTriangle,menuWasOpen;
     private static long spinPress=Long.MIN_VALUE/2;
     private static Trigger trigger;
     private static final dev.jakmc.client.input.SdlGamepad GAMEPAD=new dev.jakmc.client.input.SdlGamepad();
@@ -238,7 +238,8 @@ public final class JakInput {
             JakMenuControls.frame(client,uiPad,0,MenuScene.backgroundPad(controllerId)||InputScene.backgroundPad(controllerId));
             ui(client);
             if(!enabled(client)){previous=0;return;}
-            boolean blocked=blocked(client);int held=blocked?0:held(client)|pad.held(),pressed=(held&~previous)|pressedPad;previous=held;pressedPad=0;
+            boolean blocked=blocked(client);int held=blocked?0:held(client)|pad.held();if(!blocked&&menuWasOpen)previous=held; // keys still down as a menu closes are not presses (a held F let the HellCat's Jak out)
+            menuWasOpen=blocked;int pressed=(held&~previous)|pressedPad;previous=held;pressedPad=0;
             float strafe=blocked?0:(client.options.keyRight.isDown()?1:0)-(client.options.keyLeft.isDown()?1:0);
             float forward=blocked?0:(client.options.keyUp.isDown()?1:0)-(client.options.keyDown.isDown()?1:0);
             if(pad.leftX()*pad.leftX()+pad.leftY()*pad.leftY()>strafe*strafe+forward*forward){strafe=pad.leftX();forward=pad.leftY();}

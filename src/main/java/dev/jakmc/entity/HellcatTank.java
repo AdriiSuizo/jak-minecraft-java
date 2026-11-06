@@ -61,8 +61,8 @@ final class HellcatTank {
         if(burn<=0&&piloting)burn+=burnPiece();
         fueled=burn>0||!piloting;
     }
-    /** Rust jak_entities advance_vehicle: an empty tank, no X (boost) and no Circle (lift). */
-    int dry(int buttons){return fueled?buttons:buttons&~(1|4);}
+    /** Rust jak_entities advance_vehicle: an empty tank, no X (boost). */
+    int dry(int buttons){return fueled?buttons:buttons&~1;}
 
     /**
      * stand-in: the original opens it beside the inventory at the HellCat's

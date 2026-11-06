@@ -65,7 +65,22 @@ final class CityBlueprint {
         maxX=bounds[3];maxY=bounds[4];maxZ=bounds[5];
     }
 
+    private static final java.util.concurrent.ConcurrentHashMap<String,java.util.concurrent.CompletableFuture<CityBlueprint>> PLANS=new java.util.concurrent.ConcurrentHashMap<>();
+    /** The plan, read once for worldgen and the town tickers alike (each used to read its own copy). */
     static CityBlueprint read(String id){
+        try{return loading(id).join();}
+        catch(java.util.concurrent.CompletionException e){throw e.getCause() instanceof RuntimeException r?r:e;}
+    }
+    /** The plan if it is read already; otherwise null while it is read off the server thread (Haven's took ~0.5 s, a hitch on the first town). */
+    static CityBlueprint ready(String id){
+        var plan=loading(id);
+        return plan.isDone()?read(id):null;
+    }
+    private static java.util.concurrent.CompletableFuture<CityBlueprint> loading(String id){
+        return PLANS.computeIfAbsent(id,k->java.util.concurrent.CompletableFuture.supplyAsync(()->load(k)));
+    }
+
+    private static CityBlueprint load(String id){
         String path="/data/jakmc/catalog/"+id+".jbp";
         var cells=new HashMap<Long,Int2ObjectOpenHashMap<BlockState>>();
         var garages=new ArrayList<Garage>();

@@ -2037,6 +2037,8 @@ impl Jak {
                             killed: false,
                             small: true,
                         });
+                        // impact-small: its stream "pg3wxplo" (gui-control's explode-wall-sound).
+                        self.events.push(Event::Sound { name: "jak3:pg3wxplo", volume: 1.0, pitch: 0.0 });
                         return false;
                     }
                     let beep = |s: f32| now - at >= seconds(s) && now - at - FRAME_TICKS < seconds(s);
@@ -2080,6 +2082,8 @@ impl Jak {
                                 killed: false,
                                 small: false,
                             });
+                            // impact's :enter: its stream "pg3nxplo" (explode-sound).
+                            self.events.push(Event::Sound { name: "jak3:pg3nxplo", volume: 1.0, pitch: 0.0 });
                             return false;
                         }
                     }
@@ -2997,6 +3001,19 @@ impl crate::Jak {
     /// spinning), the Plasmite RPG's grenade (`skel-gun-red-3-grenade`,
     /// along its flight) and the Super Nova's missile (`skel-gun-dark-3-
     /// nuke`, along its heading).
+    /// The latest Super Nova going off (gun-dark-3-nuke's `impact` or
+    /// `impact-small` state): where, its age in seconds, and whether small.
+    /// The host draws its screen from it: `do-white-screen-effect`,
+    /// `do-blur-effect`, the music's silence and the camera's smush.
+    pub fn nuke_screen(&self) -> Option<(Vec3, f32, bool)> {
+        self.weapons.effects.iter().rev().find_map(|e| match e {
+            Effect::Nuke { center, start, small, .. } => {
+                Some((*center, (self.time - start) as f32 / TICKS_PER_SECOND as f32, *small))
+            }
+            _ => None,
+        })
+    }
+
     pub fn shot_models(&self) -> Vec<ShotModel> {
         let along = |v: Vec3| {
             let d = v.try_normalize().unwrap_or(Vec3::Z);

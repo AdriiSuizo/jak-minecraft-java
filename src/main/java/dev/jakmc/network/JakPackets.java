@@ -59,6 +59,19 @@ public final class JakPackets {
         @Override public Type<DarkEcoDeath> type(){return TYPE;}
     }
 
+    /**
+     * target-pilot-death: a pilot killed on his vehicle (JakVehicle.riderHit), how ('explode, 'melt, 'endlessfall, else generic) and where, for the
+     * sound and the burst 0.2 s later and for hiding him after it.
+     */
+    public record PilotDeath(net.minecraft.resources.Identifier dimension,int entity,net.minecraft.world.phys.Vec3 at,int mode) implements CustomPacketPayload {
+        public static final int GENERIC=0,EXPLODE=1,MELT=2,ENDLESS_FALL=3;
+        public static final Type<PilotDeath> TYPE=new Type<>(JakData.id("pilot_death_v1"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,PilotDeath> CODEC=StreamCodec.of((b,p)->{
+            b.writeIdentifier(p.dimension);b.writeVarInt(p.entity);b.writeDouble(p.at.x);b.writeDouble(p.at.y);b.writeDouble(p.at.z);b.writeByte(p.mode);
+        },b->new PilotDeath(b.readIdentifier(),b.readVarInt(),new net.minecraft.world.phys.Vec3(b.readDouble(),b.readDouble(),b.readDouble()),b.readByte()));
+        @Override public Type<PilotDeath> type(){return TYPE;}
+    }
+
     public record CreatureBurst(net.minecraft.resources.Identifier dimension,net.minecraft.world.phys.Vec3 at) implements CustomPacketPayload {
         public static final Type<CreatureBurst> TYPE=new Type<>(JakData.id("spydroid_explosion_v1"));
         public static final StreamCodec<RegistryFriendlyByteBuf,CreatureBurst> CODEC=StreamCodec.of((b,p)->{
@@ -82,6 +95,7 @@ public final class JakPackets {
         PayloadTypeRegistry.clientboundPlay().register(PropBreak.TYPE,PropBreak.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(CreatureBurst.TYPE,CreatureBurst.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(DarkEcoDeath.TYPE,DarkEcoDeath.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(PilotDeath.TYPE,PilotDeath.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(Tumble.TYPE,Tumble.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(Input.TYPE,(packet,context)->{if(packet.valid())JakPlayers.input(context.player(),packet);});
     }

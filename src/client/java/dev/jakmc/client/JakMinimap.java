@@ -40,7 +40,11 @@ public final class JakMinimap {
     private static float presentedYaw;
     private static double lastX=Double.NaN,lastZ=Double.NaN,scanSpeed;
     static void initialize(){
-        ClientTickEvents.END_CLIENT_TICK.register(JakMinimap::tick);
+        ClientTickEvents.END_CLIENT_TICK.register(client->{
+            long profiled=dev.jakmc.entity.ZoomerProfile.begin();
+            tick(client);
+            dev.jakmc.entity.ZoomerProfile.end("client minimap scan",profiled);
+        });
         ClientPlayConnectionEvents.DISCONNECT.register((handler,client)->client.execute(()->clear(client)));
     }
     private static void clear(Minecraft client){

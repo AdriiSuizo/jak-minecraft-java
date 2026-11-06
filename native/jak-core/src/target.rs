@@ -99,6 +99,10 @@ pub struct FootInfo {
     pub prev_state_time: i64,
     /// When Jak last stood on ground that rules out a turn-around.
     pub no_turn_around_time: i64,
+    /// The jump about to start is the pilot's get-off (pilot-states.gc target-pilot-get-off): it takes `*pilot-get-off-mods*`.
+    pub pilot_exit: bool,
+    /// The vehicle's velocity as he is let off it: target-pilot-post copies it to his transv each frame until the jump.
+    pub pilot_velocity: Vec3,
     rng: u32,
 }
 
@@ -124,6 +128,8 @@ impl Default for FootInfo {
             ducking: false,
             prev_state_time: 0,
             no_turn_around_time: 0,
+            pilot_exit: false,
+            pilot_velocity: Vec3::ZERO,
             rng: 0x1234_5678,
         }
     }
@@ -142,7 +148,11 @@ impl FootInfo {
 }
 
 impl Jak {
-    pub fn pilot_get_off(&mut self, bike: bool) { self.go(State::PilotGetOff { bike }); }
+    /// `target-pilot-get-off`, with `control.transv` the vehicle's velocity (set by the host).
+    pub fn pilot_get_off(&mut self, bike: bool) {
+        self.foot.pilot_velocity = self.control.transv;
+        self.go(State::PilotGetOff { bike });
+    }
 
     /// `powerup` accepts stance/walk only; it never interrupts an attack,
     /// jump, ride or existing pickup reaction, and never calls `hurt`.
@@ -530,7 +540,7 @@ impl Jak {
                 self.events.push(Event::Jump);
                 self.init_var_jump(min, max, true, true, 2.0);
                 self.clear_ground();
-                self.control.mod_surface = surface::JUMP;
+                self.control.mod_surface = if std::mem::take(&mut self.foot.pilot_exit) { surface::foot::PILOT_GET_OFF } else { surface::JUMP };
             }
             State::DoubleJump { min, max } => {
                 self.events.push(Event::Jump);
@@ -570,7 +580,8 @@ impl Jak {
                 if !stuck {
                     let c = &self.control;
                     let fall = c.gravity_normal.dot(c.last_trans_any_surf - c.trans);
-                    if FALL_FAR < fall && c.status & status::ON_WATER == 0 {
+                    // (Landing with his feet in water takes no fall either: Minecraft's rule, Adrii 06/11.)
+                    if FALL_FAR < fall && c.status & status::ON_WATER == 0 && !self.feet_in_water() {
                         return Some(State::HitGroundHard { height: fall });
                     }
                     self.events.push(Event::Land);
@@ -688,7 +699,7 @@ impl Jak {
             State::FlopHitGround { .. } => {
                 let c = &self.control;
                 let fall = c.gravity_normal.dot(c.highest_jump_mark - c.trans);
-                if FALL_FAR < fall {
+                if FALL_FAR < fall && !self.feet_in_water() {
                     return Some(State::HitGroundHard { height: fall });
                 }
                 self.events.push(Event::Land);
@@ -793,6 +804,13 @@ impl Jak {
             | State::HitGroundHard { .. }
             | State::EcoPowerup
             | State::PilotGetOff { .. } => self.target_exit(),
+            // `target-edge-grab`'s `:exit` (the jump and the letting go share it; `remove-exit` keeps it
+            // for them): the raise the gun gave his body is gone.
+            State::EdgeGrab | State::EdgeGrabJump | State::EdgeGrabOff => {
+                if !matches!(next, State::EdgeGrab | State::EdgeGrabJump | State::EdgeGrabOff) {
+                    self.control.draw_offset_y = 0.0;
+                }
+            }
             _ => {}
         }
     }

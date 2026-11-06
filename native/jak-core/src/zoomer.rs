@@ -1,3 +1,4 @@
+use crate::roll::{Roll, RollModel};
 use crate::wheeled::Ground;
 use glam::{Quat, Vec3};
 
@@ -81,6 +82,19 @@ pub enum Event {
 
 pub struct Zoomer {
     pub model: Model,
+    /// The rigid body's roll about the forward axis (hvehicle-physics.gc `apply-gravity!`'s roll thrusters, the
+    /// rider's weight shifted by the steering) and the constants it needs; `bank` is its angle. Without the model
+    /// (a vehicle whose constants were not read) the bank just eases to the steering.
+    pub roll: Roll,
+    pub roll_model: Option<RollModel>,
+    /// `vehicle-flag riding`: somebody is aboard, so their weight is on the body.
+    pub riding: bool,
+    /// `hit-points`, 1 whole to 0 destroyed: the power fluctuation of the roll thrusters follows it.
+    pub hit_points: f32,
+    /// `scrape-sound-envelope`: 1 as the hull slides along something at 3 m/s or more, easing to 0 at 2 a second.
+    pub scrape: f32,
+    /// `impact-pos`: where the hull last hit something (metres).
+    pub impact_pos: Vec3,
     pub position: Vec3,
     pub velocity: Vec3,
     pub yaw: f32,
@@ -94,6 +108,8 @@ pub struct Zoomer {
     pub high: bool,
     pub grounded: bool,
     pub climb: f32,
+    /// How much the velocity changed in the last step, per second (m/s^2): `clear-impulse-force-flag!`'s lin-acceleration.
+    pub accel: Vec3,
     /// Town traffic on its route (Rust zoomers.rs `route`): it never backs up when it brakes.
     pub routed: bool,
     yaw_rate: f32,
@@ -101,6 +117,8 @@ pub struct Zoomer {
     tilt_rate: [f32; 2],
     hop_charge: f32,
     hopping: bool,
+    /// `rand-vu` of the roll thrusters.
+    rng: u32,
 }
 
 fn seek(value: f32, target: f32, delta: f32) -> f32 {
@@ -111,6 +129,12 @@ impl Zoomer {
     pub fn new(model: Model, yaw: f32) -> Self {
         Self {
             model,
+            roll: Roll::default(),
+            roll_model: None,
+            riding: false,
+            hit_points: 1.,
+            scrape: 0.,
+            impact_pos: Vec3::ZERO,
             position: Vec3::ZERO,
             velocity: Vec3::ZERO,
             yaw,
@@ -124,13 +148,33 @@ impl Zoomer {
             high: false,
             grounded: false,
             climb: 0.,
+            accel: Vec3::ZERO,
             routed: false,
             yaw_rate: 0.,
             tilt: [0.; 2],
             tilt_rate: [0.; 2],
             hop_charge: 0.,
             hopping: false,
+            rng: 0x9E37_79B9,
         }
+    }
+
+    /// The thrust each roll thruster is firing with, the share of the vehicle's weight (`roll-thrust` as the flames take it).
+    pub fn roll_thrust(&self) -> [f32; 2] {
+        self.roll.thrust
+    }
+
+    /// The seed of the roll thrusters' random power fluctuation.
+    pub fn seed(&mut self, seed: u64) {
+        self.rng = (seed ^ (seed >> 32)) as u32 | 1;
+    }
+
+    /// `rand-vu`.
+    fn random(rng: &mut u32) -> f32 {
+        *rng ^= *rng << 13;
+        *rng ^= *rng >> 17;
+        *rng ^= *rng << 5;
+        (*rng >> 8) as f32 / 16_777_216.0
     }
 
     pub fn heading(&self) -> Vec3 {
@@ -145,6 +189,7 @@ impl Zoomer {
 
     pub fn step(&mut self, input: Controls, terrain: &mut dyn Ground, events: &mut Vec<Event>) {
         let car = self.model.car();
+        let start_velocity = self.velocity;
         let (accel, max_brake, max_gain, intake, response) = if car {
             (39., 54., 3.5, 1., 20.)
         } else {
@@ -254,6 +299,7 @@ impl Zoomer {
         self.velocity = horizontal.clamp_length_max(TOP_SPEED * 1.05) + Vec3::Y * rise;
         self.move_hull(terrain, new_ahead, events);
         self.climb *= (-10. * DT).exp();
+        self.accel = (self.velocity - start_velocity) / DT;
 
         let reach = target + 3.;
         let center = terrain.below(self.position, reach).unwrap_or(target);
@@ -279,8 +325,23 @@ impl Zoomer {
             self.tilt_rate[i] += (36. * (desired - self.tilt[i]) - 12. * self.tilt_rate[i]) * DT;
             self.tilt[i] = (self.tilt[i] + self.tilt_rate[i] * DT).clamp(-0.7, 0.7);
         }
-        let sway = speed / (speed + 5.0);
-        self.bank += (-20_f32.to_radians() * self.steer * sway - self.bank) * (6.0 * DT);
+        match &self.roll_model {
+            Some(model) => {
+                // The roll the thrusters hold: the bank is its angle (set from outside it is taken as it stands).
+                self.roll.angle = self.bank;
+                let mut rng = self.rng;
+                let fluctuation = crate::particles::vehicle_effects::fluctuation(self.hit_points);
+                self.roll.step(model, self.steer, self.riding, fluctuation, || Self::random(&mut rng), 0.0);
+                self.rng = rng;
+                self.bank = self.roll.angle;
+            }
+            None => {
+                let sway = speed / (speed + 5.0);
+                self.bank += (-20_f32.to_radians() * self.steer * sway - self.bank) * (6.0 * DT);
+            }
+        }
+        // vehicle.gc: the scrape sound's envelope eases off 2 a second after the frame's impacts set it.
+        self.scrape = seek(self.scrape, 0., 2. * DT);
         self.pitch +=
             (20_f32.to_radians() * self.lean - 0.06 * self.thrust - self.pitch) * (4.0 * DT);
     }
@@ -310,6 +371,18 @@ impl Zoomer {
                 self.velocity.y = self.velocity.y.max(0.0);
             } else {
                 self.position += step * fraction;
+                // vehicle.gc on-impact: sliding along what it hit faster than 12288 units (3 m) a second sets the
+                // scrape; the contact point is the hull's side facing the thing.
+                let sliding = self.velocity - normal * self.velocity.dot(normal);
+                if sliding.length_squared() > 9. {
+                    self.scrape = 1.;
+                    let up = Vec3::Y;
+                    let left = up.cross(heading);
+                    // stand-in: the original takes the rigid body's contact point; the hull is a box, whose support
+                    // point toward the thing is the nearest to it.
+                    let reach = normal.dot(left).abs() * half.x + normal.dot(up).abs() * half.y + normal.dot(heading).abs() * half.z;
+                    self.impact_pos = self.position - normal * reach;
+                }
                 let normal_speed = self.velocity.dot(normal);
                 if normal_speed < 0.0 {
                     self.velocity -= normal * (normal_speed * 1.4);
@@ -364,6 +437,125 @@ mod tests {
             (step.y < 0.0 && floor >= 0.0 && floor + step.y < 0.0)
                 .then_some((-floor / step.y, Vec3::Y))
         }
+    }
+
+    /// The floor, and a wall facing -x at x = 3 that stands while `wall` is set.
+    struct Walled {
+        wall: bool,
+    }
+    impl Ground for Walled {
+        fn below(&mut self, at: Vec3, reach: f32) -> Option<f32> {
+            Flat.below(at, reach)
+        }
+        fn sweep(&mut self, at: Vec3, step: Vec3, half: Vec3) -> Option<(f32, Vec3)> {
+            let right = at.x + half.x;
+            if self.wall && step.x > 0.0 && right <= 3.0 && right + step.x > 3.0 {
+                return Some(((3.0 - right) / step.x, Vec3::NEG_X));
+            }
+            Flat.sweep(at, step, half)
+        }
+    }
+
+    /// The h-bike-a's rigid body (bike.gc), as `RollModel::from_specs` makes it.
+    fn bike_roll() -> RollModel {
+        use crate::roll::Thruster;
+        RollModel {
+            mass: 2.,
+            gravity: 40.,
+            inertia: 2. / 12. * (9. + 16.),
+            damping: 0.995,
+            control: 1.,
+            weight: 40.,
+            shift: 0.6,
+            thrusters: vec![
+                Thruster { position: Vec3::new(1.7, 0.2, 0.), normal: Vec3::new(0.3, -0.6, 0.) },
+                Thruster { position: Vec3::new(-1.7, 0.2, 0.), normal: Vec3::new(-0.3, -0.6, 0.) },
+            ],
+        }
+    }
+
+    #[test]
+    fn a_rider_leans_the_bike_into_the_turn_and_an_empty_bike_stays_level() {
+        let drive = |riding: bool, steer: f32| {
+            let mut z = Zoomer::new(Model::BikeA, 0.);
+            z.roll_model = Some(bike_roll());
+            z.riding = riding;
+            z.position = Vec3::Y * z.model.base_hover();
+            let mut events = Vec::new();
+            for _ in 0..600 {
+                z.step(Controls { steer, throttle: 0.5, ..Default::default() }, &mut Flat, &mut events);
+            }
+            z
+        };
+        let left = drive(true, 1.);
+        // A left turn puts the rider's weight on the left: that side dips, about 37 degrees (the roll thrusters'
+        // cubic law against 0.6 m of a 40 weight), and only the low side's thruster fires.
+        assert!(left.bank < 0. && (left.bank.to_degrees() + 37.).abs() < 4., "{}", left.bank.to_degrees());
+        assert!(left.roll_thrust()[0] > 0.15 && left.roll_thrust()[1] == 0., "{:?}", left.roll_thrust());
+        let right = drive(true, -1.);
+        assert!((right.bank + left.bank).abs() < 0.02);
+        assert!(right.roll_thrust()[1] > 0.15 && right.roll_thrust()[0] == 0.);
+        let empty = drive(false, 1.);
+        assert!(empty.bank.abs() < 1e-4 && empty.roll_thrust() == [0.; 2], "{} {:?}", empty.bank, empty.roll_thrust());
+    }
+
+    #[test]
+    fn flipping_the_steering_back_and_forth_keeps_the_roll_bounded_and_settling() {
+        let mut z = Zoomer::new(Model::BikeA, 0.);
+        z.roll_model = Some(bike_roll());
+        z.riding = true;
+        z.position = Vec3::Y * z.model.base_hover();
+        let mut events = Vec::new();
+        let mut widest: f32 = 0.;
+        // A second left, a second right, over and over, at speed.
+        for frame in 0..1800 {
+            let steer = if (frame / 60) % 2 == 0 { 1. } else { -1. };
+            z.step(Controls { steer, throttle: 1., ..Default::default() }, &mut Flat, &mut events);
+            assert!(z.bank.is_finite());
+            widest = widest.max(z.bank.abs());
+        }
+        // The thrusters are lightly damped (0.075 of the roll rate, 0.995 a frame): a flip from full lock to full lock overshoots the 37 degrees
+        // of the lean, and never goes near the safety stop.
+        assert!(widest > 0.6 && widest < 1.2, "swung to {} degrees", widest.to_degrees());
+        // Let go: it comes back to level (the cubic law is weak near it, so the last degree takes its time) and the thrusters nearly go quiet.
+        for _ in 0..600 {
+            z.step(Controls { throttle: 1., ..Default::default() }, &mut Flat, &mut events);
+        }
+        assert!(z.bank.abs() < 0.03 && z.roll_thrust().iter().all(|t| *t < 0.01), "{} {:?}", z.bank, z.roll_thrust());
+    }
+
+    #[test]
+    fn sliding_along_a_wall_sets_the_scrape_at_its_contact_and_it_dies_away() {
+        let mut z = Zoomer::new(Model::BikeA, 0.);
+        let mut terrain = Walled { wall: true };
+        z.position = Vec3::new(1.8, z.model.base_hover(), 0.);
+        z.velocity = Vec3::new(8., 0., 20.);
+        let mut events = Vec::new();
+        let mut loud = false;
+        for _ in 0..40 {
+            z.step(Controls { throttle: 0.5, ..Default::default() }, &mut terrain, &mut events);
+            loud |= z.scrape >= 0.75;
+        }
+        assert!(loud, "scraped at 20 m/s along the wall");
+        // On the hull's side that faces the wall: the wall at x = 3, the bike 0.8 m wide.
+        assert!((z.impact_pos.x - 3.0).abs() < 0.2, "{:?}", z.impact_pos);
+        // Away from it the envelope eases off 2 a second.
+        terrain.wall = false;
+        z.velocity.x = 0.;
+        for _ in 0..30 {
+            z.step(Controls::default(), &mut terrain, &mut events);
+        }
+        assert!(z.scrape < 0.05, "{}", z.scrape);
+        // Straight into a wall, with no sliding to speak of, does not scrape.
+        let mut head_on = Zoomer::new(Model::BikeA, 0.);
+        head_on.position = Vec3::new(1.8, head_on.model.base_hover(), 0.);
+        head_on.velocity = Vec3::new(8., 0., 0.);
+        head_on.yaw = std::f32::consts::FRAC_PI_2;
+        let mut wall = Walled { wall: true };
+        for _ in 0..20 {
+            head_on.step(Controls::default(), &mut wall, &mut events);
+        }
+        assert_eq!(head_on.scrape, 0.);
     }
 
     #[test]

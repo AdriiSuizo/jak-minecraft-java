@@ -21,8 +21,30 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
     private static final String[] TOAD_AXLES={"L_front_shock","R_front_shock","LR_axle","RR_axle"};
     private static final String[] SNAKE_AXLES={"L_F_axle","R_F_axle","L_R_axle","R_R_axle"};
     private static final String[] SHOCKS={"LF","RF","LR","RR"};
-    private final Map<String,GltfModel> assets=new HashMap<>();
-    private final Map<String,GltfModel.Posed> rests=new HashMap<>();
+    private static final Map<String,GltfModel> assets=new HashMap<>();
+    private static final Map<String,GltfModel.Posed> rests=new HashMap<>();
+
+    /**
+     * vehicle-method-113: where the pilot's two hands go, in the vehicle's axes and metres. On a bike that is the seat plus the
+     * hand offset (the frame's {@code hands}); on a car the offset is in the steering wheel's joint (target-pilot-post sets the
+     * arm IK to them), so it goes through that joint as the wheel is turned (50 degrees a steer, as it is drawn).
+     */
+    static Vector3f[] handTargets(JakVehicle.Model vehicle,com.google.gson.JsonArray hands,float steer){
+        var targets=new Vector3f[]{new Vector3f(),new Vector3f()};
+        for(int k=0;k<2&&k<hands.size();k++){
+            var h=hands.get(k).getAsJsonArray();
+            targets[k].set(h.get(0).getAsFloat(),h.get(1).getAsFloat(),h.get(2).getAsFloat());
+        }
+        if(vehicle.bike())return targets;
+        String wheel=switch(vehicle){case CARA->"wheel_left_";case CARB->"wheell_";case CARC->"wheel_";default->null;};
+        if(wheel==null)return targets;
+        var model=asset(vehicle.asset,vehicle.folder);
+        if(!model.hasJoint(wheel))return targets;
+        var pose=model.articulate(rests.get(vehicle.asset),Map.of(wheel,new Quaternionf().rotateX((float)Math.toRadians(50*steer))),Map.of());
+        var joint=model.joint(pose,wheel);
+        for(var t:targets)joint.transformPosition(t);
+        return targets;
+    }
 
     public static void initialize(){
         for(var model:JakVehicle.Model.values())EntityRendererRegistry.register(model.type,JakVehicleRenderer::new);
@@ -31,6 +53,9 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
     public static final class State extends EntityRenderState {
         JsonObject before,after;
         float partial,bob;
+        /** What the hover is drawn up from its hull: its bob and the step it climbed, eased away (JakVehicle.presentationLift); the rider takes the same. */
+        float lift;
+        int salt;
         JakVehicle.Model model;
     }
 
@@ -44,15 +69,20 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
         state.after=car.presentationAfter();
         state.partial=car.presentationFraction();
         state.model=car.model;
-        // Rust zoomers.rs: the hover's bob, sin(clock*2.1+phase)*0.07 m, its phase the zoomer's own.
-        state.bob=(float)(Math.sin((car.tickCount+partial)/20.0*2.1+(car.getId()*0.618%1)*Math.PI*2)*0.07/(6400.0/4096));
+        state.salt=car.getId();
+        // Rust zoomers.rs root_of: drawn `climb` below its hull, the step it rose eased away, and bobbing; the
+        // rider is put on the seat of the bike as drawn (JakVehicle.presentationRider), engine particles born on it.
+        state.lift=car.model.hover()?(float)car.presentationLift():0;
+        if(car.model.hover())dev.jakmc.client.ZoomerEngineFx.frame(car);
     }
 
     @Override public void submit(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){
         super.submit(state,stack,collector,camera);
         if(state.isInvisible||state.after==null)return;
         if(state.model.hover()){
+            long profiled=dev.jakmc.entity.ZoomerProfile.begin();
             submitZoomer(state,stack,collector,camera);
+            dev.jakmc.entity.ZoomerProfile.end("client zoomer draw",profiled);
             return;
         }
         float blend=state.partial;
@@ -168,19 +198,27 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
         var attitude=rotation(state.before).slerp(rotation(state.after),blend);
         var pose=model.articulate(rests.get(state.model.asset),joints,Map.of());
         stack.pushPose();
-        // Rust zoomers.rs root_of: drawn `climb` below its hull, the step it rose eased away, and bobbing.
-        float climb=state.before.has("climb")&&state.after.has("climb")?interpolate(state.before,state.after,"climb",blend):0;
-        stack.translate(0,state.bob-climb,0);
+        stack.translate(0,state.lift,0);
         stack.mulPose(new org.joml.Matrix4f().rotation(attitude));
         stack.scale(.64f,.64f,.64f);
         model.submit(pose,stack,collector,state.lightCoords,1,
             net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY,state.after.get("mask").getAsLong());
         stack.popPose();
         float intensity=interpolate(state.before,state.after,"lamps",blend);
+        // The lamps and the thrusters' glow are sprites on the bike as drawn: its hull and the lift it is drawn with.
+        stack.pushPose();
+        stack.translate(0,state.lift,0);
+        var origin=new net.minecraft.world.phys.Vec3(state.x,state.y+state.lift,state.z);
+        // vehicle-method-78: the lamps' and the flames' alpha are scaled by the vehicle's fog-fade (calc-fade-from-fog).
+        float fogFade=dev.jakmc.client.JakAtmosphere.fogFade(origin);
+        ZoomerGlow.thrusters(state.before,state.after,blend,attitude,origin,
+            state.after.has("thrusterPower")?interpolate(state.before,state.after,"thrusterPower",blend):0,fogFade,
+            state.salt,camera,stack,collector);
         if(intensity>0){
             HellcatRenderer.vehicleLamps(points(state.after,"heads"),points(state.after,"tails"),
-                attitude,intensity,new net.minecraft.world.phys.Vec3(state.x,state.y,state.z),camera,stack,collector);
+                attitude,intensity*fogFade,origin,camera,stack,collector);
         }
+        stack.popPose();
     }
 
     private static float[][] points(JsonObject frame,String name){
@@ -191,7 +229,7 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
         return points;
     }
 
-    private GltfModel asset(String name,String folder){
+    private static GltfModel asset(String name,String folder){
         return assets.computeIfAbsent(name,key->{
             try{
                 var model=new GltfModel(RuntimeConfig.assets.resolve("levels/"+folder+"/"+key+"-lod0.glb"),key,true);
