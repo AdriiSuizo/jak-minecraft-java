@@ -44,6 +44,7 @@ public final class InputScene {
   if(Lote3Scene.camera()!=null)return Lote3Scene.camera();
   if(Lote4Scene.camera()!=null)return Lote4Scene.camera();
   if(TreeScene.camera()!=null)return TreeScene.camera();
+  if(Lote5Scene.camera()!=null)return Lote5Scene.camera();
   if(VentScene.camera()!=null)return VentScene.camera();
   if(CarScene.camera()!=null)return CarScene.camera();
   var enemy=EnemyScene.camera(Minecraft.getInstance());

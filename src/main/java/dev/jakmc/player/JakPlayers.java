@@ -455,6 +455,7 @@ public final class JakPlayers {
             applyEvent(p,s.origin,e.getAsJsonObject());
             if(s.hostMoved)return;
         }
+        if(pose.get("attackSpheres") instanceof JsonArray swept)struckInSpheres(p,s.origin,swept,KICKS.contains(nativeState));
         pose.addProperty("serverTick",p.level().getGameTime());
         var packet=new JakPackets.Pose(p.getId(),input.sequence(),s.origin.x,s.origin.y,s.origin.z,pose.toString());
         ServerPlayNetworking.send(p,packet);
@@ -598,6 +599,36 @@ public final class JakPlayers {
             return;
         }
         JakWorldDamage.hit(p,at,damage);
+    }
+    /**
+     * What a blow's spheres go through this step. Adrii 06/11: a kick breaks the grass it goes through, as a punch
+     * breaks the grass it is aimed at (in one blow, JakWorldDamage.hit): every plant with no collision and no
+     * hardness (grass, ferns, flowers, saplings); stand-in: the original has no plants to cut. Any blow breaks
+     * an ammo crate it touches (crates.gc: a wood crate breaks to any `'attack`), whatever the crosshair is on.
+     */
+    private static void struckInSpheres(ServerPlayer p,Vec3 origin,JsonArray swept,boolean kick){
+        var level=p.level();var seen=new java.util.HashSet<net.minecraft.core.BlockPos>();
+        for(JsonElement e:swept){
+            var a=e.getAsJsonArray();Vec3 c=new Vec3(a.get(0).getAsDouble(),a.get(1).getAsDouble(),a.get(2).getAsDouble()).add(origin);double r=a.get(3).getAsDouble();
+            var box=new net.minecraft.world.phys.AABB(c,c).inflate(r);
+            for(var at:net.minecraft.core.BlockPos.betweenClosed(net.minecraft.core.BlockPos.containing(box.minX,box.minY,box.minZ),net.minecraft.core.BlockPos.containing(box.maxX,box.maxY,box.maxZ))){
+                if(!seen.add(at.immutable()))continue;
+                var state=level.getBlockState(at);
+                if(state.is(dev.jakmc.content.JakAmmoCrate.BLOCK)){
+                    var crate=state.getCollisionShape(level,at).bounds().move(at);
+                    Vec3 inside=new Vec3(Math.clamp(c.x,crate.minX,crate.maxX),Math.clamp(c.y,crate.minY,crate.maxY),Math.clamp(c.z,crate.minZ,crate.maxZ));
+                    if(inside.distanceToSqr(c)<=r*r)JakWorldDamage.hit(p,at.immutable(),1);
+                    continue;
+                }
+                if(!kick)continue;
+                // Plants only (not a torch or redstone dust, which are as soft).
+                boolean plant=state.is(net.minecraft.tags.BlockTags.REPLACEABLE_BY_TREES)||state.is(net.minecraft.tags.BlockTags.FLOWERS)||state.is(net.minecraft.tags.BlockTags.SAPLINGS);
+                if(!plant||!state.getFluidState().isEmpty()||state.getDestroySpeed(level,at)!=0||!state.getCollisionShape(level,at).isEmpty())continue;
+                // The cell's nearest point inside the sphere.
+                Vec3 near=new Vec3(Math.clamp(c.x,at.getX(),at.getX()+1),Math.clamp(c.y,at.getY(),at.getY()+1),Math.clamp(c.z,at.getZ(),at.getZ()+1));
+                if(near.distanceToSqr(c)<=r*r)JakWorldDamage.hit(p,at.immutable(),1);
+            }
+        }
     }
     // minecraft_game interaction.rs uses_by_hand
     private static boolean workedByHand(net.minecraft.world.level.block.state.BlockState state){

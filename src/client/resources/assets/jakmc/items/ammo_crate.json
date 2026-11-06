@@ -1,0 +1,13 @@
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "jakmc:item/morph_ammo",
+    "model": {
+      "type": "jakmc:gltf",
+      "file": "common/crate-krimson-lod0.glb",
+      "game": "jak2",
+      "scale": 0.4,
+      "fit_gui": true
+    }
+  }
+}

@@ -93,6 +93,9 @@ void main() {
     #ifdef JAK_ENVMAP
     // jak_envmap.fsh: the map's colour twice over by the base's alpha (128 one), unlit, added after the fog.
     vec3 jakShine = texture(Sampler3, jakEnvCoord).rgb * color.a * 2.0;
+    // An OPAQUE material is drawn whole: that alpha is the shine's strength, not cover (read as cover, the ammo's
+    // magazines went see-through where the result is blended, in the hotbar and on the ground; Adrii 06/11).
+    color.a = 1.0;
     #endif
 
     #ifdef OIT_ADDITIVE

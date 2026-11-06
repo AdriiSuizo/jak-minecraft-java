@@ -115,6 +115,8 @@ pub struct Attack {
     pub struck_world: bool,
     /// The spheres striking this frame, world space.
     pub live: Vec<(Vec3, f32)>,
+    /// Every frame's spheres since the host last took them (what the blow swept through, for the host's plants).
+    pub swept: Vec<(Vec3, f32)>,
 }
 
 impl Jak {
@@ -155,6 +157,9 @@ impl Jak {
             };
             let sphere = HitSphere { radius, ..*sphere };
             self.attack.live.push((center, sphere.radius));
+            if self.attack.swept.len() < 64 {
+                self.attack.swept.push((center, sphere.radius));
+            }
             if let Some(actors) = actors.as_deref_mut() {
                 for key in actors.actors_touching(center, sphere.radius) {
                     if self.attack.struck.contains(&key) {

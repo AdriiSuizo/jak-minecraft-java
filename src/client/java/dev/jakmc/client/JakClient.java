@@ -30,7 +30,7 @@ public final class JakClient implements ClientModInitializer {
   ScaleScene.initialize();
   PortScene.initialize();
   EnemyScene.initialize();
-  SpydroidScene.initialize();KermitScene.initialize();LoteScene.initialize();Lote2Scene.initialize();Lote3Scene.initialize();Lote4Scene.initialize();TreeScene.initialize();
+  SpydroidScene.initialize();KermitScene.initialize();LoteScene.initialize();Lote2Scene.initialize();Lote3Scene.initialize();Lote4Scene.initialize();TreeScene.initialize();Lote5Scene.initialize();
   WeaponScene.initialize();
   InputScene.initialize();
   IntegrationScene.initialize();
@@ -67,6 +67,8 @@ public final class JakClient implements ClientModInitializer {
       dev.jakmc.content.JakEcoVent.TYPE,ctx->new dev.jakmc.client.model.EcoVentRenderer());
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
       dev.jakmc.content.JakEcoLauncher.TYPE,ctx->new dev.jakmc.client.model.LauncherRenderer());
+  net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
+      dev.jakmc.content.JakAmmoCrate.TYPE,ctx->new dev.jakmc.client.model.CrateRenderer());
   net.minecraft.client.renderer.blockentity.BlockEntityRenderers.register(
       dev.jakmc.content.JakIrisDoor.TYPE,ctx->new dev.jakmc.client.model.IrisDoorRenderer());
   dev.jakmc.client.model.SkullGemRenderer.initialize();

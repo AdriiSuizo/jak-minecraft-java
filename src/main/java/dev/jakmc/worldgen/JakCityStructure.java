@@ -306,6 +306,7 @@ public final class JakCityStructure extends Structure {
             // Haven's and Spargus's residents: CityPopulation, as jak2_villagers.rs peoples a town Jak comes near.
             if(site==Site.HAVEN){
                 for(var patrol:plan.patrols)spawnGuard(level,chunkBounds,patrol);
+                placeCrates(level,chunk,cells);
             }else{
                 for(var patrol:plan.patrols)spawnLeaper(level,chunkBounds,patrol.start(),patrol.end());
                 spawnLeaper(level,chunkBounds,new BlockPos(-12,0,-16),null);
@@ -320,6 +321,44 @@ public final class JakCityStructure extends Structure {
                 var spot=Vec3.atBottomCenterOf(pos.above()).add(0,1.1,0);
                 car.snapTo(spot.x,spot.y,spot.z,CityBlueprint.rotate(garage.facing(),turns).toYRot(),0);
                 level.addFreshEntity(car);
+            }
+        }
+
+        /** The floors of Haven's buildings (houses, the Hip Hog, the Krimson station, the palace and its tower). */
+        private static final java.util.Set<String> INSIDE_FLOORS=java.util.Set.of("barrio_suelo","bar_suelo","krimson_suelo",
+            "palacio_suelo_metal","palacio_suelo_piedra","palacio_suelo_metal_losa");
+        /**
+         * Adrii 06/11: Jak's ammo crates (JakAmmoCrate) inside every Haven building, the tower and the Krimson station
+         * among them, and never in the streets. stand-in for the original's spots (Haven's crates stood in its slum and
+         * market streets, ctysluma and ctymarkb, and in the palace's rooms): a spot on a building's floor with a roof
+         * within four blocks (not a gallery or the station's forecourt), against a wall (Haven's are pane-like blocks), two blocks clear of doors,
+         * railings, beds, chests, ladders and other crates (one block in the small, furnished station); one such spot in 32
+         * (in 6 in the station), three yellow to a red (ctysluma's).
+         * Only spots two blocks inside the chunk, so what is round them is already this chunk's town.
+         */
+        private void placeCrates(WorldGenLevel level,ChunkPos chunk,CityBlueprint.Fragment cells){
+            for(int i=0;i<cells.size();i++){
+                var floor=cells.states()[i];String floorId=BuiltInRegistries.BLOCK.getKey(floor.getBlock()).getPath();
+                if(!INSIDE_FLOORS.contains(floorId))continue;
+                // The station is small and furnished: a spot in 6 there, and one block clear of its furniture.
+                boolean station=floorId.equals("krimson_suelo");int every=station?6:32,room=station?1:2;
+                var spot=CityBlueprint.rotate(cells.pos(i),turns).offset(origin).above();
+                int x=spot.getX()-chunk.getMinBlockX(),z=spot.getZ()-chunk.getMinBlockZ();
+                if(x<2||x>13||z<2||z>13)continue;
+                long hash=lootSeed(level.getSeed()^0x6372617465L,spot);
+                if(Long.remainderUnsigned(hash,every)!=0||!level.isEmptyBlock(spot)||!level.isEmptyBlock(spot.above()))continue;
+                boolean roof=false;
+                for(int h=2;h<=4&&!roof;h++)roof=!level.getBlockState(spot.above(h)).getCollisionShape(level,spot.above(h)).isEmpty();
+                boolean wall=false,clear=true;
+                for(var side:net.minecraft.core.Direction.Plane.HORIZONTAL)wall|=!level.getBlockState(spot.relative(side)).getCollisionShape(level,spot.relative(side)).isEmpty();
+                for(var near:BlockPos.betweenClosed(spot.offset(-room,0,-room),spot.offset(room,1,room))){
+                    var state=level.getBlockState(near);String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
+                    if(state.getBlock() instanceof net.minecraft.world.level.block.DoorBlock||id.contains("puerta")||id.contains("portal")||id.contains("baranda")
+                        ||state.is(net.minecraft.tags.BlockTags.BEDS)||state.is(Blocks.CHEST)||state.is(Blocks.LADDER)||state.is(dev.jakmc.content.JakAmmoCrate.BLOCK)){clear=false;break;}
+                }
+                if(!roof||!wall||!clear)continue;
+                var contents=Long.remainderUnsigned(hash>>>16,4)==0?dev.jakmc.content.JakAmmoCrate.Contents.RED:dev.jakmc.content.JakAmmoCrate.Contents.YELLOW;
+                level.setBlock(spot,dev.jakmc.content.JakAmmoCrate.BLOCK.defaultBlockState().setValue(dev.jakmc.content.JakAmmoCrate.CONTENTS,contents),Block.UPDATE_CLIENTS);
             }
         }
 

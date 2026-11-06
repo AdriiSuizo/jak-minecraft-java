@@ -196,6 +196,7 @@
   "block.jak.objeto_haven_puesto": "Puesto de los barrios de Jak II",
   "block.jak.objeto_haven_propaganda": "Poste de propaganda de Haven",
   "block.jak.objeto_haven_propaganda_ajustada": "Poste de propaganda de Haven",
+  "block.jakmc.ammo_crate": "Caja de munición",
   "block.jakmc.eco_launcher": "Lanzador de eco azul",
   "block.jakmc.eco_launcher.no_room": "El lanzador necesita un área libre de 5x5",
   "block.jakmc.iris_door": "Puerta iris precursora",
