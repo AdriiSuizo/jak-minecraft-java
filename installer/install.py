@@ -114,6 +114,10 @@ def prepare_owned(active, workspace, notify, lang):
             raise ValueError(words(
                 f'Faltan exportaciones de {game}. Instala los tres juegos en OpenGOAL y selecciona su carpeta (debe contener extractor.exe, data/iso_data y data/decompiler/config).',
                 f'{game} exports are missing. Install all three games in OpenGOAL and select their installation folder (extractor.exe, data/iso_data and data/decompiler/config are required).', lang))
+        # The three together took 60 GB in a clean test: better said here than halfway through.
+        if shutil.disk_usage(workspace).free<25*10**9:
+            raise ValueError(words(f'No hay espacio para extraer {game}: hacen falta unos 25 GB libres por juego (60 GB los tres) en el disco de Minecraft.',
+                f'Not enough space to extract {game}: about 25 GB free per game (60 GB for all three) is needed on the Minecraft drive.',lang))
         notify(words(f'Extrayendo {game} desde tu instalación. Puede tardar varios minutos…',
                      f'Extracting {game} from your installation. This may take several minutes…', lang))
         data = target/'data'; data.mkdir(parents=True, exist_ok=True)
