@@ -4,7 +4,7 @@ Prerequisites for maintainers: Java 25, Cargo, PyInstaller, Pillow, NumPy,
 ffmpeg and WinRAR. End users only need Minecraft and their OpenGOAL games.
 """
 from pathlib import Path
-import hashlib, importlib.metadata, json, os, shutil, subprocess, sys, urllib.request, uuid
+import hashlib, importlib.metadata, json, os, re, shutil, subprocess, sys, urllib.request, uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'dist'; STAGE=ROOT/'.local/installer-bundle'
@@ -12,6 +12,18 @@ OUT=ROOT/'dist'; STAGE=ROOT/'.local/installer-bundle'
 def run(args):subprocess.run([str(x) for x in args],cwd=ROOT,check=True)
 def copy(src,dst):dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,dst)
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def model_tokens():
+    """What the installer keeps of the games' models: every word of these sources, and the "name-" pieces it builds names from."""
+    words=set()
+    for folder in ('src/main','src/client','native/jak-core/src','native/jak-jni/src','tools/content-exporter/src','tools'):
+        for path in (ROOT/folder).rglob('*'):
+            if path.suffix not in ('.java','.rs','.py','.json','.toml','.txt') or not path.is_file():continue
+            if any(part in ('target','__pycache__','build','content-source') for part in path.parts):continue
+            text=path.read_text(encoding='utf-8',errors='ignore')
+            words.update(w for w in re.findall(r'[a-z0-9][a-z0-9_-]{2,}',text) if not w.endswith('-'))
+            words.update(m.rsplit('/',1)[-1] for m in re.findall(r'"([a-z0-9][a-z0-9_/-]*-)"',text) if len(m)>=4)
+    return words
 
 def main():
     if sys.platform!='win32':raise SystemExit('The packaged native core currently targets Windows x86-64')
@@ -21,6 +33,7 @@ def main():
     payload=STAGE/'payload';payload.mkdir(parents=True,exist_ok=True)
     copy(ROOT/f'build/libs/jak-minecraft-java-{props["version"]}-installer-code.jar',payload/'jakmc-code.jar')
     copy(ROOT/'tools/content-exporter/target/release/jak-content-exporter.exe',payload/'jak-content-exporter.exe')
+    (payload/'model-tokens.txt').write_text('\n'.join(sorted(model_tokens())),encoding='utf-8')
     # These are redistributable codec utilities, never game files. Retain their
     # licenses and original notices along with the versions actually bundled.
     ffmpeg=Path(shutil.which('ffmpeg') or '')

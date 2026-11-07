@@ -79,6 +79,46 @@ REQUIRED = {
  'jak3':['levels/factorya/hellcat-lod0.glb','raw_obj/gun-ag.go',
          'textures/progress-minimap/hud-skullgem.png']}
 
+def model_tokens():
+    """Every word of the mod's sources (tools/build_installer.py): a model it can name. A word ending in - starts a name it builds."""
+    words_ = set((PAYLOAD/'model-tokens.txt').read_text(encoding='utf-8').split())
+    return words_, tuple(w for w in words_ if w.endswith('-'))
+
+def needed_model(name, tokens, prefixes):
+    stem = name.split('-lod0')[0]
+    return stem in tokens or stem.startswith(prefixes)
+
+def slim_models(root, game):
+    """Each game holds some 10 GB of models the mod never loads: all but those it names go. Backgrounds stay for the conversion."""
+    tokens, prefixes = model_tokens()
+    required = {Path(name).name for name in REQUIRED[game]}
+    shutil.rmtree(root/'collision', ignore_errors=True)
+    for path in (root/'levels').rglob('*.glb'):
+        name = path.name
+        if name.endswith('-background.glb') or name in required: continue
+        if '-lod0' not in name or not needed_model(name, tokens, prefixes): path.unlink()
+
+def slim_converted(root):
+    """What only the conversion read."""
+    for folder in ('audio', 'entities'): shutil.rmtree(root/folder, ignore_errors=True)
+    for path in (root/'levels').rglob('*-background.glb'): path.unlink()
+
+def owned_games(canonical):
+    return [canonical/g for g in ('jak1','jak2','jak3') if (canonical/g).is_dir() and not (canonical/g).is_junction()]
+
+def forget_extraction(canonical):
+    # Only this instance's own copies: a junction is the player's OpenGOAL, and just its link goes.
+    for g in ('jak1','jak2','jak3'):
+        target = canonical/g
+        if target.is_junction(): target.rmdir()
+        elif target.is_dir(): shutil.rmtree(target)
+
+def conversion_stamp(manifest):
+    """Changes when what converts the games does, not with the mod's code: only then is a slimmed extraction made again."""
+    parts = sorted((k, v) for k, v in manifest['files'].items() if k != 'jakmc-code.jar')
+    parts += sorted((str(p.relative_to(BASE)), digest(p)) for p in (BASE/'converters').rglob('*.py'))
+    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()
+
 def junction(target, source):
     # A local directory junction requires no elevation and does not change the
     # source. Keeping the canonical active layout preserves native sibling reads.
@@ -268,7 +308,13 @@ def _install(opengoal, minecraft, lang='es', notify=print, assets_only=False):
     if not vanilla.is_file():
         raise ValueError(words(f'Abre Minecraft Java {manifest["minecraft"]} una vez en el launcher y ciérralo antes de instalar.',
             f'Launch Minecraft Java {manifest["minecraft"]} once in the launcher, then close it before installing.',lang))
-    owned=prepare_owned(active,workspace,notify,lang)
+    # A slimmed extraction cannot be converted twice: an update keeps what it converted unless the conversion itself changed.
+    stamp=workspace/'conversion.stamp';wanted=conversion_stamp(manifest)
+    converted=workspace/'src/generated/resources'
+    reuse=stamp.is_file() and stamp.read_text()==wanted and converted.is_dir()
+    if stamp.is_file() and not reuse:
+        forget_extraction(workspace/'owned/active');stamp.unlink()
+    owned=workspace/'owned/active' if reuse else prepare_owned(active,workspace,notify,lang)
     host=workspace/f'resourcepacks/local/minecraft-{manifest["minecraft"]}'
     with zipfile.ZipFile(vanilla) as z:
         for info in z.infolist():
@@ -280,7 +326,15 @@ def _install(opengoal, minecraft, lang='es', notify=print, assets_only=False):
                     dest.mkdir(parents=True,exist_ok=True)
                     continue
                 atomic(dest,z.read(info))
-    resources=import_resources(owned,workspace,notify,lang)
+    resources=converted if reuse else import_resources(owned,workspace,notify,lang)
+    if not reuse:
+        # Only now: the conversion reads models the mod's code never names (07/11: it stopped on a missing one).
+        games=owned_games(owned)
+        if games: atomic(stamp,wanted.encode())
+        for game in games:
+            root=game/'data/decompiler_out'/game.name
+            slim_models(root,game.name);slim_converted(root)
+        shutil.rmtree(workspace/'.local/content',ignore_errors=True)
     mod=instance/'mods'/f'jakmc-{manifest["mod_version"]}.jar'
     if mod.exists():
         backup=instance/'jakmc/backups'/(mod.stem+'-'+uuid.uuid4().hex+'.jar')

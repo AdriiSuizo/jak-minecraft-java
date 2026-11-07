@@ -6,6 +6,26 @@ spec=importlib.util.spec_from_file_location('jak_installer',Path(__file__).with_
 installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
 
 class InstallerChecks(unittest.TestCase):
+    def test_slimming_keeps_named_models_and_never_enters_a_junction(self):
+        with tempfile.TemporaryDirectory() as temp:
+            payload=Path(temp)/'payload';payload.mkdir();(payload/'model-tokens.txt').write_text('sidekick\ncitizen-\n')
+            old=installer.PAYLOAD;installer.PAYLOAD=payload
+            try:
+                root=Path(temp)/'export';level=root/'levels/a';level.mkdir(parents=True);(root/'collision').mkdir()
+                names=['sidekick-lod0.glb','citizen-fat-lod0.glb','sage-lod0.glb','sidekick-lod1.glb','a-background.glb','flutflut-lod0.glb']
+                for name in names:(level/name).write_bytes(b'x')
+                installer.slim_models(root,'jak1')
+                self.assertEqual(sorted(p.name for p in level.iterdir()),['a-background.glb','citizen-fat-lod0.glb','flutflut-lod0.glb','sidekick-lod0.glb'])
+                self.assertFalse((root/'collision').exists())
+                installer.slim_converted(root)
+                self.assertFalse((level/'a-background.glb').exists())
+            finally:installer.PAYLOAD=old
+            mine=Path(temp)/'owned';theirs=Path(temp)/'opengoal';theirs.mkdir();(theirs/'keep').write_text('x');(mine/'jak2').mkdir(parents=True)
+            installer.junction(mine/'jak1',theirs)
+            self.assertEqual(installer.owned_games(mine),[mine/'jak2'])
+            installer.forget_extraction(mine)
+            self.assertTrue((theirs/'keep').is_file());self.assertFalse((mine/'jak1').exists())
+
     def test_active_and_parent_selection(self):
         with tempfile.TemporaryDirectory() as temp:
             parent=Path(temp)/'OpenGOAL';active=parent/'active'
