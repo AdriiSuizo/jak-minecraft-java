@@ -33,7 +33,7 @@ Se guardan copias locales de los perfiles del launcher antes de modificarlos.
 Para otra carpeta de Minecraft, sustituye la parte `%APPDATA%\.minecraft`.
 No muevas ni borres tu instalación de OpenGOAL después de instalar: el mod
 sigue leyendo sus modelos y animaciones. Reinstala indicando la nueva ruta
-si la cambias. La extracción necesita unos 60 GB libres en el disco de Minecraft si OpenGOAL no tiene ya las exportaciones.
+si la cambias. La extracción necesita unos 60 GB libres en el disco de Minecraft mientras se instala si OpenGOAL no tiene ya las exportaciones; al terminar borra lo que el mod no usa y se quedan unos 11 GB.
 
 Jak y su movimiento se activan automáticamente al entrar, también al actualizar
 partidas creadas con el instalador anterior. Empiezas en tercera persona; F5 y

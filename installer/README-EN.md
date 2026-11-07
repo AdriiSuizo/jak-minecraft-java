@@ -32,7 +32,7 @@ Your normal worlds are kept. Launcher profiles are backed up locally before
 changes. For a custom Minecraft folder, substitute its path for
 `%APPDATA%\.minecraft`. Do not move or delete OpenGOAL after installing: the mod
 continues reading its models and animations. Reinstall with the new path if
-you move it. Extraction needs about 60 GB free on the Minecraft drive if OpenGOAL does not already have the exports.
+you move it. Extraction needs about 60 GB free on the Minecraft drive while installing if OpenGOAL does not already have the exports; it then removes what the mod does not use, leaving about 11 GB.
 
 Jak and his original movement activate automatically when joining, including
 worlds created with the earlier installer. The initial view is third person;
