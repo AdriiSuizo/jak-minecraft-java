@@ -93,9 +93,9 @@ void main() {
         vec3 jakRigLight = vec3(0.3) + JakLightSun.w * JakLightKey.rgb * max(dot(jakNormal, jakKey), 0.0)
             + vec3(0.2 * max(dot(jakNormal, jakFill), 0.0)) + vec3(0.1 * max(-jakNormal.y, 0.0));
         vec3 jakLit = clamp(jakSky * jakRigLight + jakLocal, vec3(0.0), vec3(1.5));
-        // stand-in (Adrii 07/11, seen in a cave): update-mood-interior's 0.333 and overhead 0.667, neutral, only out of the sky.
+        // stand-in (Adrii 07/11, seen in a cave, but dim): update-mood-interior's 0.333 and overhead 0.667 at 0.45, neutral, only out of the sky.
         float jakIndoors = 1.0 - smoothstep(4.0, 10.0, float(UV2.y) / 16.0);
-        jakLit = max(jakLit, vec3(0.333 + 0.667 * max(jakNormal.y, 0.0)) * jakIndoors);
+        jakLit = max(jakLit, vec3(0.45 * (0.333 + 0.667 * max(jakNormal.y, 0.0))) * jakIndoors);
         // powerups.gc: color-mult scales the lights, color-emissive adds to them.
         lightMapColor = vec4(jakLit * JakLightMult.rgb + JakLightGlow.rgb, 1.0);
     }
