@@ -12,10 +12,10 @@ class InstallerChecks(unittest.TestCase):
             old=installer.PAYLOAD;installer.PAYLOAD=payload
             try:
                 root=Path(temp)/'export';level=root/'levels/a';level.mkdir(parents=True);(root/'collision').mkdir()
-                names=['sidekick-lod0.glb','citizen-fat-lod0.glb','sage-lod0.glb','sidekick-lod1.glb','a-background.glb','flutflut-lod0.glb']
+                names=['sidekick-lod0.glb','citizen-fat-lod0.glb','whole-lod0.glb','sage-lod0.glb','sidekick-lod1.glb','a-background.glb','flutflut-lod0.glb']
                 for name in names:(level/name).write_bytes(b'x')
                 installer.slim_models(root,'jak1')
-                self.assertEqual(sorted(p.name for p in level.iterdir()),['a-background.glb','citizen-fat-lod0.glb','flutflut-lod0.glb','sidekick-lod0.glb'])
+                self.assertEqual(sorted(p.name for p in level.iterdir()),['a-background.glb','citizen-fat-lod0.glb','flutflut-lod0.glb','sidekick-lod0.glb','whole-lod0.glb'])
                 self.assertFalse((root/'collision').exists())
                 installer.slim_converted(root)
                 self.assertFalse((level/'a-background.glb').exists())
