@@ -6,6 +6,7 @@
 #include <minecraft:projection.glsl>
 #include <minecraft:sample_lightmap.glsl>
 #include <minecraft:terrainglobals.glsl>
+#include <jakmc:dark_eco.glsl>
 #ifndef MULTIDRAW_TERRAIN
     #include <minecraft:chunksection.glsl>
 #endif
@@ -30,9 +31,20 @@ layout(location = 3) out vec2 texCoord0;
 layout(location = 4) out float chunkVisibility;
 // Jak's camera masks: the surface point, camera-relative (jakmc:camera_mask.glsl).
 layout(location = 5) out vec3 jakSurface;
+// Dark eco's faces: 1 on them, and the surface point in the world (jakmc:dark_eco.glsl).
+layout(location = 6) out float jakEco;
+layout(location = 7) out vec3 jakWorld;
 
 void main() {
     vec3 pos = Position + (ChunkPosition - CameraBlockPos) + CameraOffset;
+    jakWorld = Position + vec3(ChunkPosition);
+    jakEco = jak_dark_eco_face(Color) ? 1.0 : 0.0;
+    // Its top rides the waves (a top face is the one Minecraft leaves at full brightness).
+    if (jakEco > 0.5 && Color.r > 0.95) {
+        float jakRise = jak_dark_eco_wave(jakWorld.xz) - 0.18;
+        pos.y += jakRise;
+        jakWorld.y += jakRise;
+    }
     gl_Position = ProjMat * ModelViewMat * vec4(pos, 1.0);
     jakSurface = pos;
 

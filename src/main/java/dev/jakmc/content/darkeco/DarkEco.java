@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.*;
 import net.minecraft.sounds.*;
 import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.*;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.player.Player;
@@ -34,6 +35,9 @@ public final class DarkEco {
     public static final Item BUCKET=Registry.register(BuiltInRegistries.ITEM,BUCKET_KEY,new Bucket(SOURCE,new Item.Properties().setId(BUCKET_KEY).craftRemainder(Items.BUCKET).stacksTo(1)));
     public static final ResourceKey<DamageType> DAMAGE=ResourceKey.create(Registries.DAMAGE_TYPE,JakData.id("dark_eco"));
     private static final SoundEvent DEATH_SOUND=SoundEvent.createVariableRangeEvent(JakData.id("sfx/jak1/death_darkeco"));
+    private static final SoundEvent BURST_SOUND=SoundEvent.createVariableRangeEvent(JakData.id("sfx/jak1/common/dcrate_break"));
+    /** Client side: a pool's flash there (dark-eco-pool.gc group-dark-eco-pool-nasty). */
+    public static java.util.function.Consumer<net.minecraft.world.phys.Vec3> nasty;
     /** dark_eco.rs Pool.died: when each player last died in it (game ticks). */
     private static final Map<UUID,Long> DIED=new HashMap<>();
     public static void initialize(){
@@ -67,9 +71,21 @@ public final class DarkEco {
         if(last!=null&&now-last<=60)return;
         DIED.put(p.getUUID(),now);
         level.playSound(null,x,y,z,DEATH_SOUND,SoundSource.PLAYERS,1,1);
+        burst(level,new net.minecraft.world.phys.Vec3(x,y,z),false);
         // The group-dark-eco-death burst there, for everyone who sees it.
         var packet=new dev.jakmc.network.JakPackets.DarkEcoDeath(level.dimension().identifier(),new net.minecraft.world.phys.Vec3(x,y,z));
         for(var watcher:net.fabricmc.fabric.api.networking.v1.PlayerLookup.around(level,new net.minecraft.world.phys.Vec3(x,y,z),96))
+            if(net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(watcher,packet.type()))
+                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(watcher,packet);
+    }
+    /**
+     * Adrii 07/11: what touches it goes as a dark eco crate goes (crates.gc die: group-dark-eco-box-explosion and
+     * dcrate-break), an item in a small one.
+     */
+    static void burst(ServerLevel level,net.minecraft.world.phys.Vec3 at,boolean small){
+        level.playSound(null,at.x,at.y,at.z,BURST_SOUND,SoundSource.BLOCKS,small?.4f:1,small?1.5f:1);
+        var packet=new dev.jakmc.network.JakPackets.DarkEcoBurst(level.dimension().identifier(),at,small);
+        for(var watcher:net.fabricmc.fabric.api.networking.v1.PlayerLookup.around(level,at,96))
             if(net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(watcher,packet.type()))
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(watcher,packet);
     }
@@ -108,10 +124,22 @@ public final class DarkEco {
         @Override protected BlockState createLegacyBlock(FluidState state){return BLOCK.defaultBlockState().setValue(LiquidBlock.LEVEL,getLegacyLevel(state));}
         // dark_eco.rs Request::Scoop: item.bucket.fill_lava.
         @Override public Optional<SoundEvent> getPickupSound(){return Optional.of(SoundEvents.BUCKET_FILL_LAVA);}
-        /** minecraft_world.rs (dark eco block): the mobs and Jak's creatures in it are shot for 10000; players go by playersIn's box. */
+        /** minecraft_world.rs (dark eco block): the mobs and Jak's creatures in it are shot for 10000, what stands that killed outright; players go by playersIn's box. */
         @Override protected void entityInside(Level level,BlockPos pos,Entity entity,InsideBlockEffectApplier effects){
-            if(level instanceof ServerLevel server&&entity instanceof LivingEntity living&&!(entity instanceof Player)&&living.isAlive())
+            if(!(level instanceof ServerLevel server))return;
+            if(entity instanceof net.minecraft.world.entity.item.ItemEntity item&&item.isAlive()){
+                burst(server,item.position(),true);
+                item.discard();
+            }else if(entity instanceof LivingEntity living&&!(entity instanceof Player)&&living.isAlive()){
+                burst(server,living.getBoundingBox().getCenter(),false);
                 living.hurtServer(server,source(server),10_000);
+                if(living.isAlive())living.kill(server);
+            }
+        }
+        /** dark-eco-pool.gc water-vol-idle: now and then a flash from a random point of the surface. stand-in: there one in 16 frames a pool, here by cell. */
+        @Override protected void animateTick(Level level,BlockPos pos,FluidState state,RandomSource random){
+            if(nasty!=null&&state.isSource()&&random.nextInt(48)==0&&level.getBlockState(pos.above()).isAir())
+                nasty.accept(new net.minecraft.world.phys.Vec3(pos.getX()+random.nextDouble(),pos.getY()+.8,pos.getZ()+random.nextDouble()));
         }
         static final class Flowing extends DarkEcoFluid {
             @Override protected void createFluidStateDefinition(StateDefinition.Builder<Fluid,FluidState> builder){super.createFluidStateDefinition(builder);builder.add(LEVEL);}

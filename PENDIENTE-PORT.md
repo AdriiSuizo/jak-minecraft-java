@@ -207,3 +207,9 @@ Estados: HECHO · EN CURSO · PENDIENTE · FUERA (HUD/no pedido)
 - HECHO Bancos 1, 2, 3 y farol de Villarefugio fuera (import_facade_parts.py).
 - HECHO Cámara: atraviesa los bloques (solo la para el suelo de Jak). Con el ojo dentro de roca, el terreno se dibuja con relleno oscuro por detrás y un hueco alrededor de Jak: no se ve el cielo a través de las paredes. Luz mínima en Jak para que se le vea en cuevas.
 - HECHO Mundo de showcase: ShowcaseScene (escena `showcase`) construye Spargus y Villarefugio juntos en un mundo normal y la jincana de estaciones entre los dos. Guía en docs/SHOWCASE.md.
+
+## Lote 07/11 (2): eco oscuro del silo
+- HECHO Aspecto: la piscina de finalboss (water-anim look 41) en terrain.fsh: textura negra con su fuerza moteada, environment-darkeco reflejado por tres olas de ripple-for-finalboss-dark-eco-pool. // stand-in: el mapa al cuadrado y normal-scale doble para un charco de pocos bloques.
+- HECHO Corrientes: lo que fluye se dibuja como la piscina, sin hoja de flujo que gire.
+- HECHO Destellos: group-dark-eco-pool-nasty salta al azar de la superficie (water-vol-idle).
+- HECHO Al tocarlo: mobs y Jak mueren al instante con group-dark-eco-box-explosion y dcrate-break; los objetos desaparecen con la misma explosión al 30 %.

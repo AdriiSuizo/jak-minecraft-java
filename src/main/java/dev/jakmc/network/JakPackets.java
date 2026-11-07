@@ -35,6 +35,14 @@ public final class JakPackets {
     }
 
     /** An ammo crate gone: group-crate-explode where it stood (JakEffects). */
+    /** Dark eco took something: its crate burst there, small for an item (DarkEco.burst). */
+    public record DarkEcoBurst(net.minecraft.resources.Identifier dimension,net.minecraft.world.phys.Vec3 at,boolean small) implements CustomPacketPayload {
+        public static final Type<DarkEcoBurst> TYPE=new Type<>(JakData.id("dark_eco_burst_v1"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,DarkEcoBurst> CODEC=StreamCodec.of((b,p)->{
+            b.writeIdentifier(p.dimension);b.writeDouble(p.at.x);b.writeDouble(p.at.y);b.writeDouble(p.at.z);b.writeBoolean(p.small);
+        },b->new DarkEcoBurst(b.readIdentifier(),new net.minecraft.world.phys.Vec3(b.readDouble(),b.readDouble(),b.readDouble()),b.readBoolean()));
+        @Override public Type<DarkEcoBurst> type(){return TYPE;}
+    }
     public record CrateBreak(net.minecraft.resources.Identifier dimension,net.minecraft.core.BlockPos position) implements CustomPacketPayload {
         public static final Type<CrateBreak> TYPE=new Type<>(JakData.id("crate_break_v1"));
         public static final StreamCodec<RegistryFriendlyByteBuf,CrateBreak> CODEC=StreamCodec.of((b,p)->{
@@ -102,6 +110,7 @@ public final class JakPackets {
         PayloadTypeRegistry.clientboundPlay().register(EntityTime.TYPE,EntityTime.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(PropBreak.TYPE,PropBreak.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(CrateBreak.TYPE,CrateBreak.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(DarkEcoBurst.TYPE,DarkEcoBurst.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(CreatureBurst.TYPE,CreatureBurst.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(DarkEcoDeath.TYPE,DarkEcoDeath.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(PilotDeath.TYPE,PilotDeath.CODEC);

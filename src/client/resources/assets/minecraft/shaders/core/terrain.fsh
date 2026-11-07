@@ -7,6 +7,8 @@
 #include <minecraft:oit.glsl>
 #include <minecraft:terrainglobals.glsl>
 #include <jakmc:camera_mask.glsl>
+#define JAK_DARK_ECO_FRAGMENT
+#include <jakmc:dark_eco.glsl>
 #ifndef MULTIDRAW_TERRAIN
     #include <minecraft:chunksection.glsl>
 #endif
@@ -19,6 +21,8 @@ layout(location = 2) in vec4 vertexColor;
 layout(location = 3) in vec2 texCoord0;
 layout(location = 4) in float chunkVisibility;
 layout(location = 5) in vec3 jakSurface;
+layout(location = 6) in float jakEco;
+layout(location = 7) in vec3 jakWorld;
 
 #ifndef OIT_ALPHA_ONLY
 layout(location = 0) out vec4 fragColor;
@@ -65,6 +69,9 @@ void main() {
         discard;
     }
     vec4 color = (UseRgss == 1 ? sampleRGSS(Sampler0, texCoord0, 1.0f / TextureSize) : sampleNearest(Sampler0, texCoord0, 1.0f / TextureSize)) * vertexColor;
+    if (jakEco > 0.5) {
+        color = jak_dark_eco(Sampler0, jakWorld, jakSurface, vertexColor.r);
+    }
     #ifdef JAK_CAP
     if (jakFill) {
         color.rgb *= 0.16;

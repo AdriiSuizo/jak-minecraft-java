@@ -6,6 +6,7 @@
 // JakMask0 = Jak's body centre, terrain mask amount; JakMask1 = camera forward, Jak's feet height;
 // JakMask2 = camera up, entity mask amount; JakMask3 = ellipse half width/height, terrain/entity depth limits.
 // JakCap = 1 when Jak is under cover, fill's reach round Jak, its feather, Jak's depth (terrain.fsh JAK_CAP).
+// JakEcoWater, JakEcoShine = dark eco's two sprites in the block atlas; JakEcoClock = seconds, normal scale (jakmc:dark_eco.glsl).
 // JakRoom{A,B} = room grid origin, fade; JakRoom{A,B}Info = cut height, floor height, near-wall depth limit;
 // JakRoom{A,B}Foot/Rim = 32x32 column bits of the floor plan and of the wall ring round it.
 layout(std140) uniform Globals {
@@ -21,6 +22,9 @@ layout(std140) uniform Globals {
     vec4 JakMask2;
     vec4 JakMask3;
     vec4 JakCap;
+    vec4 JakEcoWater;
+    vec4 JakEcoShine;
+    vec4 JakEcoClock;
     vec4 JakRoomA;
     vec4 JakRoomAInfo;
     uvec4 JakRoomAFoot[8];

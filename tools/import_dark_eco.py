@@ -1,7 +1,7 @@
 """Dark eco liquid textures from the owner's Jak 1 export and the light eco icon from Jak 3 (private, into src/generated).
 
 Rust: assets::jak_model::jak1_texture (same roots), render_anim::minecraft_world::celestial_image
-(alpha x2) and render_gpu drawsurf/minecraft_world.rs darkeco_fragment (the colour)."""
+(alpha x2)."""
 import os, pathlib
 from PIL import Image
 
@@ -35,27 +35,13 @@ def jak3_texture(folder,name):
 def main():
     water=jak1_texture('finalboss-vis-pris','cv-darkecowater')
     shine=jak1_texture('finalboss-vis-pris','environment-darkeco')
-    # stand-in: the sphere-mapped shine depends on the view; Minecraft's fluid quads can't, so its
-    # mean over the sphere map's disc is baked in.
-    w,h=shine.size;disc=[shine.getpixel((x,y)) for y in range(h) for x in range(w) if (x+.5-w/2)**2+(y+.5-h/2)**2<=(w/2)**2]
-    mean=[sum(p[i] for p in disc)/len(disc)/255 for i in range(3)]
-    purple=(.42,.16,.58)
-    def colour(p):
-        r,g,b,a=p;a/=255
-        # darkeco_fragment: texel x pool purple x 2, plus the shine x 2 x texel alpha; alpha 0.94.
-        rgb=[min(1,(c/255)*purple[i]*2+mean[i]*2*a) for i,c in enumerate((r,g,b))]
-        return tuple(round(c*255) for c in rgb)+(round(.94*255),)
-    still=Image.new('RGBA',water.size);still.putdata([colour(p) for p in water.getdata()])
-    # The flowing sprite is sampled over its first half (FluidRenderer), as vanilla's 2x flow sheets.
-    flow=Image.new('RGBA',(water.width*2,water.height*2))
-    for x in (0,water.width):
-        for y in (0,water.height):flow.paste(still,(x,y))
+    # As they are: the shader lays the pool on from the two (jakmc:dark_eco.glsl).
     DEST.mkdir(parents=True,exist_ok=True)
-    still.save(DEST/'dark_eco_still.png');flow.save(DEST/'dark_eco_flow.png')
+    water.save(DEST/'dark_eco_still.png');shine.save(DEST/'dark_eco_flow.png')
     # Adrii 06/11: the light eco item drew as its white additive pill in the inventory, lost on the slot. Jak 3's
     # own inventory icon for it (progress-minimap2 inv-items-lighteco-01) instead, the PS2 alpha doubled.
     icon=jak3_texture('progress-minimap2','inv-items-lighteco-01')
     items=DEST.parent/'item';items.mkdir(parents=True,exist_ok=True);icon.save(items/'light_eco_icon.png')
-    print('dark eco textures:',DEST,'mean shine',[round(c*255) for c in mean])
+    print('dark eco textures:',DEST)
 
 if __name__=='__main__':main()

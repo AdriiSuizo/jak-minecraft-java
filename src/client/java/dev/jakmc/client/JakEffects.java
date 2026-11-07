@@ -35,7 +35,7 @@ public final class JakEffects {
  /** target-pilot-death's bursts (Jak 3 target-part.gc group-explode-death, group-lava-death). */
  static final int EXPLODE_DEATH=24,LAVA_DEATH=25;
  /** crates.gc die: a wood crate's group-crate-explode. */
- static final int CRATE_EXPLODE=26;
+ static final int CRATE_EXPLODE=26,DARK_ECO_BURST=27,DARK_ECO_FIZZLE=28,DARK_ECO_NASTY=29;
  /** A burst of a one-shot world effect at a place (JakPilotDeath). */
  static void burst(int kind,Vec3 at){long handle=NativeJak.fxCreateDecor(kind);if(handle!=0)BURSTS.add(new Owner(at,handle));}
  /** kermit.gc: each frog's pulse on its tongue, where it was last drawn. */
@@ -91,6 +91,12 @@ public final class JakEffects {
     long handle=NativeJak.fxCreateDecor(SPYDROID);
     if(handle!=0){BURSTS.add(new Owner(packet.at(),handle));spydroidBursts++;}
    });
+  net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+   dev.jakmc.network.JakPackets.DarkEcoBurst.TYPE,(packet,context)->{
+    var level=context.client().level;
+    if(level!=null&&level.dimension().identifier().equals(packet.dimension()))burst(packet.small()?DARK_ECO_FIZZLE:DARK_ECO_BURST,packet.at());
+   });
+  dev.jakmc.content.darkeco.DarkEco.nasty=at->burst(DARK_ECO_NASTY,at);
   // dark_eco.rs died_in_it: group-dark-eco-death where the player died in it.
   net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
    dev.jakmc.network.JakPackets.DarkEcoDeath.TYPE,(packet,context)->{
