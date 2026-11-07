@@ -73,6 +73,7 @@ def export_root(active, game): return active/game/'data/decompiler_out'/game
 
 REQUIRED = {
  'jak1':['levels/beach/flutflut-lod0.glb', 'textures/beach-vis-pris/flut-eye-16x16.png',
+         'levels/common/eichar-lod0.glb','levels/common/sidekick-lod0.glb','raw_obj/eichar-ag.go',
          'textures/common/autoeye-pupil.png','textures/beach-vis-pris/flut-eyelid.png'],
  'jak2':['levels/ctywide/ctywide-background.glb','levels/lwidea/citizen-norm-lod0.glb'],
  'jak3':['levels/factorya/hellcat-lod0.glb','raw_obj/gun-ag.go',
@@ -104,8 +105,10 @@ def prepare_owned(active, workspace, notify, lang):
             # Resume an interrupted installation after successful extraction.
             # The canonical directory belongs exclusively to this instance.
             continue
+        # The OpenGOAL Launcher keeps it by version, next to active: versions/official/v0.3.8/extractor.exe.
+        versions = sorted((active.parent/'versions').glob('*/*/extractor.exe'), key=lambda p: p.stat().st_mtime, reverse=True)
         extractor = next((p for p in (active/'bin/extractor.exe', source/'extractor.exe',
-                          source/'bin/extractor.exe') if p.is_file()), None)
+                          source/'bin/extractor.exe', *versions) if p.is_file()), None)
         iso = source/'data/iso_data'/game
         if not extractor or not iso.is_dir() or not (source/'data/decompiler/config').is_dir():
             raise ValueError(words(
@@ -121,8 +124,13 @@ def prepare_owned(active, workspace, notify, lang):
         override = dict(decompile_code=False, process_tpages=True, process_art_groups=True,
             dump_objs=True, levels_extract=True, rip_levels=True, extract_collision=True,
             save_texture_pngs=True, rip_streamed_audio=True, allowed_objects=[], banned_objects=[])
-        run([extractor, iso, '--folder','--decompile','--game',game,'--proj-path',data,
-             '--decomp-config-override',json.dumps(override),'--disable-ansi'], workspace/f'extract-{game}.log')
+        try:
+            run([extractor, iso, '--folder','--decompile','--game',game,'--proj-path',data,
+                 '--decomp-config-override',json.dumps(override),'--disable-ansi'], workspace/f'extract-{game}.log')
+        except RuntimeError:
+            # Audio comes last, and Windows refuses a Jak II sound named SHIP_GUN_HIT-*: the extractor stops there with
+            # the art done. import_audio reads the named banks from the ISO data. Anything else missing fails just below.
+            if not (export_root(canonical, game)/'audio/sfx').is_dir(): raise
         missing = [name for name in REQUIRED[game] if not (export_root(canonical, game)/name).is_file()]
         if missing: raise ValueError(f'{game}: incomplete OpenGOAL extraction: '+', '.join(missing))
     return canonical
