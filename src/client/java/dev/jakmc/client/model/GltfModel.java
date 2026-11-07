@@ -43,7 +43,19 @@ public final class GltfModel {
         Map.entry("jakc-chestplate-straps",0x555438),Map.entry("jakc-shoulderarmor-01",0x804c33),Map.entry("jakc-armor",0x3a3c2d),
         Map.entry("jakc-lens",0x806060),Map.entry("jakc-gogglemetal",0x555438),Map.entry("jakc-glovetop",0x555438),
         Map.entry("jakc-wristbands-a",0x1c5656),Map.entry("jakc-hair",0x404040),Map.entry("programmer_eye_right",0x606060),
-        Map.entry("programmer_eye_left",0x606060),Map.entry("sk-shinywhite",0x807e54));
+        Map.entry("programmer_eye_left",0x606060),Map.entry("sk-shinywhite",0x807e54),
+        // jakc-highres-ag, the head and body seen close: its own names for the same pieces (the hair at 0x80, whole, shone twice over).
+        Map.entry("jakchires-hair",0x404040),Map.entry("jakchires-precarmor-01",0x804c33),Map.entry("jakchires-chestplate",0x804c33),
+        Map.entry("jakchires-glovetop",0x555438),Map.entry("jakchires-clips",0x3a3c2d),Map.entry("jakc-wristband-a2",0x606049));
+    /**
+     * mei-envmap-tint's fade0 and fade1 by tint, as the metres from the camera its shine is whole under and gone past
+     * (foreground.gc: t-amount = fade0 * dist + fade1, from 0 to 1). Each tint has these in the art groups.
+     */
+    private static final Map<Integer,float[]> ENVIRONMENT_FADES=Map.of(
+        0x804c33,new float[]{40,60},0x555438,new float[]{8,16},0x3a3c2d,new float[]{8,16},0x806060,new float[]{8,16},
+        0x1c5656,new float[]{16,64},0x404040,new float[]{4,8},0x606060,new float[]{2,8},0x606049,new float[]{10,20},
+        0x807e54,new float[]{12,24});
+    private static final float METRES_PER_BLOCK=1.5625f;
     /** mood.gc's current-env-color (96 of 128): foreground.gc scales every effect by it too. stand-in: the original's follows the level's lights, here the draw's lightmap (entity.fsh). */
     private static final float ENVIRONMENT_LIGHT=96/128f;
     private final JsonObject json;
@@ -59,7 +71,7 @@ public final class GltfModel {
     private final Map<Integer,float[]> accessors=new HashMap<>();
     private static final int[] QUAD_CORNERS={0,1,2,2},TRIANGLE_CORNERS={0,1,2};
     /** The environment pass's scratch vectors: the render thread's own, so no allocation per frame. */
-    private static final Vector3f ENV_POSITION=new Vector3f(),ENV_NORMAL=new Vector3f(),ENV_VIEW=new Vector3f();
+    private static final Vector3f ENV_POSITION=new Vector3f(),ENV_NORMAL=new Vector3f();
     private final Map<Posed,List<float[]>> prepared=new IdentityHashMap<>();
     private final Map<String,Posed> terminalPoses=new HashMap<>();
     public long skinnedVertices;
@@ -75,7 +87,10 @@ public final class GltfModel {
         /** An OPAQUE material: its alpha is only the strength, so the pass can be drawn in the base's own draw. */
         final boolean whole;
         private RenderType type,merged;
-        EnvPass(Identifier environment,Identifier strength,boolean whole){this.environment=environment;this.strength=strength;this.whole=whole;}
+        final float[] fade;
+        EnvPass(Identifier environment,Identifier strength,boolean whole,float[] fade){this.environment=environment;this.strength=strength;this.whole=whole;this.fade=fade;}
+        /** foreground.gc's t-amount at {@code metres} from the camera (a surface with no tint of its own stays whole). */
+        float amount(float metres){return fade==null?1:Math.clamp((fade[1]-metres)/(fade[1]-fade[0]),0,1);}
         RenderType type(){if(type==null)type=dev.jakmc.client.JakEffectTypes.envmap(environment,strength);return type;}
         RenderType merged(){if(merged==null)merged=dev.jakmc.client.JakEffectTypes.envmapTriangles(environment,strength);return merged;}
     }
@@ -163,7 +178,7 @@ public final class GltfModel {
                 environmentTint.put(environment,tint);
                 var strength=JakData.id("local/"+key+"/alpha/"+baseSource);
                 pendingTextures.putIfAbsent(strength,imageBytes(baseSource));
-                envpass=new EnvPass(environment,strength,mode.equals("OPAQUE"));
+                envpass=new EnvPass(environment,strength,mode.equals("OPAQUE"),ENVIRONMENT_FADES.get(tint));
             }
             var binding=new TextureBinding(texture,coverage);
             Identifier id=textures.get(binding);
@@ -781,6 +796,8 @@ public final class GltfModel {
         var camera=Minecraft.getInstance().gameRenderer.mainCamera();
         var viewLeft=effect==LightFormTexture.Form.SHIELD?new Vector3f(camera.leftVector()):null;
         var viewUp=effect==LightFormTexture.Form.SHIELD?new Vector3f(camera.upVector()):null;
+        // foreground-draw's dist: the body from the camera. (In a menu's portrait he is as close as can be.)
+        float metres=dev.jakmc.client.model.JakGuiContext.active()?0:stack.last().pose().getTranslation(new Vector3f()).length()*METRES_PER_BLOCK;
         for(Surface surface:selected){
             int index=surfaceNumber++;if(segments!=null&&!segments.shown(index,shownMask))continue;
             float[] skinned=ready==null?skin(surface,posed,frameBuffer(surface.positions.length*2)):ready.get(surfaceNumber-1);
@@ -802,6 +819,8 @@ public final class GltfModel {
             // An opaque envmapped surface in its own texture (not Dark Jak's or a stand-in): base and shine in one draw.
             boolean mergedEnv=cornersOf==TRIANGLE_CORNERS&&surface.envpass!=null&&surface.envpass.whole&&eye==null&&texture==surface.texture;
             if(mergedEnv)renderType=surface.envpass.merged();
+            // The merged draw takes its alpha for the shine's amount (an opaque surface has no other use for it).
+            int shineAlpha=mergedEnv?Math.round(surface.envpass.amount(metres)*255)<<24:0;
             collector.submitCustomGeometry(stack,renderType,(pose,buffer)->{
                 var count=corners;if(count!=null)count.computeIfAbsent(fileName,_->new java.util.concurrent.atomic.LongAdder()).add(surface.indices.length/3*cornersOf.length);
                 Vector3f v=new Vector3f(),normal=new Vector3f();
@@ -810,6 +829,7 @@ public final class GltfModel {
                 float[] cameraVertices=cameraVertices(pose,skinned,v,normal);
                 if(rim==null&&effect==null&&!surface.skullGem){
                     int[] colours=vertexColours(surface,alpha,tint,hurt);
+                    if(mergedEnv)for(int i=0,n=surface.colors.length/4;i<n;i++)colours[i]=colours[i]&0xffffff|shineAlpha;
                     for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:cornersOf){
                         int i=surface.indices[triangle+corner],at=i*6;
                         buffer.addVertex(cameraVertices[at],cameraVertices[at+1],cameraVertices[at+2],colours[i],surface.uv[i*2],surface.uv[i*2+1],
@@ -848,29 +868,17 @@ public final class GltfModel {
                 }
             });
             if(!mergedEnv&&surface.envpass!=null&&rim==null&&effect==null&&eye==null&&alpha>=1){
-                // merc's environment pass (emerc), per vertex as the VU1 lays it: the sphere map of the reflected view, drawn
-                // added on, its strength the base colour's alpha. The base's own coordinates ride in the overlay slot.
+                // merc's environment pass (emerc): the map at jak_emerc_st's coordinates, added on, its strength the base colour's
+                // alpha. The base's own coordinates ride in the overlay slot, the shine's amount in the vertex colour.
+                // stand-in: by the block light or sky he stands in as well, or Dark Jak's would glow in a cave (the merged draw has the lightmap).
+                float lit=Math.max(light>>>4&15,light>>>20&15)/15f;
+                int shade=Math.round(surface.envpass.amount(metres)*lit*255),shadeColour=0xff000000|shade<<16|shade<<8|shade;
                 collector.submitCustomGeometry(stack,surface.envpass.type(),(pose,buffer)->{
                     var counted=corners;if(counted!=null)counted.computeIfAbsent(fileName+" (env)",_->new java.util.concurrent.atomic.LongAdder()).add(surface.indices.length/3*4);
-                    // Per vertex once (the camera-space position, the unit normal, the sphere map's coordinates), then per corner.
                     float[] at6=cameraVertices(pose,skinned,ENV_POSITION,ENV_NORMAL);
-                    int count=skinned.length/6;
-                    float[] sphere=envSphere(count*2);
-                    for(int i=0;i<count;i++){
-                        int at=i*6;
-                        ENV_POSITION.set(at6,at);
-                        ENV_NORMAL.set(at6,at+3);
-                        if(ENV_NORMAL.lengthSquared()>0)ENV_NORMAL.normalize();
-                        at6[at+3]=ENV_NORMAL.x;at6[at+4]=ENV_NORMAL.y;at6[at+5]=ENV_NORMAL.z;
-                        ENV_VIEW.set(ENV_POSITION).normalize();
-                        float d=2*ENV_VIEW.dot(ENV_NORMAL);
-                        float rx=ENV_VIEW.x-d*ENV_NORMAL.x,ry=ENV_VIEW.y-d*ENV_NORMAL.y,rz=ENV_VIEW.z-d*ENV_NORMAL.z;
-                        float m=2*(float)Math.sqrt(rx*rx+rz*rz+(ry+1)*(ry+1));
-                        sphere[i*2]=m>0?rx/m+.5f:.5f;sphere[i*2+1]=m>0?rz/m+.5f:.5f;
-                    }
                     for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:QUAD_CORNERS){
                         int i=surface.indices[triangle+corner],at=i*6;
-                        buffer.addVertex(at6[at],at6[at+1],at6[at+2],0xffffffff,sphere[i*2],sphere[i*2+1],
+                        buffer.addVertex(at6[at],at6[at+1],at6[at+2],shadeColour,0,0,
                             envCoord(surface.uv[i*2])|envCoord(surface.uv[i*2+1])<<16,0xf000f0,at6[at+3],at6[at+4],at6[at+5]);
                     }
                 });
@@ -878,12 +886,6 @@ public final class GltfModel {
         }
     }
     private static final ThreadLocal<int[]> VERTEX_COLOURS=ThreadLocal.withInitial(()->new int[0]);
-    private static final ThreadLocal<float[]> ENV_SPHERE=ThreadLocal.withInitial(()->new float[0]);
-    private static float[] envSphere(int length){
-        var buffer=ENV_SPHERE.get();
-        if(buffer.length<length){buffer=new float[length];ENV_SPHERE.set(buffer);}
-        return buffer;
-    }
     /** The plain path's colour per vertex (its alpha, the submit's tint, the hurt flash), once per surface drawn. */
     private static int[] vertexColours(Surface surface,float alpha,int tint,JakHurtVisuals.Frame hurt){
         int count=surface.colors.length/4;

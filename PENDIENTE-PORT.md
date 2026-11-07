@@ -221,3 +221,10 @@ Estados: HECHO · EN CURSO · PENDIENTE · FUERA (HUD/no pedido)
 - Sin confirmar: enemigos sin animaciones erráticas (en la escena apenas se movieron); `eichar-launch-jump-loop` no llegó a verse en la escena (el salto aterrizó antes).
 - Daxter se separa hasta 1,9 m del hombro en el salto del lanzador: es la animación original (`sidekick-launch-jump`, main.y de -0,78 a 1,92), no un fallo.
 - Siguiente, auditoría de iluminación (por orden): tintes de la cabeza de cinemática (pelo el doble de brillante), desvanecido del brillo por distancia (`foreground.gc`), coordenadas del mapa de brillo en espacio de cámara (`emerc.vert`), luz local en la pasada de brillo aparte, suelo de luz neutro (decide Adrii), `update-environment-colors` y tablas de mood, luces de Jak que siguen al sol, `color-emissive`.
+
+### Lote 07/11 (3), añadido: brillo de Jak y lanzador
+
+- Hecho y visto: tintes de la cabeza de cerca (`jakc-highres-ag`), desvanecido del brillo por distancia (fade0/fade1 de cada tinte, `ENVIRONMENT_FADES`), coordenadas de `emerc.vert` en espacio de cámara (`emerc.glsl`), luz local en la pasada aparte (`// stand-in:`).
+- Lanzador: clips de Jak 1 cargados al arrancar (parón de 297 ms en el primer salto), efectos propios esperan al reloj del cuerpo (`JakEffects.HELD`), sin pose de arma sobre `jakb1-launch-`.
+- Medido con la cámara real: pies y cámara clavados (diferencia 0). El cuerpo sigue dando un brinco de 1,67 bloques en los fotogramas 2-3 del clip: `main` de `eichar-launch-jump` compensa su `align` (suman un arco suave) y el original lo tapa con su cámara con muelle. Adrii lo dio por bueno sin suavizar; si vuelve la queja, suavizar `main` en esos clips.
+- Sin hacer: brillo por hora (`update-environment-colors`), luces de Jak que siguen al sol, `color-emissive`; suelo de luz neutro (decide Adrii).

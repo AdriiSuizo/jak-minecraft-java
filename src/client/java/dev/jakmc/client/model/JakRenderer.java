@@ -26,6 +26,8 @@ public final class JakRenderer {
     private static boolean launchLoaded;
     /** Scenes: each drawn frame's pose and clip frame, to measure how evenly an animation plays. */
     public static volatile java.util.function.BiConsumer<JakPoses.Pose,Float> frameTrace;
+    /** Lote8Scene's trace: where the frame drew him, against the camera it drew him from. */
+    public static double traceStateY,traceCameraY,traceChestY;
     private static GltfModel cinematicBody,cinematicDaxter,cinematicDark;
     private static final Map<Entity,JakChannels.Transition> transitions=new WeakHashMap<>();
     private static final Map<Entity,JakCloth> clothes=new WeakHashMap<>();
@@ -71,6 +73,8 @@ public final class JakRenderer {
                 throw new IOException("Original ladder joint tracks are unavailable");
             var standing=body.pose("jakb-stance-loop",0);
             jakRest=standing;
+            // Here, not at the first launcher: read then, it held the game up a third of a second as he left the ground.
+            try{loadLaunch();}catch(RuntimeException failure){System.err.println("Jak 1's launch clips: "+failure);}
             Vector3f anchor=body.joint(standing,"LshoulderPad").getTranslation(new Vector3f());
             var bodyBounds=cinematicBody.bounds(standing,new Matrix4f());
             var daxterBounds=cinematicDaxter.bounds(daxter.pose("daxter-stance-loop",0),new Matrix4f().translation(anchor).scale(1/1.4f));
@@ -147,7 +151,7 @@ public final class JakRenderer {
     public static float hurtRed=1,hurtGreen=1,hurtBlue=1;
     private static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
                                  net.minecraft.client.renderer.state.level.CameraRenderState camera,boolean firstPerson){
-        // Adrii 07/11: he is seen in a cave as well as out of it. Never quite the dark of the rock around him.
+        // stand-in (Adrii 07/11): he is seen in a cave as well as out of it. Never quite the dark of the rock around him.
         state.lightCoords=Math.max(state.lightCoords&0xffff,MINIMUM_BLOCK_LIGHT<<4)|state.lightCoords&0xffff0000;
         var client=Minecraft.getInstance();
         var actor=client.level==null?null:client.level.getEntity(state.id);
@@ -280,7 +284,11 @@ public final class JakRenderer {
                 daxPose=JakChannels.sample(daxter,true,pose,boardFrame,JakChannels.sidekickFrame(body,daxter,pose.clip(),frame));
             }
         }
-        if(frameTrace!=null)frameTrace.accept(pose,frame);
+        if(frameTrace!=null){
+            traceStateY=state.y;traceCameraY=camera.pos.y;
+            traceChestY=body.joint(skeleton,"chest").getTranslation(new Vector3f()).y*bodyScale+pose.rootAt(elapsed).lift();
+            frameTrace.accept(pose,frame);
+        }
         if(mounted||flight!=null)transitions.remove(actor);
         else{
             var next=new JakChannels.Pair(skeleton,daxPose);
@@ -292,7 +300,8 @@ public final class JakRenderer {
         var gunState=pose.raw().getAsJsonObject("gun");
         boolean gunOut=gunState!=null&&gunState.get("out").getAsBoolean();
         boolean shieldUp=pose.raw().has("shield")&&pose.raw().get("shield").getAsBoolean();
-        if(!climbing&&!pose.board()&&!mounted&&gunKind>=0&&gunOut&&!shieldUp&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
+        // (The launcher's jump is Jak 1's, its own body and Daxter whole: no gun in that game to lay over it.)
+        if(!climbing&&!pose.board()&&!mounted&&gunKind>=0&&gunOut&&!shieldUp&&!pose.clip().startsWith("jakb1-launch-")&&(pose.clip().contains("stance")||pose.clip().contains("walk")||pose.clip().contains("jump"))&&!pose.dark()){
             var held=gunClip(pose,gunKind,frame,frames,elapsed);
             skeleton=body.overlayUpper(skeleton,held.clip(),held.age());
             // sidekick.gc: Daxter plays his own clip of the same name (daxter-gun-...), not the stance under it.

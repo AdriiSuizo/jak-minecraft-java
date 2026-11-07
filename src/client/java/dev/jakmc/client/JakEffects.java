@@ -130,8 +130,29 @@ public final class JakEffects {
   var owner=OWNERS.get(entity);
   if(owner!=null)owner.boardSocket=position.subtract(owner.origin);
  }
+ /**
+  * His own effects wait for his drawn body: JakPoses shows him one to two ticks behind the last packet, and they would run
+  * that far ahead of him (at a launcher's 40 blocks a second, some three blocks: Adrii 07/11, he seemed to go at a low rate).
+  */
+ private record Held(int entity,Vec3 origin,JsonObject packet,long tick,long at){}
+ private static final java.util.ArrayDeque<Held> HELD=new java.util.ArrayDeque<>();
+ private static void release(long now){
+  for(var head=HELD.peek();head!=null;head=HELD.peek()){
+   double shown=JakPoses.renderedTick(head.entity);
+   if(head.tick>shown+1&&now-head.at<200_000_000L)return;
+   HELD.poll();apply(head.entity,head.origin,head.packet);
+  }
+ }
  public static void receive(int entity,Vec3 origin,JsonObject packet){
   if(!packet.has("effects"))return;
+  var client=Minecraft.getInstance();
+  if(client.player!=null&&client.player.getId()==entity&&packet.has("serverTick")){
+   HELD.add(new Held(entity,origin,packet,packet.get("serverTick").getAsLong(),System.nanoTime()));
+   return;
+  }
+  apply(entity,origin,packet);
+ }
+ private static void apply(int entity,Vec3 origin,JsonObject packet){
   var fx=OWNERS.get(entity);
   long session=packet.has("session")?packet.get("session").getAsLong():fx==null?Long.MIN_VALUE:fx.session;
   if(fx!=null&&(fx.origin.distanceToSqr(origin)>4096*4096||fx.session!=session)){fx.close();OWNERS.remove(entity);fx=null;}
@@ -158,7 +179,7 @@ public final class JakEffects {
   fx.received=System.nanoTime();
   return sounds;
  }
- public static void clear(){GLOW.clear();for(var fx:PULSES.values())fx.close();PULSES.clear();PULSE_AT.clear();closeSandstorm();weatherWorld=null;for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
+ public static void clear(){HELD.clear();GLOW.clear();for(var fx:PULSES.values())fx.close();PULSES.clear();PULSE_AT.clear();closeSandstorm();weatherWorld=null;for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
  /** The widening's scratch corners and centre (the render thread's own: no allocation per frame). */
  private static final Vector3f[] GLOW_CORNER={new Vector3f(),new Vector3f(),new Vector3f(),new Vector3f()};
  private static final Vector3f GLOW_CENTRE=new Vector3f();
@@ -337,6 +358,7 @@ public final class JakEffects {
     drawnSandVertices=drawnVertices;
    }
   }
+  release(now);
   var it=OWNERS.entrySet().iterator();
   while(it.hasNext()){
    var entry=it.next();Owner fx=entry.getValue();

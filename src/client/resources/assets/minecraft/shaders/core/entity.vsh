@@ -8,6 +8,7 @@
 #include <minecraft:dynamictransforms.glsl>
 #include <minecraft:projection.glsl>
 #include <minecraft:sample_lightmap.glsl>
+#include <jakmc:emerc.glsl>
 
 layout(location = 0) in vec3 Position;
 layout(location = 1) in vec4 Color;
@@ -84,10 +85,7 @@ void main() {
     texCoord0 = UV0;
 
 #ifdef JAK_ENVMAP
-    vec3 jakView = normalize(Position), jakNormal = length(Normal) > 0.0 ? normalize(Normal) : Normal;
-    vec3 jakReflect = jakView - 2.0 * dot(jakView, jakNormal) * jakNormal;
-    float jakM = 2.0 * sqrt(jakReflect.x * jakReflect.x + jakReflect.z * jakReflect.z + (jakReflect.y + 1.0) * (jakReflect.y + 1.0));
-    jakEnvCoord = jakM > 0.0 ? jakReflect.xz / jakM + 0.5 : vec2(0.5);
+    jakEnvCoord = jak_emerc_st(ModelViewMat, Position, Normal);
 #endif
 
 #ifdef APPLY_TEXTURE_MATRIX

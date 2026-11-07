@@ -14,13 +14,14 @@ layout(location = 0) in float sphericalVertexDistance;
 layout(location = 1) in float cylindricalVertexDistance;
 layout(location = 6) in vec2 texCoord0;
 layout(location = 7) in vec2 texCoord1;
+layout(location = 8) in float shineAmount;
 
 #ifndef OIT_ALPHA_ONLY
 layout(location = 0) out vec4 fragColor;
 #endif
 
 void main() {
-    vec3 shine = texture(Sampler0, texCoord0).rgb * texture(Sampler1, texCoord1).a * 2.0;
+    vec3 shine = texture(Sampler0, texCoord0).rgb * texture(Sampler1, texCoord1).a * 2.0 * shineAmount;
     if (max(shine.r, max(shine.g, shine.b)) < 0.001) {
         discard;
     }

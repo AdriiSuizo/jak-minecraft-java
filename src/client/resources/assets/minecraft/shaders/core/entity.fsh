@@ -93,6 +93,7 @@ void main() {
     #ifdef JAK_ENVMAP
     // jak_envmap.fsh: the map's colour (GltfModel has its tint in it) twice over by the base's alpha (128 one), added
     // after the fog. The original's follows the level's light (foreground.gc current-env-color): here the lightmap's.
+    // stand-in: the lightmap (not in emerc.frag).
     vec3 jakShine = texture(Sampler3, jakEnvCoord).rgb * color.a * 2.0 * lightMapColor.rgb;
     // An OPAQUE material is drawn whole: that alpha is the shine's strength, not cover (read as cover, the ammo's
     // magazines went see-through where the result is blended, in the hotbar and on the ground; Adrii 06/11).
@@ -113,6 +114,11 @@ void main() {
     vec4 faceVertexColor = gl_FrontFacing ? vertexPerFaceColorFront : vertexPerFaceColorBack;
     #else
     vec4 faceVertexColor = vertexColor;
+    #endif
+
+    #ifdef JAK_ENVMAP
+    // The vertex alpha is GltfModel's foreground.gc t-amount.
+    jakShine *= faceVertexColor.a;
     #endif
 
     #ifdef DISSOLVE

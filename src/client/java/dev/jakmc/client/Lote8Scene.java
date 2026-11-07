@@ -51,7 +51,7 @@ final class Lote8Scene {
     private static BlockPos base;
     private static volatile InputScene.CameraView view;
     private static final JsonObject result=new JsonObject();
-    private static final JsonArray dive=new JsonArray(),launch=new JsonArray(),jump=new JsonArray();
+    private static final JsonArray dive=new JsonArray(),launch=new JsonArray(),jump=new JsonArray(),flight=new JsonArray();
     private static final LinkedHashSet<String> launchClips=new LinkedHashSet<>(),ledgeStates=new LinkedHashSet<>();
     private static final Map<Integer,String> clips=new HashMap<>();
     private static final Map<Integer,Integer> flips=new HashMap<>();
@@ -79,7 +79,7 @@ final class Lote8Scene {
     static void start(Minecraft client){
         if(client.player==null||client.getSingleplayerServer()==null)throw new IllegalStateException("Open the development world");
         owner=client.player.getUUID();tick=0;result.entrySet().clear();item=null;peak=0;
-        for(var a:new JsonArray[]{dive,launch,jump})while(!a.isEmpty())a.remove(0);
+        for(var a:new JsonArray[]{dive,launch,jump,flight})while(!a.isEmpty())a.remove(0);
         launchClips.clear();ledgeStates.clear();clips.clear();flips.clear();enemies.clear();
         pause=client.options.pauseOnLostFocus;client.options.pauseOnLostFocus=false;
         client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
@@ -171,11 +171,21 @@ final class Lote8Scene {
         if(t==805){view=null;onServer(c,p->{var s=at(-22,.24,0);p.teleportTo(s.x,s.y,s.z);});}
         if(t==830)onServer(c,p->{result.addProperty("blue_eco",JakPlayers.blueEco(p));p.setHealth(p.getMaxHealth());health=p.getHealth();put(p,-22,JakEcoLauncher.TOP+.02,6,180);});
         if(t==836)capture(c,"lote8-timer-full.png");
-        if(t==838){look(at(-13,6,12),at(-22,4,6));onServer(c,p->JakPlayers.probeInput(p,1,1,0));}
+        c.getFramerateLimitTracker().onInputReceived();
+        if(t==838){view=null;onServer(c,p->JakPlayers.probeInput(p,1,1,0));
+            long start=System.nanoTime();
+            dev.jakmc.client.model.JakRenderer.frameTrace=(pose2,frame)->{
+                var row=new JsonArray();row.add((System.nanoTime()-start)/100_000/10.0);row.add(pose2.clip());row.add(Math.round(frame*100)/100f);
+                var shown=JakPoses.presented();row.add(shown==null?-1:Math.round((shown.y-base.getY())*1000)/1000.0);
+                row.add(dev.jakmc.client.model.JakRenderer.traceStateY-base.getY());row.add(dev.jakmc.client.model.JakRenderer.traceCameraY-base.getY());
+                row.add(dev.jakmc.client.model.JakRenderer.traceChestY);row.add(c.gameRenderer.mainCamera().xRot());
+                synchronized(flight){flight.add(row);}
+            };
+        }
+        if(t==1000)dev.jakmc.client.model.JakRenderer.frameTrace=null;
         if(t==842)onServer(c,p->JakPlayers.probeInput(p,0,0,0));
         if(t>=838&&t<1040&&pose!=null){launchClips.add(pose.clip());peak=Math.max(peak,c.player.getY()-base.getY());}
         if(t>=838&&t<1040&&t%10==0)sample(c,launch,t,null);
-        if(t>=840&&t<900){var jak=c.player.position();look(jak.add(3,1.5,3),jak.add(0,1,0));}
         if(t==846||t==850||t==854||t==860||t==870||t==880||t==890)capture(c,"lote8-launch-"+t+".png");
         if(t==1040){view=null;capture(c,"lote8-timer-later.png");
             if(pose!=null&&pose.raw().get("ecoTimer") instanceof JsonArray timer)result.addProperty("timer_left",timer.get(1).getAsFloat());
@@ -220,11 +230,17 @@ final class Lote8Scene {
             onServer(c,p->JakPlayers.probeInput(p,1,1,0));
         }
         if(t==1324)onServer(c,p->JakPlayers.probeInput(p,0,0,0));
+        // Jak's shine, close and from where the hair's has gone.
+        if(t==1358){var jak=c.player.position();look(jak.add(1.6,1.6,1.6),jak.add(0,1.3,0));}
+        if(t==1361)capture(c,"lote8-jak-close.png");
+        if(t==1363){var jak=c.player.position();look(jak.add(4,2.5,4),jak.add(0,1.2,0));}
+        if(t==1366)capture(c,"lote8-jak-far.png");
         if(t==1370){
             dev.jakmc.client.model.JakRenderer.frameTrace=null;
             view=null;
             onServer(c,p->{
                 synchronized(jump){result.add("jump",jump);}
+                synchronized(flight){result.add("flight",flight);}
                 result.add("dive",dive);result.add("launch",launch);
                 var seen=new JsonArray();launchClips.forEach(seen::add);result.add("launch_clips",seen);
                 var states=new JsonArray();ledgeStates.forEach(states::add);result.add("ledge_states",states);
