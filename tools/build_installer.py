@@ -41,6 +41,8 @@ def main():
     # The binaries must not name this machine's folders: panics keep source paths, the linker the debug file's.
     os.environ['CARGO_ENCODED_RUSTFLAGS']=f'--remap-path-prefix={Path.home()}=~\x1f-Clink-arg=/PDBALTPATH:%_PDB%'
     run(['cargo','build','--release','--locked','--manifest-path','tools/content-exporter/Cargo.toml'])
+    # Gradle takes its library as up to date: built here, with these flags.
+    run(['cargo','build','--release','--locked','--manifest-path','native/Cargo.toml','-p','jak-jni'])
     run([ROOT/'gradlew.bat','distributionJar','--no-daemon','--console=plain'])
     payload=STAGE/'payload';payload.mkdir(parents=True,exist_ok=True)
     copy(ROOT/f'build/libs/jak-minecraft-java-{props["version"]}-installer-code.jar',payload/'jakmc-code.jar')
