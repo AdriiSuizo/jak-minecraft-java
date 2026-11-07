@@ -8,7 +8,7 @@ installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installe
 class InstallerChecks(unittest.TestCase):
     def test_slimming_keeps_named_models_and_never_enters_a_junction(self):
         with tempfile.TemporaryDirectory() as temp:
-            payload=Path(temp)/'payload';payload.mkdir();(payload/'model-tokens.txt').write_text('sidekick\ncitizen-\n')
+            payload=Path(temp)/'payload';payload.mkdir();(payload/'model-tokens.txt').write_text('sidekick\ncitizen-\nwhole-lod0\n')
             old=installer.PAYLOAD;installer.PAYLOAD=payload
             try:
                 root=Path(temp)/'export';level=root/'levels/a';level.mkdir(parents=True);(root/'collision').mkdir()
