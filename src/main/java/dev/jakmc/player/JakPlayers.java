@@ -116,6 +116,8 @@ public final class JakPlayers {
         }
     }
     public static boolean active(Entity player){return player.getAttachedOrCreate(JakData.ENABLED)&&!player.isPassenger()&&player.isAlive();}
+    /** Hanging from a ledge, or climbing up or letting go of it (target-edge-grab and its two ways out). */
+    public static boolean hanging(Entity player){var s=LIVE.get(player.getUUID());return s!=null&&s.lastState.startsWith("edge-grab");}
     public static void chooseMode(ServerPlayer player,boolean enabled){
         player.setAttached(JakData.ENABLED,enabled);
         player.setAttached(JakData.MODE_SELECTED,true);

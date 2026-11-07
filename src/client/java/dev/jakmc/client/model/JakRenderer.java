@@ -23,6 +23,9 @@ public final class JakRenderer {
     private static final String[] FIRE_BODY={"jakb-gun-red-fire","jakb-gun-red-fire-2","jakb-gun-red-fire","jakb-gun-yellow-fire","jakb-gun-yellow-fire","jakb-gun-yellow-fire-3","jakb-gun-blue-fire-single","jakb-gun-blue-fire-2","jakb-gun-blue-fire-single","jakb-gun-dark-fire","jakb-gun-dark-fire","jakb-gun-dark-fire"};
     private static final String[] FIRE_GUN={"gun-gun-red-fire","gun-gun-red-fire-2","gun-gun-red-fire-3","gun-gun-yellow-fire","gun-gun-yellow-fire-2","gun-gun-yellow-fire-3","gun-gun-blue-fire-single","gun-gun-blue-fire-2","gun-gun-blue-fire-3-single","gun-gun-dark-fire","gun-gun-dark-fire-2","gun-gun-dark-fire-3"};
     private static GltfModel body,daxter,board,gun,wings,shield;
+    private static boolean launchLoaded;
+    /** Scenes: each drawn frame's pose and clip frame, to measure how evenly an animation plays. */
+    public static volatile java.util.function.BiConsumer<JakPoses.Pose,Float> frameTrace;
     private static GltfModel cinematicBody,cinematicDaxter,cinematicDark;
     private static final Map<Entity,JakChannels.Transition> transitions=new WeakHashMap<>();
     private static final Map<Entity,JakCloth> clothes=new WeakHashMap<>();
@@ -272,10 +275,12 @@ public final class JakRenderer {
                 daxPose=JakChannels.loop(daxter,ice?"daxter-stance-loop":"daxter-"+clip.substring(5),age);
                 }
             }else{
+                if(pose.clip().startsWith("jakb1-launch-"))loadLaunch();
                 skeleton=JakChannels.sample(body,false,pose,boardFrame,frame);
-                daxPose=JakChannels.sample(daxter,true,pose,boardFrame,frame);
+                daxPose=JakChannels.sample(daxter,true,pose,boardFrame,JakChannels.sidekickFrame(body,daxter,pose.clip(),frame));
             }
         }
+        if(frameTrace!=null)frameTrace.accept(pose,frame);
         if(mounted||flight!=null)transitions.remove(actor);
         else{
             var next=new JakChannels.Pair(skeleton,daxPose);
@@ -613,6 +618,18 @@ public final class JakRenderer {
             if(!body.hasClip("jakb1-ice-skate"))throw new IllegalStateException("Original Jak 1 ice joint tracks are unavailable");
         }
         iceLoaded=true;
+    }
+
+    /** target.gc 'launch: Jak 1's launch-jump and its loop on Jak and on Daxter, whose rigs share their joints' names. */
+    private static void loadLaunch(){
+        if(launchLoaded)return;
+        launchLoaded=true;
+        loadJak1Rig();
+        body.retargetClips(jak1Rig,jak1Rest,jakRest,"eichar-launch-");
+        try{
+            var sidekick=new GltfModel(FlutMaterial.jak1().resolve("levels/common/sidekick-lod0.glb"),"original_sidekick");
+            daxter.retargetClips(sidekick,sidekick.pose("sidekick-stance-loop",0),daxter.pose("daxter-stance-loop",0),"sidekick-launch-");
+        }catch(IOException failure){throw new java.io.UncheckedIOException(failure);}
     }
 
     private static void loadJak1Rig(){

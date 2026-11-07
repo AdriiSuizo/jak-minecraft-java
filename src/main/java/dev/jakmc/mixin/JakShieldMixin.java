@@ -23,6 +23,11 @@ abstract class JakShieldMixin {
         if((Object)this instanceof ServerPlayer player&&JakPlayers.active(player)
                 &&(source.is(net.minecraft.world.damagesource.DamageTypes.LAVA)||source.is(net.minecraft.world.damagesource.DamageTypes.IN_FIRE)))
             result.setReturnValue(false);
+        // Rust interaction.rs in_wall: Jak smothers with the point of his eyes in a full block, not with the box round it that
+        // Minecraft tests. Adrii 07/11: hanging on a ledge, and at the corner of a block, that box hurt him.
+        if((Object)this instanceof ServerPlayer player&&JakPlayers.active(player)&&source.is(net.minecraft.world.damagesource.DamageTypes.IN_WALL)
+                &&(JakPlayers.hanging(player)||!dev.jakmc.player.JakRescue.eyesBuried(player)))
+            result.setReturnValue(false);
     }
     @Inject(method="hurtServer",at=@At("RETURN"))
     private void jakmc$reaction(ServerLevel level,DamageSource source,float amount,CallbackInfoReturnable<Boolean> result){

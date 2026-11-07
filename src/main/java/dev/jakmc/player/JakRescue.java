@@ -170,6 +170,11 @@ public final class JakRescue {
         return Block.isShapeFullBlock(level.getBlockState(pos).getCollisionShape(level,pos));
     }
 
+    /** minecraft_game/src/interaction.rs in_wall: the point of his eyes in a full block. */
+    public static boolean eyesBuried(ServerPlayer p){
+        return Boolean.TRUE.equals(smothers(p.level(),p.getEyePosition(),0));
+    }
+
     enum Footing { SOLID, OPEN, HAZARD, UNKNOWN }
     /** minecraft_terrain/src/safe_spot.rs HAZARDS. */
     static final String[] HAZARDS={"water","lava","dark_eco","fire","magma","cactus","powder_snow","sweet_berry","leaves",

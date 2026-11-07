@@ -1338,7 +1338,10 @@ impl Particles {
                 if let Some(timer) = overrides.timer {
                     p.timer = timer.trunc();
                 }
-                p.floor = floor(p.pos);
+                // (None leaves what its birth gave it: part 756's water level, or Jak's bubbles flew on into the sky. Adrii 07/11.)
+                if let Some(under) = floor(p.pos) {
+                    p.floor = Some(under);
+                }
             }
         }
     }

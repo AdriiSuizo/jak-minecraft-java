@@ -580,8 +580,14 @@ impl Jak {
                 if !stuck {
                     let c = &self.control;
                     let fall = c.gravity_normal.dot(c.last_trans_any_surf - c.trans);
+                    if self.chan.is_any(&[anim::LAUNCH1_JUMP, anim::LAUNCH1_JUMP_LOOP]) {
+                        // `target-hit-ground` off a launcher: `group-blue-hit-ground-effect`, and no fall, however high it threw him.
+                        let (at, basis) = (self.control.trans, glam::Mat3::IDENTITY);
+                        if let Some(particles) = self.particles.as_mut() {
+                            particles.spawn("group-blue-hit-ground-effect", at, basis);
+                        }
                     // (Landing with his feet in water takes no fall either: Minecraft's rule, Adrii 06/11.)
-                    if FALL_FAR < fall && c.status & status::ON_WATER == 0 && !self.feet_in_water() {
+                    } else if FALL_FAR < fall && c.status & status::ON_WATER == 0 && !self.feet_in_water() {
                         return Some(State::HitGroundHard { height: fall });
                     }
                     self.events.push(Event::Land);
@@ -1044,7 +1050,7 @@ impl Jak {
                 if double { None } else { self.slide_down_test() }
             }
             State::HighJump { .. } | State::DuckHighJumpJump { .. } => {
-                let stuck_after = if self.chan.is(anim::JUMP_LOOP) {
+                let stuck_after = if self.chan.is_any(&[anim::JUMP_LOOP, anim::LAUNCH1_JUMP_LOOP]) {
                     15
                 } else {
                     -1
@@ -1429,7 +1435,9 @@ impl Jak {
         self.pre_collide_setup();
         self.foot_step_up(world);
         self.integrate_and_collide(world);
-        if matches!(self.state, State::Walk | State::Stance | State::DuckWalk { .. }) {
+        // (Swimming he is in `State::Stance`: settled on the floor, the bottom held him down whatever he pressed, and he
+        // drowned there. Adrii 07/11.)
+        if matches!(self.state, State::Walk | State::Stance | State::DuckWalk { .. }) && self.swim.is_none() {
             if let Some(limit)=self.foot_smooth_step {self.terrain_settle(world,limit);}
         }
         self.bend_gravity();

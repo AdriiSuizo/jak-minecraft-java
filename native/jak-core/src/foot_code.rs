@@ -300,6 +300,8 @@ impl Jak {
                     let ch = self.chan;
                     let landing = ch.is_any(&[
                         anim::JUMP_LOOP,
+                        anim::LAUNCH1_JUMP,
+                        anim::LAUNCH1_JUMP_LOOP,
                         anim::ROLL_FLIP,
                         anim::ATTACK_FROM_JUMP_END,
                         anim::ATTACK_UPPERCUT,
@@ -681,8 +683,9 @@ impl Jak {
                     if !self.ja_wait() {
                         return None;
                     }
-                    let to = self.aframe(anim::DUCK_HIGH_JUMP, 16.0);
-                    self.ja_set(anim::DUCK_HIGH_JUMP, NumFunc::seek_to(to, 1.0), 0.0);
+                    // `target-duck-high-jump`'s 'launch: Jak 1's `eichar-launch-jump` (Adrii 07/11: his, and Daxter's, not Jak 3's).
+                    let to = self.aframe(anim::LAUNCH1_JUMP, 16.0);
+                    self.ja_set(anim::LAUNCH1_JUMP, NumFunc::seek_to(to, 1.0), 0.0);
                     self.goto(1);
                 }
                 0 => {
@@ -740,7 +743,12 @@ impl Jak {
                     if flop {
                         self.ja_push(seconds(0.5));
                     }
-                    self.ja_set(anim::JUMP_LOOP, NumFunc::Loop { rate: 1.0 }, 0.0);
+                    if kind == HighJump::Launch {
+                        // `(ja-no-eval :group! eichar-launch-jump-loop-ja :num! (loop! f28-0))`.
+                        self.ja_set(anim::LAUNCH1_JUMP_LOOP, NumFunc::Loop { rate: self.code.x }, 0.0);
+                    } else {
+                        self.ja_set(anim::JUMP_LOOP, NumFunc::Loop { rate: 1.0 }, 0.0);
+                    }
                     self.goto(3);
                 }
                 _ => return self.ja_loop(),
@@ -781,7 +789,7 @@ impl Jak {
                         self.ja_push(seconds(0.05));
                         self.ja_play(anim::LIGHTJAK_SWOOP_LAND, 1.0);
                         self.goto(3);
-                    } else if c.is_any(&[anim::JUMP_LOOP, anim::FLOP_JUMP])
+                    } else if c.is_any(&[anim::JUMP_LOOP, anim::LAUNCH1_JUMP, anim::LAUNCH1_JUMP_LOOP, anim::FLOP_JUMP])
                         || (c.is(anim::JUMP) && aframe >= 38.0)
                     {
                         self.ja_push(seconds(0.02));

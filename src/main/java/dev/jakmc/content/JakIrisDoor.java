@@ -46,17 +46,17 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  * the blades. stand-in: the original stays open once opened (entity complete); here it closes again behind
  * him past its close distance (49152, 12 m), as an auto-close door does, with nothing in its way.
  *
- * <p>The same 3x3 door, one block thick (Adrii 06/11), is also Haven's airlock (Jak 2 airlock.gc `com-airlock`): there an outer and an inner
+ * <p>A door one block thick (Adrii 06/11; 2x2 since 07/11) is also Haven's airlock (Jak 2 airlock.gc `com-airlock`): there an outer and an inner
  * door close a passage between two zones while the console loads the next. Adrii 06/11: one door, both faces,
  * each with its own opening and closing (com-airlock-outer and com-airlock-inner back to back). stand-in
  * (Adrii 06/11): in place of want-cross-airlock? (anyone within its 143360 open distance) it opens and shuts
- * to a left click or the pad's L2 (Minecraft's use), and it collides as whole blocks: its nine shut, and open
- * the three a side its leaves slide into (com-airlock-outer's Ldoor and Rdoor end some 1.4 blocks past it).
+ * to a left click or the pad's L2 (Minecraft's use), and it collides as whole blocks shut and not at all open.
+ * Adrii 07/11: 2x2, with no cells at its sides to leave holes in a wall; its leaves slide into what stands there.
  */
 public final class JakIrisDoor extends HorizontalDirectionalBlock implements EntityBlock {
     public static final IntegerProperty PART=IntegerProperty.create("part",0,15);
     public static final BooleanProperty OPEN=BlockStateProperties.OPEN;
-    /** The cell the door is drawn and run from: the bottom row's middle. */
+    /** The cell the door is drawn and run from: the bottom row's second. */
     public static final int ANCHOR=1;
     private static final double OPEN_DISTANCE=8*dev.jakmc.player.JakPlayers.METRE,CLOSE_DISTANCE=12*dev.jakmc.player.JakPlayers.METRE;
     private static final VoxelShape NORTH_SOUTH=Block.box(0,0,6,16,16,10),EAST_WEST=Block.box(6,0,0,10,16,16);
@@ -66,12 +66,12 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
     private static final java.util.Map<Player,Long> CLICKS=new java.util.WeakHashMap<>();
     /** Haven's airlock rather than the iris door. */
     public final boolean airlock;
-    /** Cells across and up (3 for both; Adrii tried the airlock at 4 and kept 3). */
+    /** Cells across and up: 3 the iris door, 2 the airlock (Adrii 07/11). */
     public final int size;
 
     private JakIrisDoor(Properties properties,boolean airlock){
         super(properties);
-        this.airlock=airlock;this.size=3;
+        this.airlock=airlock;this.size=airlock?2:3;
         registerDefaultState(stateDefinition.any().setValue(FACING,Direction.NORTH).setValue(PART,ANCHOR).setValue(OPEN,false));
     }
 
@@ -97,8 +97,7 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
         return Registry.register(BuiltInRegistries.ITEM,key,new DoorItem(door,new Item.Properties().setId(key).useBlockDescriptionPrefix()));
     }
 
-    /** Its cells: the 3x3, and the airlock's three a side its leaves slide into. */
-    public int parts(){return airlock?size*size+2*size:size*size;}
+    public int parts(){return size*size;}
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){builder.add(FACING,PART,OPEN);}
     @Override public BlockState getStateForPlacement(BlockPlaceContext context){
         return defaultBlockState().setValue(FACING,context.getHorizontalDirection().getOpposite());
@@ -107,8 +106,8 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
     private VoxelShape shape(BlockState state,boolean collision){
         boolean open=state.getValue(OPEN);
         if(!airlock)return collision&&open?Shapes.empty():slab(state);
-        // Whole blocks: the side cells where its leaves are when open; the nine shut (open, they still take a click).
-        if(state.getValue(PART)>=size*size)return open?Shapes.block():Shapes.empty();
+        // Whole blocks shut; open, they still take a click. (A cell past its four is left of a 3x3 of an older world.)
+        if(state.getValue(PART)>=parts())return Shapes.empty();
         return collision&&open?Shapes.empty():Shapes.block();
     }
     @Override protected VoxelShape getShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){return shape(state,false);}
@@ -123,13 +122,13 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
         if(last==null||now-last>6)toggle(level,anchor(at,state));
     }
     /** The airlock opened if shut, shut if open; not onto anyone in its way (eco-door door-closing waits on
-     * find-overlapping-shapes; here the click is refused): the nine closing, the side cells opening. */
+     * find-overlapping-shapes; here the click is refused). */
     static boolean toggle(ServerLevel level,BlockPos anchor){
         var state=level.getBlockState(anchor);
         if(!(state.getBlock() instanceof JakIrisDoor door)||state.getValue(PART)!=ANCHOR)return false;
         boolean open=!state.getValue(OPEN);var facing=state.getValue(FACING);
         for(int part=0;part<door.parts();part++){
-            if(part<door.size*door.size==open)continue;
+            if(open)break;
             var at=cell(anchor,facing,part,door.size);var found=level.getBlockState(at);
             if(found.getBlock()!=door||found.getValue(PART)!=part)continue;
             if(!level.getEntities((Entity)null,new AABB(at),e->e.isAlive()&&!e.isSpectator()).isEmpty())return false;
@@ -141,11 +140,9 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
     /** The anchor of the door this cell is part of. */
     public static BlockPos anchor(BlockPos at,BlockState state){
         int part=state.getValue(PART),size=((JakIrisDoor)state.getBlock()).size;
-        if(part>=size*size){int side=part-size*size;return at.below(side%size).relative(state.getValue(FACING).getClockWise(),side<size?size/2+1:-(size/2+1));}
         return at.below(part/size).relative(state.getValue(FACING).getClockWise(),-(part%size-1));
     }
     public static BlockPos cell(BlockPos anchor,Direction facing,int part,int size){
-        if(part>=size*size){int side=part-size*size;return anchor.above(side%size).relative(facing.getClockWise(),side<size?-(size/2+1):size/2+1);}
         return anchor.above(part/size).relative(facing.getClockWise(),part%size-1);
     }
 
@@ -178,7 +175,7 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
             var planned=plan(context,state);
             return planned!=null&&JakAssemblies.placeAll(context.getLevel(),planned);
         }
-        /** Its nine cells where the context would place it, or null where it does not fit. */
+        /** Its cells where the context would place it, or null where it does not fit. */
         public LinkedHashMap<BlockPos,BlockState> plan(BlockPlaceContext context,BlockState state){
             var level=context.getLevel();var player=context.getPlayer();var anchor=context.getClickedPos();
             var facing=state.getValue(FACING);
@@ -189,8 +186,7 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
                 var cell=state.setValue(PART,part).setValue(OPEN,false);
                 boolean free=level.isInWorldBounds(at)&&level.hasChunkAt(at)&&(player==null||level.mayInteract(player,at))
                     &&level.getBlockState(at).canBeReplaced()&&level.isUnobstructed(cell,at,CollisionContext.placementContext(player));
-                // The airlock's side cells only where free: in a wall, the wall is what its leaves slide into.
-                if(!free){if(part<size*size)return null;continue;}
+                if(!free)return null;
                 planned.put(at,cell);
             }
             return planned;

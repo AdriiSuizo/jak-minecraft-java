@@ -363,7 +363,7 @@ public final class GltfModel {
             Posed[] poses=new Posed[original.frames];
             float[] times=new float[poses.length];
             for(int f=0;f<poses.length;f++){
-                poses[f]=retargetRider(source,sourceRest,source.pose(name,f),targetRest);
+                poses[f]=retargetRider(source,sourceRest,source.pose(name,f),targetRest,true);
                 times[f]=f*original.duration/Math.max(1,poses.length-1);
             }
             var channels=new ArrayList<Channel>();
@@ -390,7 +390,9 @@ public final class GltfModel {
     }
 
     /** Transfer a bone's model-space rotation delta from the source standing pose. */
-    Posed retargetRider(GltfModel source,Posed sourceRest,Posed motion,Posed targetRest){
+    Posed retargetRider(GltfModel source,Posed sourceRest,Posed motion,Posed targetRest){return retargetRider(source,sourceRest,motion,targetRest,false);}
+    /** {@code sized}: the clip's own joint scales too (sidekick-launch-jump stretches Daxter's arms by a fifth). */
+    Posed retargetRider(GltfModel source,Posed sourceRest,Posed motion,Posed targetRest,boolean sized){
         Vector3f[] t=new Vector3f[nodes.length],s=new Vector3f[nodes.length];
         Quaternionf[] r=new Quaternionf[nodes.length],world=new Quaternionf[nodes.length];
         for(int i=0;i<nodes.length;i++){
@@ -401,6 +403,7 @@ public final class GltfModel {
             int node=joints[j];
             Integer from=source.namedNodes.get(nodes[node].name);
             if(from==null)continue;
+            if(sized)s[node].mul(motion.scales[from]).div(sourceRest.scales[from]);
             if(nodes[node].name.equals("main")||nodes[node].name.equals("hips")){
                 t[node].add(motion.translations[from]).sub(sourceRest.translations[from]);
             }

@@ -213,3 +213,11 @@ Estados: HECHO · EN CURSO · PENDIENTE · FUERA (HUD/no pedido)
 - HECHO Corrientes: lo que fluye se dibuja como la piscina, sin hoja de flujo que gire.
 - HECHO Destellos: group-dark-eco-pool-nasty salta al azar de la superficie (water-vol-idle).
 - HECHO Al tocarlo: mobs y Jak mueren al instante con group-dark-eco-box-explosion y dcrate-break; los objetos desaparecen con la misma explosión al 30 %.
+
+## Lote 07/11 (3): daño en bordes, buceo, esclusa 2x2, lanzador de Jak 1, burbujas
+
+- Hecho y visto en el juego: agarrarse a un borde y la esquina de un bloque no hacen daño (interaction.rs in_wall: ojos dentro de un bloque entero); buceo solo sube con X; terrain_settle no tira de él nadando (quedaba atrapado en el fondo); esclusa 2x2 sin agujeros; reloj de eco girando como en Rust; salto del lanzador `eichar-launch-jump` y `sidekick-launch-jump` de Jak 1; aterrizaje del lanzador sin daño; explosión de items sobre la superficie del eco; burbujas paran en el nivel del agua.
+- Auditoría de animaciones: 264 clips, 0 diferencias entre nativo y modelo; 5 clips de Daxter con el doble de frames ya escalados (`sidekickFrame`).
+- Sin confirmar: enemigos sin animaciones erráticas (en la escena apenas se movieron); `eichar-launch-jump-loop` no llegó a verse en la escena (el salto aterrizó antes).
+- Daxter se separa hasta 1,9 m del hombro en el salto del lanzador: es la animación original (`sidekick-launch-jump`, main.y de -0,78 a 1,92), no un fallo.
+- Siguiente, auditoría de iluminación (por orden): tintes de la cabeza de cinemática (pelo el doble de brillante), desvanecido del brillo por distancia (`foreground.gc`), coordenadas del mapa de brillo en espacio de cámara (`emerc.vert`), luz local en la pasada de brillo aparte, suelo de luz neutro (decide Adrii), `update-environment-colors` y tablas de mood, luces de Jak que siguen al sol, `color-emissive`.

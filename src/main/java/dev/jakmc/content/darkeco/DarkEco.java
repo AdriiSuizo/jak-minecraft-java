@@ -71,7 +71,7 @@ public final class DarkEco {
         if(last!=null&&now-last<=60)return;
         DIED.put(p.getUUID(),now);
         level.playSound(null,x,y,z,DEATH_SOUND,SoundSource.PLAYERS,1,1);
-        burst(level,new net.minecraft.world.phys.Vec3(x,y,z),false);
+        burst(level,over(level,new net.minecraft.world.phys.Vec3(x,y,z)),false);
         // The group-dark-eco-death burst there, for everyone who sees it.
         var packet=new dev.jakmc.network.JakPackets.DarkEcoDeath(level.dimension().identifier(),new net.minecraft.world.phys.Vec3(x,y,z));
         for(var watcher:net.fabricmc.fabric.api.networking.v1.PlayerLookup.around(level,new net.minecraft.world.phys.Vec3(x,y,z),96))
@@ -82,6 +82,15 @@ public final class DarkEco {
      * Adrii 07/11: what touches it goes as a dark eco crate goes (crates.gc die: group-dark-eco-box-explosion and
      * dcrate-break), an item in a small one.
      */
+    /** Adrii 07/11: what goes off under the surface is hidden by it. A point under it brought over its top. */
+    static net.minecraft.world.phys.Vec3 over(ServerLevel level,net.minecraft.world.phys.Vec3 at){
+        var cell=BlockPos.containing(at).mutable();
+        if(!level.getFluidState(cell).getType().isSame(SOURCE))cell.move(net.minecraft.core.Direction.DOWN);
+        if(!level.getFluidState(cell).getType().isSame(SOURCE))return at;
+        while(level.getFluidState(cell.above()).getType().isSame(SOURCE))cell.move(net.minecraft.core.Direction.UP);
+        double top=cell.getY()+level.getFluidState(cell).getHeight(level,cell)+.5;
+        return at.y>=top?at:new net.minecraft.world.phys.Vec3(at.x,top,at.z);
+    }
     static void burst(ServerLevel level,net.minecraft.world.phys.Vec3 at,boolean small){
         level.playSound(null,at.x,at.y,at.z,BURST_SOUND,SoundSource.BLOCKS,small?.4f:1,small?1.5f:1);
         var packet=new dev.jakmc.network.JakPackets.DarkEcoBurst(level.dimension().identifier(),at,small);
@@ -128,10 +137,10 @@ public final class DarkEco {
         @Override protected void entityInside(Level level,BlockPos pos,Entity entity,InsideBlockEffectApplier effects){
             if(!(level instanceof ServerLevel server))return;
             if(entity instanceof net.minecraft.world.entity.item.ItemEntity item&&item.isAlive()){
-                burst(server,item.position(),true);
+                burst(server,over(server,item.position()),true);
                 item.discard();
             }else if(entity instanceof LivingEntity living&&!(entity instanceof Player)&&living.isAlive()){
-                burst(server,living.getBoundingBox().getCenter(),false);
+                burst(server,over(server,living.getBoundingBox().getCenter()),false);
                 living.hurtServer(server,source(server),10_000);
                 if(living.isAlive())living.kill(server);
             }

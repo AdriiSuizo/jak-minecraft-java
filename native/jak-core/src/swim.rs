@@ -422,9 +422,9 @@ impl Jak {
             self.ja_push(if from_lift { 105 } else { 22 });
             self.chan.set(anim::SWIM_WALK_TO_DOWN, NumFunc::seek(1.0), 0.0);
         }
-        // `target-swim-down` lets go of the dive to `target-swim-up` once it is not held and the state has run its minimum
-        // (the original always rises then; moving and still, here, he keeps his depth).
-        if swim.diving && !swim.rising && swim.entry.is_none() && !down && (up || !moving) && now - swim.state_since >= swim.min_dive {
+        // `target-swim-down` lets go of the dive to `target-swim-up` once it is not held and the state has run its minimum.
+        // The original always rises then; Adrii 07/11: never on his own, only with X. Let go, he keeps his depth.
+        if swim.diving && !swim.rising && swim.entry.is_none() && !down && up && now - swim.state_since >= swim.min_dive {
             swim.rising = true;
             swim.state_since = now;
             swim.lift = Some(Lift { surfaced: false, under: true });
@@ -564,7 +564,7 @@ impl Jak {
         // Under water and going somewhere he leans into it: his dive laid
         // level as he swims along, half way as he dives ahead.
         let tilt = match (swim.diving && swim.entry.is_none() && !swim.rising, moving, down, up) {
-            (true, true, false, false) => std::f32::consts::FRAC_PI_2,
+            (true, _, false, false) => std::f32::consts::FRAC_PI_2,
             (true, true, true, false) => std::f32::consts::FRAC_PI_4,
             _ => 0.0,
         };
@@ -960,10 +960,18 @@ mod tests {
         }
         let sank = -jak.control.transv.y;
         assert!((sank - meters(4.0)).abs() < meters(0.05), "sinks {} m/s", sank / METER);
-        // Letting go: once the dive has run its minimum `target-swim-up` plays `swim-down-to-up` through, then its loop rises
-        // at 4 m/s.
-        for _ in 0..100 {
+        // Let go he keeps his depth (Adrii 07/11: he never rises on his own).
+        for _ in 0..30 {
             jak.step(&crate::PadInput::default(), &mut world, None);
+        }
+        let kept = jak.trans().y;
+        for _ in 0..120 {
+            jak.step(&crate::PadInput::default(), &mut world, None);
+        }
+        assert!(!jak.swim.unwrap().rising && (jak.trans().y - kept).abs() < 1.0, "rose {} on his own", jak.trans().y - kept);
+        // With X, `target-swim-up` plays `swim-down-to-up` through, then its loop rises at 4 m/s.
+        for _ in 0..100 {
+            jak.step(&crate::PadInput { held: button::X, ..Default::default() }, &mut world, None);
             if jak.swim.unwrap().rising {
                 break;
             }
@@ -992,6 +1000,66 @@ mod tests {
         }
         let rise = jak.control.transv.y;
         assert!(rise <= meters(4.1), "settles at {} m/s", rise / METER);
+    }
+
+    /// Adrii 07/11: on the bottom X did nothing and he drowned there: the swim's rise has to leave the floor.
+    #[test]
+    fn x_lifts_him_off_the_bottom() {
+        let (mut jak, block) = floating();
+        let mut world = floor_at(jak.trans().y - 4.0 * block);
+        jak.water = Some(jak.trans().y + 2.0 * block);
+        let square = crate::PadInput { held: button::SQUARE, pressed: button::SQUARE, ..Default::default() };
+        jak.step(&square, &mut world, None);
+        for _ in 0..240 {
+            jak.step(&crate::PadInput { held: button::SQUARE, ..Default::default() }, &mut world, None);
+        }
+        let bottom = jak.trans().y;
+        assert!(jak.swim.unwrap().diving && jak.control.status & crate::control::status::ON_GROUND != 0, "not on the bottom");
+        for _ in 0..120 {
+            jak.step(&crate::PadInput { held: button::X, ..Default::default() }, &mut world, None);
+        }
+        assert!(jak.trans().y > bottom + 2.0 * block, "rose {} blocks", (jak.trans().y - bottom) / block);
+    }
+
+    /// The same in a pit of block faces, pushed against its wall first.
+    #[test]
+    fn x_lifts_him_off_the_bottom_of_a_pit_of_blocks() {
+        let (mut jak, block) = floating();
+        let pat = crate::collide::Pat { mode: crate::collide::PatMode::Ground, ..Default::default() };
+        let wall = crate::collide::Pat { mode: crate::collide::PatMode::Wall, ..Default::default() };
+        let y0 = jak.trans().y - 3.0 * block;
+        let mut tris = Vec::new();
+        let mut quad = |q: [Vec3; 4], pat| {
+            tris.push(crate::collide::Tri { v: [q[0], q[1], q[2]], pat });
+            tris.push(crate::collide::Tri { v: [q[0], q[2], q[3]], pat });
+        };
+        for x in -4..4 {
+            for z in -4..4 {
+                let (a, b) = (x as f32 * block, z as f32 * block);
+                quad([Vec3::new(a, y0, b), Vec3::new(a, y0, b + block), Vec3::new(a + block, y0, b + block), Vec3::new(a + block, y0, b)], pat);
+            }
+            for y in 0..6 {
+                let (a, h, far) = (x as f32 * block, y0 + y as f32 * block, 2.0 * block);
+                quad([Vec3::new(a, h, far), Vec3::new(a, h + block, far), Vec3::new(a + block, h + block, far), Vec3::new(a + block, h, far)], wall);
+            }
+        }
+        let mut world = Floor(tris);
+        jak.water = Some(jak.trans().y + 1.0 * block);
+        jak.step(&crate::PadInput { held: button::SQUARE, pressed: button::SQUARE, ..Default::default() }, &mut world, None);
+        for _ in 0..200 {
+            jak.step(&crate::PadInput { held: button::SQUARE, ..Default::default() }, &mut world, None);
+        }
+        for _ in 0..120 {
+            jak.step(&crate::PadInput { left: [0.0, 1.0], ..Default::default() }, &mut world, None);
+        }
+        for _ in 0..30 {
+            jak.step(&crate::PadInput::default(), &mut world, None);
+        }
+        let bottom = jak.trans().y;
+        for _ in 0..120 {
+            jak.step(&crate::PadInput { held: button::X, ..Default::default() }, &mut world, None);
+        }
+        assert!(jak.trans().y > bottom + 1.5 * block, "rose {} blocks", (jak.trans().y - bottom) / block);
     }
 
     /// A floor under the water: one big quad at `y`.
@@ -1031,13 +1099,13 @@ mod tests {
         assert_eq!(sounds, 1, "one swim-flop");
         assert!(jak.chan.is(anim::SWIM_DOWN));
         assert!(jak.control.transv.y <= -meters(3.9), "dives at {} m/s", jak.control.transv.y / METER);
-        // It holds the dive 0.4 s without the button, then rises.
+        // It holds the dive 0.4 s without the button, and rises when X says so.
         for _ in 0..12 {
             jak.step(&crate::PadInput::default(), &mut world, None);
         }
         assert!(jak.swim.unwrap().diving && !jak.swim.unwrap().rising, "let go of the dive before its minimum");
         for _ in 0..30 {
-            jak.step(&crate::PadInput::default(), &mut world, None);
+            jak.step(&crate::PadInput { held: button::X, ..Default::default() }, &mut world, None);
         }
         assert!(jak.swim.unwrap().rising, "never rose");
     }

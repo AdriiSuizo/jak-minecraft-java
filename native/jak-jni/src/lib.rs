@@ -307,6 +307,13 @@ pub fn configure_root(root:&std::path::Path)->Result<jint,String>{
   }
   if let Some(active)=root.ancestors().find(|p|p.file_name().is_some_and(|n|n=="active")){
    let raw_jak1=active.join("jak1/data/decompiler_out/jak1/raw_obj");
+   // target.gc: 'launch's own clips, Jak 1's (Adrii 07/11). Daxter's and the joints come from the rigs in JakRenderer.
+   if let Ok(data)=std::fs::read(raw_jak1.join("eichar-ag.go")){
+    authored.extend(art_group::read_jak1(&data).into_iter().filter_map(|(name,art)|{
+     let suffix=name.strip_prefix("eichar-launch-jump")?;
+     Some((format!("jakb1-launch-jump{suffix}"),art))
+    }));
+   }
    for group in ["flut","ice"] {
     if let Ok(data)=std::fs::read(raw_jak1.join(format!("eichar-{group}+0-ag.go"))){
      let prefix=format!("eichar-{group}-");
@@ -589,7 +596,13 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    let mut delta=j.chan.frame-before_frame;
    if frame_period>0. {delta-=(delta/frame_period).round()*frame_period;}
    (delta/(steps as f32/60.)).clamp(-240.,240.)
-  } else { 0. };
+  } else {
+   // A clip begun within this tick goes on at its own rate: at 0 it stood a tick at each change (Adrii 07/11, the jump).
+   match j.chan.func {
+    jak_core::anim::NumFunc::Seek{rate,..}|jak_core::anim::NumFunc::Loop{rate}=>(rate*j.anims.info(j.chan.anim).speed*60.).clamp(0.,240.),
+    _=>0.
+   }
+  };
   let state_age=(j.time-j.state_time) as f32/300.;
   let board_pose=s.board_started.map(|started|{
    use jak_core::{State,anim::BOARD_TURN,board_anim::TURN_FRAMES};
@@ -906,6 +919,39 @@ mod water_with_real_data {
   assert_eq!((spin,punch),(0,0));
  }
 
+ /// Audit: each clip's frames and rate as the core plays them, to set against what the models hold.
+ #[test]
+ fn dump_clip_rates(){
+  let Some(jak)=jak_in_water(4.) else{return;};
+  let mut out=String::new();
+  for name in jak_core::anim::NAMES.iter(){
+   let a=jak_core::anim::Anim::by_name(name).unwrap();let i=jak.anims.info(a);
+   out+=&format!("{name} {} {}
+",i.frames,i.speed);
+  }
+  if let Ok(path)=std::env::var("JAKMC_CLIP_DUMP"){std::fs::write(path,out).unwrap();}
+ }
+
+ /// Adrii 07/11: he drowned on the bottom. With the real animations, X takes him up from it.
+ #[test]
+ fn x_lifts_him_off_the_bottom(){
+  use jak_core::pad::button::{SQUARE,X};
+  let Some(mut jak)=jak_in_water(4.) else{eprintln!("no exports");return;};
+  let mut world=floor();let mut rotations=Vec::new();
+  jak.control.trans.y=4.*BLOCK-jak_core::swim::SWIM_HEIGHT*jak.drawn_size.unwrap();
+  for _ in 0..30 {sample(&mut jak,&mut rotations);jak.step(&PadInput::default(),&mut world,None);}
+  for f in 0..300 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput{held:SQUARE,pressed:if f==0{SQUARE}else{0},..Default::default()},&mut world,None);
+  }
+  let bottom=jak.trans().y;
+  for f in 0..240 {
+   sample(&mut jak,&mut rotations);
+   jak.step(&PadInput{held:X,pressed:if f==0{X}else{0},..Default::default()},&mut world,None);
+  }
+  assert!(jak.trans().y>bottom+2.*BLOCK,"rose {} blocks",(jak.trans().y-bottom)/BLOCK);
+ }
+
  /// Letting go of the dive: `target-swim-up` plays `jakb-swim-down-to-up` through (its motion lifting him), sounds
  /// "swim-surface" as its artist frame 240 comes or his head is out, goes out to the stance when his feet are over the
  /// float line (from frame 222 of it), and the stance plays `swim-up-to-stance` before it loops.
@@ -928,7 +974,7 @@ mod water_with_real_data {
   let (mut seen,mut surface_sounds,mut first_surface,mut settled,mut bubbles)=(std::collections::BTreeSet::new(),0,None,false,Vec::new());
   for f in 0..900 {
    sample(&mut jak,&mut rotations);
-   jak.step(&PadInput::default(),&mut world,None);
+   jak.step(&PadInput{held:if jak.swim.is_some_and(|s|s.diving&&!s.rising){jak_core::pad::button::X}else{0},..Default::default()},&mut world,None);
    seen.insert(jak.chan.anim.name());
    bubbles.push(jak.bubble_loops());
    for event in jak.take_events(){if let Event::Sound{name:"SWIM_SURFACE",..}=event{surface_sounds+=1;first_surface.get_or_insert((f,jak.chan.aframe_num(&jak.anims),jak.swim.is_some_and(|s|s.lift.is_some())));}}
@@ -1002,10 +1048,10 @@ mod water_with_real_data {
   assert!(age>=jak_core::math::seconds(0.5)&&frame>20,"water-bubbles at frame {frame}, {age} ticks in");
   let (_,live)=loops(&jak,&mut queue,Vec::new());
   assert!(live.get("WATER_BUBBLES").is_some_and(|g|*g>0.99)&&!live.contains_key("SWIM_BUBBLES"),"{live:?}");
-  // Let go and come up: the deep ones fade over 3.2 s after he is at the surface.
+  // X and up: the deep ones fade over 3.2 s after he is at the surface.
   for _ in 0..900 {
    sample(&mut jak,&mut rotations);
-   jak.step(&PadInput::default(),&mut world,None);
+   jak.step(&PadInput{held:if jak.swim.is_some_and(|s|s.diving&&!s.rising){jak_core::pad::button::X}else{0},..Default::default()},&mut world,None);
    let events=jak.take_events();
    loops(&jak,&mut queue,events);
    if !jak.swim.unwrap().diving{break;}

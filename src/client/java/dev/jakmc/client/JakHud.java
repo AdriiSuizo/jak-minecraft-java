@@ -108,7 +108,9 @@ public final class JakHud {
     private static void piece(GuiGraphicsExtractor graphics,float k,float x,float y,float metres,int texture,float deg,int color){
         float size=metres*16*640/512f*k,cx=graphics.guiWidth()+(x*640/512f-640)*k,cy=y*480/416f*k;int side=TIMER_SIZE[texture];
         var pose=graphics.pose();
-        pose.pushMatrix().translate(cx,cy).rotate((float)Math.toRadians(deg)).scale(size/side,size/side);
+        // Jak 1 turns its slices counter-clockwise on screen (sprite3_3d.vert; the Rust port's quad_turned, turned as its
+        // RotateSt turns): the slices drain from the top right round to the plate at the bottom right.
+        pose.pushMatrix().translate(cx,cy).rotate((float)Math.toRadians(-deg)).scale(size/side,size/side);
         graphics.blit(RenderPipelines.GUI_TEXTURED,TIMER[texture],-side/2,-side/2,0,0,side,side,side,side,side,side,color);
         pose.popMatrix();
     }

@@ -45,7 +45,9 @@ public final class JakEnemy extends Monster {
  private final KrimsonGuard guard;
  private final Kermit kermit;
  private State state=State.IDLE;
- private int stateTicks,pathWait,landTicks,windup;
+ private int stateTicks,pathWait,landTicks,windup,airTicks,stillTicks;
+ /** Ticks off the ground and at a stop before they show: a quarter and two fifths of a second. */
+ private static final int AIR_SHOWN=5,STILL_SHOWN=8;
  private int reactionEnds,crabPhase=-1;
  private boolean reactionAirborne;
  /** jak_enemies.rs grunt: thrown as a Fall (the client draws it), down from this tick on its way up again; -1 while still in the air. */
@@ -119,7 +121,8 @@ public final class JakEnemy extends Monster {
  }
  @Override protected void customServerAiStep(ServerLevel level){
   super.customServerAiStep(level);if(guard!=null){guard.tick(level);sounds();return;}if(home==null)home=position();stateTicks++;if(pathWait>0)pathWait--;if(landTicks>0)landTicks--;
-  if(!hopper&&onGround()&&!wasGround&&isAlive())landTicks=Math.max(1,(int)(20*kind.duration(kind.jump[2])));wasGround=onGround();
+  if(!hopper&&onGround()&&!wasGround&&isAlive()&&airTicks>=AIR_SHOWN)landTicks=Math.max(1,(int)(20*kind.duration(kind.jump[2])));wasGround=onGround();
+  airTicks=onGround()?0:airTicks+1;
   LivingEntity target=getTarget();
   if(target!=null&&(!target.isAlive()||target.isSpectator()||target instanceof Player p&&p.isCreative())){setTarget(null);target=null;}
   if(state!=State.HURT&&tickCount%10==0&&target==null){
@@ -172,7 +175,8 @@ public final class JakEnemy extends Monster {
   if(target!=null){
    double distance=Math.sqrt(distanceToSqr(target));boolean visible=getSensing().hasLineOfSight(target);
    getLookControl().setLookAt(target,30,30);
-   if(distance>kind.stop*JakEnemyKind.SCALE||state==State.CHASE&&stateTicks>400){setTarget(null);set(State.GIVE_UP);target=null;}
+   if(distance>kind.stop*JakEnemyKind.SCALE||state==State.CHASE&&stateTicks>400){setTarget(null);if(state!=State.GIVE_UP)set(State.GIVE_UP);target=null;}
+   else if(state==State.GIVE_UP){if(stateTicks>=20*kind.duration(kind.first(kind.model+"-give-up",kind.model+"-give-up-hop")))set(visible?State.NOTICE:State.IDLE);}
    else if((state==State.IDLE||state==State.WALK)&&visible)set(State.NOTICE);
    else if(state==State.NOTICE&&stateTicks>=20*Math.max(.1f,kind.duration(kind.clips[1])))set(State.CHASE);
    else if(state==State.CHASE){
@@ -301,11 +305,14 @@ public final class JakEnemy extends Monster {
    "spydroid-attack-jump":"spydroid-attack-land";
   if(crab&&state==State.ATTACK){animateCrabAttack();return;}
   if(hopper&&windup>0)return;
+  // nav-enemy changes clip with its state, not with each tick of its footing: a step down or a pause of the path
+  // (Adrii 07/11: erratic) leaves the clip on until it lasts.
+  stillTicks=getDeltaMovement().horizontalDistanceSqr()<.0001?stillTicks+1:0;
   if(state==State.CHASE||state==State.WALK){
-   if(!onGround()&&!isInWater()&&!kind.jump[1].isEmpty())c=kind.jump[1];
+   if(airTicks>=AIR_SHOWN&&!isInWater()&&!kind.jump[1].isEmpty())c=kind.jump[1];
    else if(landTicks>0&&!kind.jump[2].isEmpty()){c=kind.jump[2];loops=false;}
    // In water they just float (FloatGoal): their own idle/move clip, no swim loop (Adrii 06/11).
-   else if(getDeltaMovement().horizontalDistanceSqr()<.0001)c=kind.clips[0];
+   else if(stillTicks>=STILL_SHOWN)c=kind.clips[0];
   }
   animate(c,loops,1);
  }

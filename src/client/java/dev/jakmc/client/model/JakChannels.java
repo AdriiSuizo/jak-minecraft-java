@@ -82,7 +82,16 @@ final class JakChannels {
         return rig.poseAtTime(clip,age>=rig.duration(clip)?Float.MAX_VALUE:age);
     }
 
+    /** Five clips (attack-from-stance-run-end and four of Dark Jak's) hold twice Jak's frames on Daxter for the same
+     * length: his the same moment, not the same frame number. */
+    static float sidekickFrame(GltfModel body, GltfModel daxter, String bodyClip, float frame) {
+        int mine = body.frames(bodyClip), his = daxter.frames(clip(daxter, true, bodyClip));
+        return mine > 1 && his > 1 && mine != his ? frame * (his - 1) / (mine - 1) : frame;
+    }
+
     private static String clip(GltfModel rig, boolean sidekick, String bodyClip) {
+        // Jak 1's own, retargeted by name from eichar's and sidekick's rigs (JakRenderer.loadLaunch).
+        if (bodyClip.startsWith("jakb1-launch-")) return (sidekick ? "sidekick-" : "eichar-") + bodyClip.substring(6);
         if (!sidekick || !bodyClip.startsWith("jakb-")) return bodyClip;
         String suffix = bodyClip.substring(5);
         String direct = "daxter-" + suffix;

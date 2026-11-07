@@ -159,8 +159,8 @@ final class CityBlueprint {
             }
         });
         // Adrii 07/11: the tower's and the Krimson station's doors are Haven's airlock (JakIrisDoor): a door in the middle of
-        // each row of gates. A one-block doorway grows into the wall to its three blocks (the leaves slide into the wall,
-        // its side cells are left out), and what a wider gateway has over is walled up with the lintel's block.
+        // each row of gates. A one-block doorway grows into the wall to its two blocks, and what a wider gateway has over
+        // is walled up with the lintel's block.
         gates.forEach((at,base)->{
             Direction facing=base.getValue(BlockStateProperties.HORIZONTAL_FACING);
             Direction lateral=facing.getClockWise();
@@ -171,13 +171,14 @@ final class CityBlueprint {
             int high=1;
             while(high<6&&open(cell(cells,middle.above(high)),gates.containsKey(middle.above(high))))high++;
             var lintel=cell(cells,middle.above(high));
-            int reach=0;
+            int reach=0,back=0;
             while(reach<6&&open(cell(cells,middle.relative(lateral,reach+1)),gates.containsKey(middle.relative(lateral,reach+1))))reach++;
-            for(int side=-reach;side<=reach&&lintel!=null;side++)for(int y=0;y<high;y++){
-                if(Math.abs(side)<=1&&y<3)continue;
+            while(back<6&&open(cell(cells,middle.relative(lateral,-back-1)),gates.containsKey(middle.relative(lateral,-back-1))))back++;
+            for(int side=-back;side<=reach&&lintel!=null;side++)for(int y=0;y<high;y++){
+                if((side==-1||side==0)&&y<2)continue;
                 put(cells,bounds,middle.relative(lateral,side).above(y),lintel);
             }
-            for(int part=0;part<9;part++)put(cells,bounds,JakIrisDoor.cell(middle,facing,part,3),
+            for(int part=0;part<4;part++)put(cells,bounds,JakIrisDoor.cell(middle,facing,part,2),
                 JakIrisDoor.AIRLOCK.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,facing).setValue(JakIrisDoor.PART,part));
         });
         if(palace!=null){

@@ -1,7 +1,7 @@
 //! The animations Jak's states play, by the names the art groups give them.
 use super::Anim;
 
-pub static NAMES: [&str; 302] = [
+pub static NAMES: [&str; 304] = [
     "jakb-attack-from-jump",
     "jakb-attack-from-jump-end",
     "jakb-attack-from-jump-loop",
@@ -293,6 +293,8 @@ pub static NAMES: [&str; 302] = [
     "jakb-lightjak-freeze","jakb-lightjak-freeze-land","jakb-lightjak-shield","jakb-lightjak-shield-end",
     "jakb-darkjak-bomb-pre","jakb-darkjak-bomb","jakb-darkjak-bomb-loop","jakb-darkjak-bomb-land","jakb-darkjak-bomb-end",
     "jakb-darkjak-attack-ice","jakb-darkjak-attack-ice-loop","jakb-darkjak-attack-ice-loop2","jakb-darkjak-attack-ice-end",
+    "jakb1-launch-jump",
+    "jakb1-launch-jump-loop",
 ];
 
 pub const ATTACK_FROM_JUMP: Anim = Anim(0);
@@ -605,3 +607,5 @@ pub const DARKJAK_ATTACK_ICE: Anim = Anim(298);
 pub const DARKJAK_ATTACK_ICE_LOOP: Anim = Anim(299);
 pub const DARKJAK_ATTACK_ICE_LOOP2: Anim = Anim(300);
 pub const DARKJAK_ATTACK_ICE_END: Anim = Anim(301);
+pub const LAUNCH1_JUMP: Anim = Anim(302);
+pub const LAUNCH1_JUMP_LOOP: Anim = Anim(303);

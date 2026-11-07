@@ -61,7 +61,7 @@ public final class IrisDoorRenderer implements BlockEntityRenderer<JakIrisDoor.D
         float depth=flat?size.y:size.z;
         float fit=across>0?cells/across:1;
         // The airlock's two doors share one block of thickness (Adrii 06/11: thinner, same size).
-        float thick=clip.startsWith("com-airlock")&&depth>0?Math.min(fit,.5f/depth):fit;
+        float thick=clip.startsWith("com-airlock")&&depth>0?Math.min(fit,.48f/depth):fit;
         return new Leaf(model,clip,middle,fit,flat,depth,cells,thick,opening,closing,openSounds,closeSounds,gain);
     }
     private static Leaf[] leaves(boolean isAirlock){
@@ -69,11 +69,11 @@ public final class IrisDoorRenderer implements BlockEntityRenderer<JakIrisDoor.D
             if(airlock==null&&!airlockMissing)try{
                 var root=RuntimeConfig.gameAssets("jak2").resolve("levels/ctyfarma");
                 // com-airlock-outer: pre-open 35, lock 45, open 45, pre-open speed 2; its sounds by stretch.
-                var outer=leaf(root.resolve("com-airlock-outer-lod0.glb"),"com-airlock-outer","com-airlock-outer-idle",3,
+                var outer=leaf(root.resolve("com-airlock-outer-lod0.glb"),"com-airlock-outer","com-airlock-outer-idle",2,
                     new float[][]{{45,2},{45,2},{-1,1}},new float[][]{{45,2},{0,1}},
                     new String[]{"jak2/airlock_slider",null,"jak2/airlock_seal","jak2/airlock_hit"},new String[]{"jak2/airlock_open","jak2/airlock_hit",null},AIRLOCK_GAIN);
                 // com-airlock-inner: lock 37, pre-open 65, open 75, pre-open speed 0.9; its gear turning and unlocking.
-                var inner=leaf(root.resolve("com-airlock-inner-lod0.glb"),"com-airlock-inner","com-airlock-inner-idle",3,
+                var inner=leaf(root.resolve("com-airlock-inner-lod0.glb"),"com-airlock-inner","com-airlock-inner-idle",2,
                     new float[][]{{37,.9f},{75,2},{-1,1}},new float[][]{{75,2},{0,1}},
                     new String[]{"jak2/airlock_gear","jak2/airlock_turn","jak2/airlock_unlock",null},new String[]{null,null,null},AIRLOCK_GAIN);
                 airlock=new Leaf[]{outer,inner};
@@ -153,6 +153,8 @@ public final class IrisDoorRenderer implements BlockEntityRenderer<JakIrisDoor.D
         stack.pushPose();
         stack.translate(.5,leaf.cells/2f,.5);
         stack.mulPose(new Matrix4f().rotationY((float)Math.toRadians(-facing.toYRot())));
+        // Two cells across: the door's middle is half a block from its anchor, on the side of its other column.
+        if(leaf.cells%2==0)stack.translate(.5,0,0);
         // Back to back: each door's own depth to its side of the middle.
         if(index==1)stack.mulPose(new Matrix4f().rotationY((float)Math.PI));
         if(leaf.clip.startsWith("com-airlock"))stack.translate(0,0,leaf.depth*leaf.thick*.5f);
