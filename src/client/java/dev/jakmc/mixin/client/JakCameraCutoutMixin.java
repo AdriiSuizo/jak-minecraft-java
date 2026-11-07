@@ -32,6 +32,12 @@ abstract class JakCameraCutoutMixin {
         cir.setReturnValue(distance);
     }
 
+    // As vanilla for a spectator in a block: the section graph can't start from a solid section.
+    @Inject(method="extractRenderState",at=@At("TAIL"))
+    private void jakmc$buriedSections(net.minecraft.client.renderer.state.level.CameraRenderState state,DeltaTracker tracker,CallbackInfo ci){
+        if(JakCameraCutout.buried())state.smartCull=false;
+    }
+
     @Inject(method="update",at=@At("TAIL"))
     private void jakmc$cameraMasks(DeltaTracker tracker,CallbackInfo ci){
         JakCameraCutout.frame((Camera)(Object)this);

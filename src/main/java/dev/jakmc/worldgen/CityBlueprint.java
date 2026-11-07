@@ -4,6 +4,7 @@ import com.google.gson.JsonParser;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import dev.jakmc.JakMod;
 import dev.jakmc.content.JakAssemblies;
+import dev.jakmc.content.JakIrisDoor;
 import dev.jakmc.content.JakKrimsonGate;
 import dev.jakmc.content.JakBlocks;
 import dev.jakmc.content.JakProps;
@@ -157,12 +158,27 @@ final class CityBlueprint {
                 put(cells,bounds,at,part.block().defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,facade.direction()));
             }
         });
+        // Adrii 07/11: the tower's and the Krimson station's doors are Haven's airlock (JakIrisDoor): a door in the middle of
+        // each row of gates. A one-block doorway grows into the wall to its three blocks (the leaves slide into the wall,
+        // its side cells are left out), and what a wider gateway has over is walled up with the lintel's block.
         gates.forEach((at,base)->{
             Direction facing=base.getValue(BlockStateProperties.HORIZONTAL_FACING);
             Direction lateral=facing.getClockWise();
-            boolean left=!gates.containsKey(at.relative(lateral.getOpposite()));
-            boolean right=!gates.containsKey(at.relative(lateral));
-            for(int y=0;y<4;y++)put(cells,bounds,at.above(y),JakKrimsonGate.generationSection(base,y,left,right));
+            if(gates.containsKey(at.relative(lateral.getOpposite())))return;
+            int row=1;
+            while(gates.containsKey(at.relative(lateral,row)))row++;
+            var middle=at.relative(lateral,row/2);
+            int high=1;
+            while(high<6&&open(cell(cells,middle.above(high)),gates.containsKey(middle.above(high))))high++;
+            var lintel=cell(cells,middle.above(high));
+            int reach=0;
+            while(reach<6&&open(cell(cells,middle.relative(lateral,reach+1)),gates.containsKey(middle.relative(lateral,reach+1))))reach++;
+            for(int side=-reach;side<=reach&&lintel!=null;side++)for(int y=0;y<high;y++){
+                if(Math.abs(side)<=1&&y<3)continue;
+                put(cells,bounds,middle.relative(lateral,side).above(y),lintel);
+            }
+            for(int part=0;part<9;part++)put(cells,bounds,JakIrisDoor.cell(middle,facing,part,3),
+                JakIrisDoor.AIRLOCK.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,facing).setValue(JakIrisDoor.PART,part));
         });
         if(palace!=null){
             for(int x=-16;x<6;x++){
@@ -208,6 +224,8 @@ final class CityBlueprint {
         routes.forEach((junction,ways)->streets.put(junction,java.util.Collections.unmodifiableSet(java.util.EnumSet.copyOf(ways))));
         return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),List.copyOf(selected),List.copyOf(posts),bounds,streets);
     }
+
+    private static boolean open(BlockState state,boolean gate){return gate||state==null||state.isAir();}
 
     private static BlockState resolve(String source,TreeSet<String> missing){
         String name=source.split("\\[",2)[0];

@@ -12,7 +12,7 @@ public final class JakMod implements ModInitializer {
   dev.jakmc.content.JakBlocks.initialize();
   dev.jakmc.content.JakBoardAltar.initialize();
   dev.jakmc.content.JakEcoVent.initialize();
-  dev.jakmc.content.JakEcoLauncher.initialize();dev.jakmc.content.JakAmmoCrate.initialize();
+  dev.jakmc.content.JakEcoLauncher.initialize();dev.jakmc.content.JakAmmoCrate.initialize();dev.jakmc.content.JakHutLamp.initialize();
   dev.jakmc.content.JakIrisDoor.initialize();
   dev.jakmc.content.darkeco.DarkEco.initialize();
   dev.jakmc.content.JakProps.initialize();

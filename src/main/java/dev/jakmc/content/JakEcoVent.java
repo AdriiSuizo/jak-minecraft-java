@@ -86,7 +86,7 @@ public final class JakEcoVent extends Block implements EntityBlock {
         TYPE=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,JakData.id("eco_vent"),new BlockEntityType<>(Vent::new,blocks));
         Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB,JakData.id("eco_vents"),
             FabricCreativeModeTab.builder().title(Component.translatable("tab.jakmc.eco_vents")).icon(()->new ItemStack(Color.LIGHT.item))
-                .displayItems((context,out)->{for(var color:Color.values())out.accept(color.item);out.accept(JakEcoLauncher.ITEM);out.accept(JakAmmoCrate.ITEM);out.accept(JakIrisDoor.ITEM);out.accept(JakIrisDoor.AIRLOCK_ITEM);}).build());
+                .displayItems((context,out)->{for(var color:Color.values())out.accept(color.item);out.accept(JakEcoLauncher.ITEM);out.accept(JakAmmoCrate.ITEM);out.accept(JakHutLamp.ITEM);out.accept(JakIrisDoor.ITEM);out.accept(JakIrisDoor.AIRLOCK_ITEM);}).build());
     }
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> states){states.add(OPEN,BREAKING,TOUCHED);}
     @Override protected VoxelShape getShape(BlockState state,BlockGetter level,BlockPos at,CollisionContext context){return color.model()?TOP:NOZZLE;}

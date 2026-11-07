@@ -145,6 +145,8 @@ public final class DevBridge {
                 case "lote3_scene" -> {Lote3Scene.start(client);out.addProperty("scheduled",true);}
                 case "lote4_scene" -> {Lote4Scene.start(client);out.addProperty("scheduled",true);}
                 case "lote5_scene" -> {Lote5Scene.start(client);out.addProperty("scheduled",true);}
+                case "lote6_scene" -> {Lote6Scene.start(client);out.addProperty("scheduled",true);}
+                case "showcase_scene" -> {ShowcaseScene.start(client);out.addProperty("scheduled",true);}
                 case "trees_scene" -> {TreeScene.start(client,dev.jakmc.player.JakPlayers.vector(request.getAsJsonArray("origin")));out.addProperty("scheduled",true);}
                 case "combat_scene" -> {EnemyScene.startCombat(client);out.addProperty("scheduled",true);}
                 case "quit" -> {out.addProperty("stopping",true);client.stop();}

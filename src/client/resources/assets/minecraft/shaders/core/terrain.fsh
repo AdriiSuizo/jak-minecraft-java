@@ -44,6 +44,17 @@ vec4 calculateFinalColor(vec4 color) {
 
 void main() {
     float jakOpacity = 1.0 - jak_terrain_cut(jakSurface);
+    #ifdef JAK_CAP
+    // The eye is in rock (JakCameraCutout.buried): the back faces drawn here are the rock from inside, a dark fill, so a
+    // view through a wall ends on it and never on the sky or the void. Round Jak the fill opens on his place; in the
+    // open, on all that is nearer than he is.
+    bool jakFill = !gl_FrontFacing;
+    if (jakFill) {
+        float jakHole = 1.0 - smoothstep(JakCap.y - JakCap.z, JakCap.y, length(jakSurface - JakMask0.xyz));
+        float jakNear = (1.0 - JakCap.x) * (1.0 - smoothstep(JakCap.w, JakCap.w + 1.5, dot(jakSurface, JakMask1.xyz)));
+        jakOpacity = 1.0 - max(jakHole, jakNear);
+    }
+    #endif
     // Opaque and cutout layers: dithered discard. The translucent layer (ALPHA_CUTOUT 0.1)
     // multiplies its alpha instead.
     bool jakTranslucent = false;
@@ -54,6 +65,11 @@ void main() {
         discard;
     }
     vec4 color = (UseRgss == 1 ? sampleRGSS(Sampler0, texCoord0, 1.0f / TextureSize) : sampleNearest(Sampler0, texCoord0, 1.0f / TextureSize)) * vertexColor;
+    #ifdef JAK_CAP
+    if (jakFill) {
+        color.rgb *= 0.16;
+    }
+    #endif
     if (jakTranslucent) {
         color.a *= jakOpacity;
         if (color.a <= 0.001) {

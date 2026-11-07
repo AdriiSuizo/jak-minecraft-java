@@ -144,7 +144,7 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
         if(part>=size*size){int side=part-size*size;return at.below(side%size).relative(state.getValue(FACING).getClockWise(),side<size?size/2+1:-(size/2+1));}
         return at.below(part/size).relative(state.getValue(FACING).getClockWise(),-(part%size-1));
     }
-    static BlockPos cell(BlockPos anchor,Direction facing,int part,int size){
+    public static BlockPos cell(BlockPos anchor,Direction facing,int part,int size){
         if(part>=size*size){int side=part-size*size;return anchor.above(side%size).relative(facing.getClockWise(),side<size?-(size/2+1):size/2+1);}
         return anchor.above(part/size).relative(facing.getClockWise(),part%size-1);
     }
@@ -164,7 +164,10 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
                 var other=cell(anchor,facing,part,size);
                 if(other.equals(at))continue;
                 var found=level.getBlockState(other);
-                if(found.getBlock()==this&&found.getValue(PART)==part&&found.getValue(FACING)==facing)level.setBlockAndUpdate(other,Blocks.AIR.defaultBlockState());
+                if(found.getBlock()==this&&found.getValue(PART)==part&&found.getValue(FACING)==facing){
+                    level.setBlockAndUpdate(other,Blocks.AIR.defaultBlockState());
+                    level.levelEvent(2001,other,Block.getId(found));
+                }
             }
         }finally{removing=false;}
     }

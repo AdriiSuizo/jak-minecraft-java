@@ -20,11 +20,13 @@ import org.joml.Vector3fc;
  * Not a Jak port: Adrii chose (06/11) the camera of the series "Recreating Baldur's Gate 3's Camera System
  * in UE5" (camera movement, collision, bounds, occlusion masking, environment masks, room collections,
  * fading rooms, fading dynamic objects) to replace the earlier wall cutaway and its hard circle.
- * - Collision (JakCameraProbe): thin walls, fences and leaves are looked through and masked; thick rock,
- *   floors and walls the camera would sit in pull it in, filtered (look-ahead sphere, quick smooth pull-in,
- *   wait, slow ease-out), never letting the near plane touch a block.
- * - Bounds: under a low ceiling (or over a floor) the camera's pitch slides toward the horizontal instead
- *   of diving into Jak's head; the pivot drops out of a ceiling it would touch.
+ * - Collision (JakCameraProbe): Adrii 07/11: the camera goes through walls and rock instead of being pushed
+ *   in; only the ground at Jak's feet stops it (filtered: look-ahead sphere, quick smooth pull-in, wait, slow
+ *   ease-out). With the eye inside rock (buried), the terrain is drawn with its back faces (terrain.fsh
+ *   JAK_CAP): rock seen from inside is a dark fill, so no view through a wall reaches the sky or the void,
+ *   and round Jak the fill opens on his cave or passage.
+ * - Bounds: over a floor the camera's pitch slides toward the horizontal instead of going under it; the pivot
+ *   drops out of a ceiling it would touch.
  * - Mask: a feathered, dithered ellipse around Jak on screen, only on blocks and entities nearer to the
  *   camera than he is, faded in while something hides him (terrain.fsh, entity.fsh, jakmc:camera_mask).
  * - Rooms (JakCameraRoom): indoors, the ceiling and everything above the floor plan, the walls above the
@@ -32,21 +34,27 @@ import org.joml.Vector3fc;
  * The shader data rides in vanilla's Globals UBO (JakCameraFadeUboMixin, JakCameraFadeWriteMixin).
  */
 public final class JakCameraCutout {
-    /** Globals UBO layout (std140 bytes): vanilla ends at 48, then four mask vec4 and two rooms. */
-    public static final int MASK_AT=48,ROOM_AT=112,ROOM_BYTES=32+2*JakCameraRoom.N*4,UBO_END=ROOM_AT+2*ROOM_BYTES;
+    /** Globals UBO layout (std140 bytes): vanilla ends at 48, then five mask vec4 and two rooms. */
+    public static final int MASK_AT=48,ROOM_AT=128,ROOM_BYTES=32+2*JakCameraRoom.N*4,UBO_END=ROOM_AT+2*ROOM_BYTES;
     /** Jak's body for the mask: centre height over the feet, and the ellipse half width/height at his depth. */
     static final double BODY=.95,HALF_WIDTH=.85,HALF_HEIGHT=1.25;
     /** Seconds a room cross-fade takes; mask fade rates (1/s) and how long it stays after the last hit. */
     static final double ROOM_FADE=.35,MASK_IN=12,MASK_OUT=5,MASK_HOLD=.3;
+    /** The ground that stops the camera: what ends this far over Jak's feet (a block's step, a slab). */
+    static final double GROUND=.6;
+    /** Blocks round Jak the fill of rock opens on, feathered over its last CAP_FEATHER. */
+    static final double CAP_REACH=5.5,CAP_FEATHER=1.5;
+    /** How near a box the eye counts as in rock. */
+    static final double BURIED=.3;
 
-    private static final float[] MASK=new float[16];
+    private static final float[] MASK=new float[20];
     private static final float[][] ROOM={new float[8],new float[8]};
     private static final int[][] ROOM_BITS={new int[2*JakCameraRoom.N],new int[2*JakCameraRoom.N]};
 
     private static final JakCameraProbe.Boxes BOXES=new JakCameraProbe.Boxes();
     private static final JakCameraProbe.Result HARD=new JakCameraProbe.Result(),SOFT=new JakCameraProbe.Result();
     private static final JakCameraProbe.Rig RIG=new JakCameraProbe.Rig();
-    private static boolean used,looking;
+    private static boolean used,looking,buried;
     private static long lastReach,lastFrame;
     private static double pivotDrop,pitchOffset,pitchTarget;
     private static Vec3 lastPivot;
@@ -81,6 +89,8 @@ public final class JakCameraCutout {
         return pose!=null&&pose.raw().get("hellcat") instanceof com.google.gson.JsonObject;
     }
 
+    /** The eye is inside rock: the terrain is drawn with its fill (JakCameraBuriedMixin), and the section graph can't start from it. */
+    public static boolean buried(){return buried;}
     /** The pivot the camera now orbits (dropped out of a ceiling), or null. Read by JakCameraCutoutMixin. */
     public static Vec3 placedPivot(){return placedPivot;}
     /** The pitch the camera now looks with (bounded under ceilings). */
@@ -138,6 +148,7 @@ public final class JakCameraCutout {
             placedPivot=pivot;placedPitch=usedPitch;used=true;looking=false;
             return desired;// a chase line too long to scan (flight at speed): leave it free
         }
+        BOXES.keepBelow(feetY+GROUND);
         JakCameraProbe.decide(BOXES,pivot.x,pivot.y,pivot.z,back[0],back[1],back[2],desired,hard,feetY,looking,boost,HARD);
         JakCameraProbe.decide(BOXES,pivot.x,pivot.y,pivot.z,back[0],back[1],back[2],desired,soft,feetY,looking,boost,SOFT);
         looking=HARD.lookedThrough>0;
@@ -155,6 +166,7 @@ public final class JakCameraCutout {
         double grow=r+.1;
         if(!collect(level,Math.min(pivot.x,ex)-grow,Math.min(pivot.y,ey)-grow,Math.min(pivot.z,ez)-grow,
             Math.max(pivot.x,ex)+grow,Math.max(pivot.y,ey)+grow,Math.max(pivot.z,ez)+grow))return desired;
+        BOXES.keepBelow(feetY+GROUND);
         JakCameraProbe.decide(BOXES,pivot.x,pivot.y,pivot.z,back[0],back[1],back[2],desired,r,feetY,looking,boost,HARD);
         return HARD.distance;
     }
@@ -168,7 +180,7 @@ public final class JakCameraCutout {
         boolean on=used&&wanted(entity)&&camera.isDetached();
         used=false;
         if(!on){
-            RIG.reset();looking=false;lastPivot=null;pitchOffset=pitchTarget=pivotDrop=0;
+            RIG.reset();looking=false;buried=false;lastPivot=null;pitchOffset=pitchTarget=pivotDrop=0;
             terrainAmount=entityAmount=terrainHold=entityHold=0;
             room=previousRoom=pending=null;pendingReady=false;roomFade=1;roomKey=Long.MIN_VALUE;
             java.util.Arrays.fill(MASK,0);ROOM[0][3]=ROOM[1][3]=0;
@@ -176,6 +188,10 @@ public final class JakCameraCutout {
         }
         Level level=entity.level();
         Vec3 eye=camera.position();
+        refreshCells(level);
+        BOXES.clear();
+        buried=collect(level,eye.x-BURIED,eye.y-BURIED,eye.z-BURIED,eye.x+BURIED,eye.y+BURIED,eye.z+BURIED)
+            &&JakCameraProbe.clearance(BOXES,eye.x,eye.y,eye.z,1)<BURIED;
         Vector3fc f=camera.forwardVector(),up=camera.upVector();
         Vec3 presented=JakPoses.presented();
         Vec3 feet=presented!=null?presented:entity.position();
@@ -210,6 +226,10 @@ public final class JakCameraCutout {
         // Terrain is cut up to just behind Jak's back; entities stop short of his whole body (his own model).
         MASK[14]=(float)(depth-.3);
         MASK[15]=(float)(depth-(BODY*Math.abs(f.y())+.45));
+        // Under cover the fill closes everything but the place round Jak; in the open what is seen past a hillside the
+        // camera sits in is the world Jak stands in, so only rock farther than him is filled.
+        boolean open=level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,(int)Math.floor(feet.x),(int)Math.floor(feet.z))<=feet.y+1.5;
+        MASK[16]=open?0:1;MASK[17]=(float)CAP_REACH;MASK[18]=(float)CAP_FEATHER;MASK[19]=(float)depth;
         pack(0,room,roomAmount(0),eye,depth);
         pack(1,previousRoom,roomAmount(1),eye,depth);
     }
@@ -297,7 +317,7 @@ public final class JakCameraCutout {
 
     /** JakCameraFadeWriteMixin: this frame's data after vanilla's Globals (buffer positioned at the block start). */
     public static void write(ByteBuffer buffer){
-        for(int i=0;i<16;i++)buffer.putFloat(MASK_AT+4*i,MASK[i]);
+        for(int i=0;i<MASK.length;i++)buffer.putFloat(MASK_AT+4*i,MASK[i]);
         for(int slot=0;slot<2;slot++){
             int at=ROOM_AT+slot*ROOM_BYTES;
             for(int i=0;i<8;i++)buffer.putFloat(at+4*i,ROOM[slot][i]);

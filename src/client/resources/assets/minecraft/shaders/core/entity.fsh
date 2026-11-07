@@ -91,8 +91,9 @@ void main() {
     }
     vec4 color = texture(Sampler0, texCoord0);
     #ifdef JAK_ENVMAP
-    // jak_envmap.fsh: the map's colour twice over by the base's alpha (128 one), unlit, added after the fog.
-    vec3 jakShine = texture(Sampler3, jakEnvCoord).rgb * color.a * 2.0;
+    // jak_envmap.fsh: the map's colour (GltfModel has its tint in it) twice over by the base's alpha (128 one), added
+    // after the fog. The original's follows the level's light (foreground.gc current-env-color): here the lightmap's.
+    vec3 jakShine = texture(Sampler3, jakEnvCoord).rgb * color.a * 2.0 * lightMapColor.rgb;
     // An OPAQUE material is drawn whole: that alpha is the shine's strength, not cover (read as cover, the ammo's
     // magazines went see-through where the result is blended, in the hotbar and on the ground; Adrii 06/11).
     color.a = 1.0;

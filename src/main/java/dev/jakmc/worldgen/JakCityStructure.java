@@ -353,7 +353,7 @@ public final class JakCityStructure extends Structure {
                 for(var side:net.minecraft.core.Direction.Plane.HORIZONTAL)wall|=!level.getBlockState(spot.relative(side)).getCollisionShape(level,spot.relative(side)).isEmpty();
                 for(var near:BlockPos.betweenClosed(spot.offset(-room,0,-room),spot.offset(room,1,room))){
                     var state=level.getBlockState(near);String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
-                    if(state.getBlock() instanceof net.minecraft.world.level.block.DoorBlock||id.contains("puerta")||id.contains("portal")||id.contains("baranda")
+                    if(state.getBlock() instanceof net.minecraft.world.level.block.DoorBlock||state.getBlock() instanceof dev.jakmc.content.JakIrisDoor||id.contains("puerta")||id.contains("portal")||id.contains("baranda")
                         ||state.is(net.minecraft.tags.BlockTags.BEDS)||state.is(Blocks.CHEST)||state.is(Blocks.LADDER)||state.is(dev.jakmc.content.JakAmmoCrate.BLOCK)){clear=false;break;}
                 }
                 if(!roof||!wall||!clear)continue;

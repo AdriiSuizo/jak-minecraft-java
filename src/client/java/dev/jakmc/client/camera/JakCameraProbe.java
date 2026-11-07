@@ -3,8 +3,8 @@ package dev.jakmc.client.camera;
 /**
  * Collision core of Jak's third-person camera. Not a Jak port: Adrii asked (06/11) for the camera of the
  * "Recreating Baldur's Gate 3's Camera System in UE5" series (camera collision, bounds, occlusion masking).
- * Thin walls, fences and leaves between the camera and Jak are looked through (the shader masks them);
- * only thick rock, floors and walls the camera would sit inside pull it in. Pure Java so
+ * Walls and rock between the camera and Jak are looked through (the shader masks them, JakCameraCutout);
+ * only the ground at his feet pulls it in. Pure Java so
  * tools/JakCameraCheck.java replays corridors, stairs and brushes headless. Lengths are blocks.
  */
 public final class JakCameraProbe {
@@ -28,6 +28,16 @@ public final class JakCameraProbe {
         boolean[] leaves=new boolean[256];
         int n;
         public void clear(){n=0;}
+        /** Drops the boxes that end above `y`. */
+        public void keepBelow(double y){
+            int kept=0;
+            for(int i=0;i<n;i++){
+                if(v[6*i+4]>y)continue;
+                if(kept!=i){System.arraycopy(v,6*i,v,6*kept,6);leaves[kept]=leaves[i];}
+                kept++;
+            }
+            n=kept;
+        }
         public int size(){return n;}
         public void add(double x0,double y0,double z0,double x1,double y1,double z1,boolean leaf){
             if(n==leaves.length){

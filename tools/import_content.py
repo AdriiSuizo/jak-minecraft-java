@@ -256,6 +256,40 @@ def seal_track_meshes(catalog):
             cell['triangles']=outside
         path.write_text(json.dumps(data,separators=(',',':')),encoding='utf-8')
 
+# Adrii 07/11: the snow barrels, 11 to 13 blocks tall, are some two blocks all told.
+SCALED_OBJECTS={24:2,25:2,26:2}
+
+def scale_objects(catalog):
+    for id,height in SCALED_OBJECTS.items():
+        path=catalog/'objects'/f'{id}.json'
+        source=json.loads(path.read_text(encoding='utf-8'))
+        # Stood on the ground of its cell: the mesh's own floor, not the object's nominal box.
+        floor=min(row['cell'][1]+p[1] for row in source['cells'] for tri in row['triangles'] for p in tri['p'])
+        top=max(row['cell'][1]+p[1] for row in source['cells'] for tri in row['triangles'] for p in tri['p'])
+        scale=height/(top-floor)
+        lift=[0,-floor,0]
+        cells={}
+        def cell(key):return cells.setdefault(key,{'boxes':[],'cell':list(key),'triangles':[]})
+        for row in source['cells']:
+            at=row['cell']
+            for tri in row['triangles']:
+                points=[[(at[i]+p[i]+lift[i])*scale for i in range(3)] for p in tri['p']]
+                key=tuple(max(0,math.floor(sum(p[i] for p in points)/3)) for i in range(3))
+                cell(key)['triangles'].append({**tri,'p':[[p[i]-key[i] for i in range(3)] for p in points]})
+            for box in row['boxes']:
+                low=[max((at[i]+box[i]+lift[i])*scale,0) for i in range(3)];high=[(at[i]+box[i+3]+lift[i])*scale for i in range(3)]
+                for x in range(math.floor(low[0]),math.ceil(high[0])):
+                    for y in range(math.floor(low[1]),math.ceil(high[1])):
+                        for z in range(math.floor(low[2]),math.ceil(high[2])):
+                            key=(x,y,z)
+                            local=[max(low[i]-key[i],0) for i in range(3)]+[min(high[i]-key[i],1) for i in range(3)]
+                            # On the 1/16 grid PropBlock rasterizes to, so the many small boxes of the big mesh collapse.
+                            snapped=[math.floor(v*16)/16 for v in local[:3]]+[math.ceil(v*16)/16 for v in local[3:]]
+                            if snapped not in cell(key)['boxes']:cell(key)['boxes'].append(snapped)
+        source['cells']=[cells[key] for key in sorted(cells)]
+        source['size']=[max(key[i] for key in cells)+1 for i in range(3)]
+        path.write_text(json.dumps(source,separators=(',',':')),encoding='utf-8')
+
 def decorations(catalog):
     # The Rust city uses the arcade cabinet and mirror as authored furniture.
     supported=(86,87,89,90,91,92,94,95,96,97,98,99,100,101,102,103,104)
@@ -462,6 +496,7 @@ def main():
     configure_materials(definitions)
     (catalog/'blocks.json').write_text(json.dumps(definitions,separators=(',',':')),encoding='utf-8')
     shutil.copytree(SOURCE/'objects',catalog/'objects',dirs_exist_ok=True)
+    scale_objects(catalog)
     material_resources(definitions+decorations(catalog))
     seal_track_meshes(catalog)
     import_blueprints(('haven','spargus','palace')+SITES)

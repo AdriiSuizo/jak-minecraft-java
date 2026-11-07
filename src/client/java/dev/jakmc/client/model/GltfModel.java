@@ -32,6 +32,20 @@ public final class GltfModel {
     private final ForwardEyes.Pair eyes;
     private final Map<Identifier,byte[]> pendingTextures=new LinkedHashMap<>();
     private final Map<Identifier,Integer> textureCoverage=new HashMap<>();
+    /** Environment maps and the tint their shine is drawn at (0xRRGGBB, 128 a channel = whole). */
+    private final Map<Identifier,Integer> environmentTint=new HashMap<>();
+    /**
+     * merc-extra-info's mei-envmap-tint per surface: foreground.gc scales each effect's shine by its own tint (128 = whole).
+     * Read from the art groups (jak-ext-geo-c-ag and -normal-ag, daxter-ag, in effect order).
+     */
+    private static final Map<String,Integer> ENVIRONMENT_TINTS=Map.ofEntries(
+        Map.entry("jakc-forearm-arm",0x804c33),Map.entry("jakc-shoeplate",0x804c33),Map.entry("jakc-chestplate",0x804c33),
+        Map.entry("jakc-chestplate-straps",0x555438),Map.entry("jakc-shoulderarmor-01",0x804c33),Map.entry("jakc-armor",0x3a3c2d),
+        Map.entry("jakc-lens",0x806060),Map.entry("jakc-gogglemetal",0x555438),Map.entry("jakc-glovetop",0x555438),
+        Map.entry("jakc-wristbands-a",0x1c5656),Map.entry("jakc-hair",0x404040),Map.entry("programmer_eye_right",0x606060),
+        Map.entry("programmer_eye_left",0x606060),Map.entry("sk-shinywhite",0x807e54));
+    /** mood.gc's current-env-color (96 of 128): foreground.gc scales every effect by it too. stand-in: the original's follows the level's lights, here the draw's lightmap (entity.fsh). */
+    private static final float ENVIRONMENT_LIGHT=96/128f;
     private final JsonObject json;
     private final ByteBuffer bin;
     private final Node[] nodes;
@@ -142,8 +156,11 @@ public final class GltfModel {
                 int envTexture=material.getAsJsonObject("extensions").getAsJsonObject("KHR_materials_specular").getAsJsonObject("specularColorTexture").get("index").getAsInt();
                 int envSource=json.getAsJsonArray("textures").get(envTexture).getAsJsonObject().get("source").getAsInt();
                 int baseSource=json.getAsJsonArray("textures").get(texture).getAsJsonObject().get("source").getAsInt();
-                var environment=JakData.id("local/"+key+"/envmap/"+envSource);
+                String surfaceName=material.has("name")?material.get("name").getAsString().replaceFirst("-envmap$",""):"";
+                int tint=ENVIRONMENT_TINTS.getOrDefault(surfaceName,0x808080);
+                var environment=JakData.id("local/"+key+"/envmap/"+envSource+"/"+Integer.toHexString(tint));
                 pendingTextures.putIfAbsent(environment,imageBytes(envSource));
+                environmentTint.put(environment,tint);
                 var strength=JakData.id("local/"+key+"/alpha/"+baseSource);
                 pendingTextures.putIfAbsent(strength,imageBytes(baseSource));
                 envpass=new EnvPass(environment,strength,mode.equals("OPAQUE"));
@@ -723,6 +740,14 @@ public final class GltfModel {
                         // It only controls visibility on materials marked MASK or BLEND.
                         try(var raw=texture){
                             texture=raw.mappedCopy(pixel->(pixel&0x00ffffff)|((pixel>>>24)>=coverage?0xff000000:0));
+                        }
+                    }
+                    Integer tint=environmentTint.get(id);
+                    if(tint!=null){
+                        float r=(tint>>>16&255)/128f*ENVIRONMENT_LIGHT,g=(tint>>>8&255)/128f*ENVIRONMENT_LIGHT,b=(tint&255)/128f*ENVIRONMENT_LIGHT;
+                        try(var raw=texture){
+                            // ABGR pixels.
+                            texture=raw.mappedCopy(pixel->(pixel&0xff000000)|Math.round((pixel>>>16&255)*b)<<16|Math.round((pixel>>>8&255)*g)<<8|Math.round((pixel&255)*r));
                         }
                     }
                     if(jakBody&&lightTextures.containsKey(id)){

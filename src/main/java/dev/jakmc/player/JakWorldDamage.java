@@ -44,9 +44,18 @@ public final class JakWorldDamage {
         return level.hasChunkAt(pos)&&(player==null||!player.isSpectator()
             &&!player.blockActionRestricted(level,pos,player.gameMode.getGameModeForPlayer())&&level.mayInteract(player,pos));
     }
+    /** Adrii 07/11: what a spin kick takes off a block, 75 % of a dirt block's (hardness 0.5); of a harder one, in proportion. */
+    private static final float KICK=.75f*.5f;
     public static void hit(ServerPlayer player,BlockPos pos,float strength){
+        if(!Float.isFinite(strength)||strength<=0)return;
+        // Rust mining: the blow in MW2 points (x100/8) over 160 a hardness.
+        work(player,pos,strength*DAMAGE_TO_MW2/DAMAGE_PER_HARDNESS,player.hasInfiniteMaterials());
+    }
+    /** A spin kick on a block in its reach: the same in creative, or it would level all round him. */
+    public static void kick(ServerPlayer player,BlockPos pos){work(player,pos,KICK,false);}
+    private static void work(ServerPlayer player,BlockPos pos,float work,boolean whole){
         var level=player.level();
-        if(!Float.isFinite(strength)||strength<=0||!permitted(player,level,pos))return;
+        if(!permitted(player,level,pos))return;
         if(JakProps.hitProjector(level,pos,player))return;
         var state=level.getBlockState(pos);
         float hardness=state.getDestroySpeed(level,pos);
@@ -59,11 +68,11 @@ public final class JakWorldDamage {
         var damage=entries.get(pos);
         if(damage==null||damage.state!=state){damage=new Damage(state);entries.put(pos.immutable(),damage);}
         damage.until=level.getGameTime()+100;
-        // Rust mining: the blow in MW2 points (x100/8) over 160 a hardness.
-        damage.progress+=player.hasInfiniteMaterials()||hardness==0?1:strength*DAMAGE_TO_MW2/DAMAGE_PER_HARDNESS/hardness;
+        damage.progress+=whole||hardness==0?1:work/hardness;
         if(damage.progress>=1){
             level.destroyBlockProgress(damage.crack,pos,-1);entries.remove(pos);
-            player.gameMode.destroyBlock(pos);
+            // Minecraft leaves a breaker's particles and sound to his client's own digging, and Jak's blows are the server's.
+            if(player.gameMode.destroyBlock(pos))player.connection.send(new net.minecraft.network.protocol.game.ClientboundLevelEventPacket(2001,pos,net.minecraft.world.level.block.Block.getId(state),false));
         }else level.destroyBlockProgress(damage.crack,pos,Math.min(9,(int)(damage.progress*10)));
     }
     /**

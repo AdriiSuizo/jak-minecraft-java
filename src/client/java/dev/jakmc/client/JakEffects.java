@@ -34,6 +34,8 @@ public final class JakEffects {
  private static final int BARREL=0,PROJECTOR=1,DISMANTLE=2,SANDSTORM=18,SPYDROID=19,DARK_ECO_DEATH=20,KERMIT_PULSE=21,KERMIT_IMPACT=22,LAUNCHER=23;
  /** target-pilot-death's bursts (Jak 3 target-part.gc group-explode-death, group-lava-death). */
  static final int EXPLODE_DEATH=24,LAVA_DEATH=25;
+ /** crates.gc die: a wood crate's group-crate-explode. */
+ static final int CRATE_EXPLODE=26;
  /** A burst of a one-shot world effect at a place (JakPilotDeath). */
  static void burst(int kind,Vec3 at){long handle=NativeJak.fxCreateDecor(kind);if(handle!=0)BURSTS.add(new Owner(at,handle));}
  /** kermit.gc: each frog's pulse on its tongue, where it was last drawn. */
@@ -68,6 +70,11 @@ public final class JakEffects {
   JakEffectTypes.initialize();
   LevelRenderEvents.COLLECT_SUBMITS.register(JakEffects::submit);
   net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(JakEffects::findDecorations);
+  net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+   dev.jakmc.network.JakPackets.CrateBreak.TYPE,(packet,context)->{
+    var level=context.client().level;
+    if(level!=null&&level.dimension().identifier().equals(packet.dimension()))burst(CRATE_EXPLODE,Vec3.atBottomCenterOf(packet.position()));
+   });
   net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
    dev.jakmc.network.JakPackets.PropBreak.TYPE,(packet,context)->{
     var level=context.client().level;

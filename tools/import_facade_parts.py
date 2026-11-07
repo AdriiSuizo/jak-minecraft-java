@@ -92,6 +92,8 @@ def loose_objects(dest,catalog):
     for kind in sorted(objects):
         o=objects[kind]
         if kind in placed or o['group'] in PIECES or o['group'] in ('facade','track','rail'):continue
+        # Adrii 07/11: the benches are out; the lamp is jakmc:hut_lamp (JakHutLamp), its real mesh.
+        if o['group'] in ('banco','farol'):continue
         target=placement_kind(objects,kind)
         if target!=kind:aliases[kind]=target;continue
         # jak_objects.rs placed: the box's middle over the block, its foot level with it.

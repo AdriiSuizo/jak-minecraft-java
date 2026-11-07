@@ -22,6 +22,11 @@ public final class JakEffectTypes {
   * depth as the Rust's body pass did. The translucent emissive type blended his back faces and inner
   * layers through him (Adrii 06/11: Light Jak all wrong).
   */
+ /** The opaque terrain with its back faces, for a camera inside rock (terrain.fsh JAK_CAP, JakCameraBuriedMixin). */
+ public static final RenderPipeline TERRAIN_FILL=RenderPipelines.register(RenderPipeline.builder(RenderPipelines.TERRAIN_SNIPPET)
+  .withLocation(JakData.id("pipeline/terrain_fill")).withShaderDefine("ALPHA_CUTOUT",0.5F).withShaderDefine("JAK_CAP").withCull(false).withColorTargetState(ColorTargetState.DEFAULT).build());
+ public static final RenderPipeline TERRAIN_FILL_MULTIDRAW=RenderPipelines.register(RenderPipeline.builder(RenderPipelines.MULTIDRAW_TERRAIN_SNIPPET)
+  .withLocation(JakData.id("pipeline/terrain_fill_multidraw")).withShaderDefine("ALPHA_CUTOUT",0.5F).withShaderDefine("JAK_CAP").withCull(false).withColorTargetState(ColorTargetState.DEFAULT).build());
  /**
   * Minecraft's entity_cutout drawn as triangles. The models' triangles went out as quads with a corner repeated: a
   * quarter of the vertices laid down for nothing (06/11 bench). No outline or crumbling: custom geometry gets neither.

@@ -140,9 +140,12 @@ public final class JakRenderer {
     public static float firstPersonRetraction=1;
     public static net.minecraft.world.phys.Vec3 firstPersonMuzzle;
     public static long hurtHiddenDraws;
+    private static final int MINIMUM_BLOCK_LIGHT=10;
     public static float hurtRed=1,hurtGreen=1,hurtBlue=1;
     private static boolean submit(AvatarRenderState state,PoseStack stack,SubmitNodeCollector collector,
                                  net.minecraft.client.renderer.state.level.CameraRenderState camera,boolean firstPerson){
+        // Adrii 07/11: he is seen in a cave as well as out of it. Never quite the dark of the rock around him.
+        state.lightCoords=Math.max(state.lightCoords&0xffff,MINIMUM_BLOCK_LIGHT<<4)|state.lightCoords&0xffff0000;
         var client=Minecraft.getInstance();
         var actor=client.level==null?null:client.level.getEntity(state.id);
         var frame=JakGuiContext.active()||actor==null||!actor.getAttachedOrCreate(JakData.ENABLED)

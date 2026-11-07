@@ -10,10 +10,12 @@ const BARREL_FIRE:&str="group-ctysluma-barrel-fire";
 const PROPAGANDA:&str="group-ctywide-baron-propoganda-holo";
 const DISMANTLE:&str="group-vehicle-explosion";
 #[derive(Clone,Copy,PartialEq)]
-enum Decor { Barrel, Projector, Dismantle, DroidExplosion, Vent(u8), Sandstorm, DarkEcoDeath, KermitPulse, KermitImpact, Launcher, ExplodeDeath, LavaDeath }
+enum Decor { Barrel, Projector, Dismantle, DroidExplosion, Vent(u8), Sandstorm, DarkEcoDeath, KermitPulse, KermitImpact, Launcher, ExplodeDeath, LavaDeath, CrateExplode }
 /// target-part.gc (Jak 3): the bursts of target-pilot-death's 'explode and 'melt, 0.2 s after the blow.
 const EXPLODE_DEATH:&str="group-explode-death";
 const LAVA_DEATH:&str="group-lava-death";
+/// crates.gc `die`: a wood crate's splinters, puff and flash.
+const CRATE_EXPLODE:&str="group-crate-explode";
 /// generic-obs.gc launcher init: outside the beach and the swamp (the citadel's citb-launcher too) its part is group-jungle-launcher.
 const LAUNCHER:&str="group-jungle-launcher";
 /// kermit.gc: the pulse running down the swamp frog's tongue (kermit-pulse-idle spawns it every frame) and its touch (kermit-pulse-impact).
@@ -27,9 +29,9 @@ const DARK_ECO_DEATH:&str="group-dark-eco-death";
 /// 0.375 blocks a metre (Adrii 06/11: the flames were a third of that and sat too high).
 const BARREL_SCALE:f32=0.375*BLOCK/jak_core::METER;
 impl Decor {
- fn one_shot(self)->bool{matches!(self,Self::Dismantle|Self::DroidExplosion|Self::DarkEcoDeath|Self::KermitImpact|Self::ExplodeDeath|Self::LavaDeath)}
- fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::DroidExplosion=>"group-kg-small-explosion",Self::Vent(index)=>VENT_GROUPS[index as usize],Self::DarkEcoDeath=>DARK_ECO_DEATH,Self::KermitPulse=>KERMIT_PULSE,Self::KermitImpact=>KERMIT_IMPACT,Self::Launcher=>LAUNCHER,Self::ExplodeDeath=>EXPLODE_DEATH,Self::LavaDeath=>LAVA_DEATH,Self::Sandstorm=>unreachable!()}}
- fn scale(self)->f32{match self{Self::Barrel=>BARREL_SCALE,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion|Self::KermitPulse|Self::KermitImpact|Self::Launcher=>CREATURE,Self::Vent(0..=3)|Self::Sandstorm|Self::DarkEcoDeath|Self::ExplodeDeath|Self::LavaDeath=>1.,Self::Vent(_)=>0.62}}
+ fn one_shot(self)->bool{matches!(self,Self::Dismantle|Self::DroidExplosion|Self::DarkEcoDeath|Self::KermitImpact|Self::ExplodeDeath|Self::LavaDeath|Self::CrateExplode)}
+ fn group(self)->&'static str{match self{Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::DroidExplosion=>"group-kg-small-explosion",Self::Vent(index)=>VENT_GROUPS[index as usize],Self::DarkEcoDeath=>DARK_ECO_DEATH,Self::KermitPulse=>KERMIT_PULSE,Self::KermitImpact=>KERMIT_IMPACT,Self::Launcher=>LAUNCHER,Self::ExplodeDeath=>EXPLODE_DEATH,Self::LavaDeath=>LAVA_DEATH,Self::CrateExplode=>CRATE_EXPLODE,Self::Sandstorm=>unreachable!()}}
+ fn scale(self)->f32{match self{Self::Barrel|Self::CrateExplode=>BARREL_SCALE,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion|Self::KermitPulse|Self::KermitImpact|Self::Launcher=>CREATURE,Self::Vent(0..=3)|Self::Sandstorm|Self::DarkEcoDeath|Self::ExplodeDeath|Self::LavaDeath=>1.,Self::Vent(_)=>0.62}}
 }
 
 const VENT_GROUPS:[&str;8]=[
@@ -66,6 +68,7 @@ pub fn configure(root:&std::path::Path)->Result<(),String>{
  for file in ["engine/common-obs/particle-curves.gc","engine/target/gun/gun-part.gc","engine/target/gun/gun-dark-shot.gc","levels/factory/fac-part.gc","engine/common-obs/water-part.gc","engine/common-obs/water.gc","engine/target/board/board-part.gc","levels/city/traffic/vehicle/vehicle-part.gc","levels/desert/wvehicle/wvehicle-part.gc","engine/target/target-lightjak.gc","engine/common-obs/enemy-part.gc","engine/common-obs/guard-projectile.gc","engine/common-obs/collectables-part.gc"]{library.read(&read(file)?);}
  let desert=read("levels/desert/desert-part.gc")?;
  library.read(&crate::particle_subset::particle_subset(&desert,&[],&[1439,1443],&[]));
+ library.read(&crate::particle_subset::particle_subset(&read("engine/common-obs/crates.gc")?,&[CRATE_EXPLODE],&[],&[]));
  let text=read("engine/target/target-part.gc")?;
  let subset=crate::particle_subset::particle_subset(&text,&["group-target-hit","group-lightning-glow","group-land-poof-stn","group-darkjak-bomb",EXPLODE_DEATH,LAVA_DEATH],&[157,173,187],&["lightning-darkjak-attack","lightning-darkjak-transform"]);
  library.read(&subset.replace("(sp-item 70 :period (seconds 0.5) :length (seconds 0.017))",""));
@@ -164,7 +167,7 @@ fn create(library:&OnceLock<Arc<Library>>,decor:Option<Decor>)->Result<jlong,Str
    14..=17=>(&LIBRARY,Decor::Vent((kind-10)as u8)),
    18=>(&LIBRARY,Decor::Sandstorm),19=>(&LIBRARY,Decor::DroidExplosion),20=>(&JAK1_VENTS,Decor::DarkEcoDeath),
    21=>(&JAK1_VENTS,Decor::KermitPulse),22=>(&JAK1_VENTS,Decor::KermitImpact),23=>(&JAK1_VENTS,Decor::Launcher),
-   24=>(&LIBRARY,Decor::ExplodeDeath),25=>(&LIBRARY,Decor::LavaDeath),
+   24=>(&LIBRARY,Decor::ExplodeDeath),25=>(&LIBRARY,Decor::LavaDeath),26=>(&LIBRARY,Decor::CrateExplode),
    _=>return Err("Unknown world effect".into())
   };
   if library.get().is_none(){return Ok(0);}

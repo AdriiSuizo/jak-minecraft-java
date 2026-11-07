@@ -22,6 +22,8 @@ El mod no incluye **ningún archivo de los juegos**. Su instalador los genera en
 - **Enemigos:** 18 tipos de Jak 1 y Jak 3, más los guardias Krimson de Jak II. Cada uno vive en su bioma y tiene su nido.
 - **Lugares que se generan en mundos normales:** Villarefugio (Haven City) con su tráfico y ciudadanos, Spargus en el desierto, Sandover y la cueva del cráter.
 - **Ciudadanos** con comercio, recetas para todo lo de Jak, eco de colores y respiraderos de eco.
+- **Patada giratoria como un tornado:** golpea todo lo que hay alrededor de Jak, mires donde mires, y rompe bloques, hierba y objetos con sus partículas.
+- **Cámara que atraviesa paredes** sin dejar ver el vacío a través de ellas, para ver bien a Jak en cuevas y sitios estrechos.
 - **Mando** (PlayStation/Xbox) y teclado. Los controles están en [CONTROLES.md](CONTROLES.md).
 
 ### Requisitos
@@ -38,6 +40,9 @@ El mod no incluye **ningún archivo de los juegos**. Su instalador los genera en
 5. En el launcher, elige la instalación **26.3.jakmod**.
 
 Tus mundos normales no se tocan: JakMod guarda los suyos en `.minecraft\instances\jakmod`. La guía completa está en [installer/README-ES.md](installer/README-ES.md).
+
+### Mundo de showcase
+Cada versión incluye `JakShowcase-world.zip`: un mundo normal con Spargus y Villarefugio juntos y, entre los dos, una jincana de estaciones que enseña el mod paso a paso. Extrae el ZIP en `%APPDATA%\.minecraft\instances\jakmod\saves`. La guía está en [docs/SHOWCASE.md](docs/SHOWCASE.md).
 
 ### Estado
 Versión de desarrollo (`0.1.0-dev`). Los pendientes están en [PENDIENTE-PORT.md](PENDIENTE-PORT.md) y [docs/FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). No es un producto oficial de Naughty Dog, Sony, Mojang, Microsoft ni OpenGOAL.
@@ -60,6 +65,8 @@ The mod ships **no game files at all**. Its installer builds them on your PC fro
 - **Enemies:** 18 types from Jak 1 and Jak 3, plus Jak II's Krimson Guards. Each lives in its own biome and has its own nests.
 - **Places generated in normal worlds:** Haven City with its traffic and citizens, Spargus in the desert, Sandover and the crater cave.
 - **Citizens** with trades, recipes for all of Jak's gear, coloured eco and eco vents.
+- **Spin kick like a tornado:** it hits everything around Jak wherever you look, and breaks blocks, grass and objects with their particles.
+- **A camera that passes through walls** without showing the void behind them, so Jak stays visible in caves and tight spots.
 - **Controller** (PlayStation/Xbox) and keyboard. Controls are in [CONTROLES.md](CONTROLES.md).
 
 ### Requirements
@@ -76,6 +83,9 @@ The mod ships **no game files at all**. Its installer builds them on your PC fro
 5. In the launcher, pick the **26.3.jakmod** installation.
 
 Your normal worlds are left alone: JakMod keeps its own in `.minecraft\instances\jakmod`. The full guide is in [installer/README-EN.md](installer/README-EN.md).
+
+### Showcase world
+Each release includes `JakShowcase-world.zip`: a normal world with Spargus and Haven side by side and, between them, a road of stations that shows the mod step by step. Extract the ZIP into `%APPDATA%\.minecraft\instances\jakmod\saves`. The guide is in [docs/SHOWCASE.md](docs/SHOWCASE.md).
 
 ### Status
 Development build (`0.1.0-dev`). Open work is listed in [PENDIENTE-PORT.md](PENDIENTE-PORT.md) and [docs/FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). Not an official Naughty Dog, Sony, Mojang, Microsoft or OpenGOAL product.

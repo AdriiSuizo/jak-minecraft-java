@@ -196,12 +196,16 @@ public final class JakAssemblies {
             var removal=new Removed(level,origin,assembly);
             if(!REMOVING.add(removal))return;
             try{
+                // Adrii 07/11: an object breaks as a block does, in particles; a big one from some two dozen of its cells.
+                int every=assembly.parts.size()/24+1,index=0;
                 for(var part:assembly.parts){
                     BlockPos at=origin.offset(rotatedOffset(part.relative,direction));
                     if(at.equals(pos))continue;
                     BlockState present=level.getBlockState(at);
-                    if(present.is(part)&&present.getValue(BlockStateProperties.HORIZONTAL_FACING)==direction)
+                    if(present.is(part)&&present.getValue(BlockStateProperties.HORIZONTAL_FACING)==direction){
                         level.setBlockAndUpdate(at,Blocks.AIR.defaultBlockState());
+                        if(index++%every==0)level.levelEvent(2001,at,Block.getId(present));
+                    }
                 }
             }finally{REMOVING.remove(removal);}
         }

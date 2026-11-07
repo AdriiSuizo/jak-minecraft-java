@@ -9,6 +9,7 @@
     "JakDisconnectMixin",
     "DevSceneCameraMixin",
     "JakControllerCameraMixin",
+    "JakCameraBuriedMixin",
     "JakCameraCutoutMixin",
     "JakViewBlockMixin",
     "JakCameraFadeUboMixin",

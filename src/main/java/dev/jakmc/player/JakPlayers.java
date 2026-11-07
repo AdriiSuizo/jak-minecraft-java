@@ -55,6 +55,8 @@ public final class JakPlayers {
     private static final Map<net.minecraft.world.level.block.state.BlockState,Integer> FLOOR_SOUNDS=new IdentityHashMap<>();
     private record Hurt(int mode,Vec3 from){}
     private static final class Session implements AutoCloseable {
+        /** The blocks this spin kick has already struck: each takes it once. */
+        final java.util.HashSet<net.minecraft.core.BlockPos> kicked=new java.util.HashSet<>();
         final long nativeId;
         MinecraftCollision.Query collision;
         /** The Minecraft body this session was made for; a respawn is a new one. */
@@ -455,7 +457,9 @@ public final class JakPlayers {
             applyEvent(p,s.origin,e.getAsJsonObject());
             if(s.hostMoved)return;
         }
-        if(pose.get("attackSpheres") instanceof JsonArray swept)struckInSpheres(p,s.origin,swept,KICKS.contains(nativeState));
+        boolean kicking=KICKS.contains(nativeState);
+        if(!kicking)s.kicked.clear();
+        if(pose.get("attackSpheres") instanceof JsonArray swept)struckInSpheres(p,s.origin,swept,kicking,s.kicked);
         pose.addProperty("serverTick",p.level().getGameTime());
         var packet=new JakPackets.Pose(p.getId(),input.sequence(),s.origin.x,s.origin.y,s.origin.z,pose.toString());
         ServerPlayNetworking.send(p,packet);
@@ -601,12 +605,13 @@ public final class JakPlayers {
         JakWorldDamage.hit(p,at,damage);
     }
     /**
-     * What a blow's spheres go through this step. Adrii 06/11: a kick breaks the grass it goes through, as a punch
-     * breaks the grass it is aimed at (in one blow, JakWorldDamage.hit): every plant with no collision and no
-     * hardness (grass, ferns, flowers, saplings); stand-in: the original has no plants to cut. Any blow breaks
-     * an ammo crate it touches (crates.gc: a wood crate breaks to any `'attack`), whatever the crosshair is on.
+     * What a blow's spheres go through this step. Any blow breaks an ammo crate it touches (crates.gc: a wood crate
+     * breaks to any `'attack`), whatever the crosshair is on. Adrii 07/11: a spin kick strikes all round Jak, wherever
+     * he looks, as Crash's tornado: every block in its sphere once a kick, 75 % of a dirt block and the same in
+     * proportion of any other (JakWorldDamage.kick; grass and all that has no hardness goes at once). stand-in: the
+     * original has no blocks to wear down; the floor under him is left, or a kick would dig him in.
      */
-    private static void struckInSpheres(ServerPlayer p,Vec3 origin,JsonArray swept,boolean kick){
+    private static void struckInSpheres(ServerPlayer p,Vec3 origin,JsonArray swept,boolean kick,java.util.Set<net.minecraft.core.BlockPos> kicked){
         var level=p.level();var seen=new java.util.HashSet<net.minecraft.core.BlockPos>();
         for(JsonElement e:swept){
             var a=e.getAsJsonArray();Vec3 c=new Vec3(a.get(0).getAsDouble(),a.get(1).getAsDouble(),a.get(2).getAsDouble()).add(origin);double r=a.get(3).getAsDouble();
@@ -620,13 +625,15 @@ public final class JakPlayers {
                     if(inside.distanceToSqr(c)<=r*r)JakWorldDamage.hit(p,at.immutable(),1);
                     continue;
                 }
-                if(!kick)continue;
-                // Plants only (not a torch or redstone dust, which are as soft).
-                boolean plant=state.is(net.minecraft.tags.BlockTags.REPLACEABLE_BY_TREES)||state.is(net.minecraft.tags.BlockTags.FLOWERS)||state.is(net.minecraft.tags.BlockTags.SAPLINGS);
-                if(!plant||!state.getFluidState().isEmpty()||state.getDestroySpeed(level,at)!=0||!state.getCollisionShape(level,at).isEmpty())continue;
+                if(!kick||state.isAir()||!state.getFluidState().isEmpty()||at.getY()+1<=p.getY()+.05)continue;
                 // The cell's nearest point inside the sphere.
                 Vec3 near=new Vec3(Math.clamp(c.x,at.getX(),at.getX()+1),Math.clamp(c.y,at.getY(),at.getY()+1),Math.clamp(c.z,at.getZ(),at.getZ()+1));
-                if(near.distanceToSqr(c)<=r*r)JakWorldDamage.hit(p,at.immutable(),1);
+                if(near.distanceToSqr(c)>r*r||!kicked.add(at.immutable()))continue;
+                if(state.getBlock() instanceof net.minecraft.world.level.block.BellBlock||workedByHand(state)){
+                    // A door is worked once, by its lower half.
+                    if(!state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)
+                        ||state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)==net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER)strikeBlock(p,at.immutable(),0);
+                }else JakWorldDamage.kick(p,at.immutable());
             }
         }
     }
@@ -695,6 +702,8 @@ public final class JakPlayers {
                 // A punch or kick hits one block (Adrii 05/11): the one Minecraft
                 // outlines (the player's own pick), then the one right under it.
                 if(e.has("center")){
+                    // A kick strikes what its sphere goes through, not what the crosshair is on (struckInSpheres).
+                    if(KICKS.contains(strikeState))return;
                     WORLD_STRIKES.incrementAndGet();
                     var level=p.level();var marked=MARKED.get(p.getUUID());net.minecraft.core.BlockPos struck=null;
                     if(marked!=null&&level.getBlockState(marked).isAir()&&!level.getBlockState(marked.below()).getCollisionShape(level,marked.below()).isEmpty()
