@@ -14,7 +14,7 @@ layout(location = 0) in float sphericalVertexDistance;
 layout(location = 1) in float cylindricalVertexDistance;
 layout(location = 6) in vec2 texCoord0;
 layout(location = 7) in vec2 texCoord1;
-layout(location = 8) in float shineAmount;
+layout(location = 8) in vec3 shineAmount;
 
 #ifndef OIT_ALPHA_ONLY
 layout(location = 0) out vec4 fragColor;

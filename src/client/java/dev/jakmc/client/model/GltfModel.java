@@ -56,8 +56,8 @@ public final class GltfModel {
         0x1c5656,new float[]{16,64},0x404040,new float[]{4,8},0x606060,new float[]{2,8},0x606049,new float[]{10,20},
         0x807e54,new float[]{12,24});
     private static final float METRES_PER_BLOCK=1.5625f;
-    /** mood.gc's current-env-color (96 of 128): foreground.gc scales every effect by it too. stand-in: the original's follows the level's lights, here the draw's lightmap (entity.fsh). */
-    private static final float ENVIRONMENT_LIGHT=96/128f;
+    /** Jak's and Daxter's: lit by the shaders' rig (JakLightRig), told from the rest by a half-length normal. */
+    boolean rigLit;
     private final JsonObject json;
     private final ByteBuffer bin;
     private final Node[] nodes;
@@ -762,7 +762,7 @@ public final class GltfModel {
                     }
                     Integer tint=environmentTint.get(id);
                     if(tint!=null){
-                        float r=(tint>>>16&255)/128f*ENVIRONMENT_LIGHT,g=(tint>>>8&255)/128f*ENVIRONMENT_LIGHT,b=(tint&255)/128f*ENVIRONMENT_LIGHT;
+                        float r=(tint>>>16&255)/128f,g=(tint>>>8&255)/128f,b=(tint&255)/128f;
                         try(var raw=texture){
                             // ABGR pixels.
                             texture=raw.mappedCopy(pixel->(pixel&0xff000000)|Math.round((pixel>>>16&255)*b)<<16|Math.round((pixel>>>8&255)*g)<<8|Math.round((pixel&255)*r));
@@ -872,7 +872,8 @@ public final class GltfModel {
                 // alpha. The base's own coordinates ride in the overlay slot, the shine's amount in the vertex colour.
                 // stand-in: by the block light or sky he stands in as well, or Dark Jak's would glow in a cave (the merged draw has the lightmap).
                 float lit=Math.max(light>>>4&15,light>>>20&15)/15f;
-                int shade=Math.round(surface.envpass.amount(metres)*lit*255),shadeColour=0xff000000|shade<<16|shade<<8|shade;
+                float[] env=dev.jakmc.client.JakLightRig.env();float shade=surface.envpass.amount(metres)*lit*255;
+                int shadeColour=0xff000000|Math.clamp(Math.round(shade*env[0]),0,255)<<16|Math.clamp(Math.round(shade*env[1]),0,255)<<8|Math.clamp(Math.round(shade*env[2]),0,255);
                 collector.submitCustomGeometry(stack,surface.envpass.type(),(pose,buffer)->{
                     var counted=corners;if(counted!=null)counted.computeIfAbsent(fileName+" (env)",_->new java.util.concurrent.atomic.LongAdder()).add(surface.indices.length/3*4);
                     float[] at6=cameraVertices(pose,skinned,ENV_POSITION,ENV_NORMAL);
@@ -899,7 +900,8 @@ public final class GltfModel {
         }
         return buffer;
     }
-    private static float[] cameraVertices(PoseStack.Pose pose,float[] skinned,Vector3f vertex,Vector3f normal){
+    private float[] cameraVertices(PoseStack.Pose pose,float[] skinned,Vector3f vertex,Vector3f normal){
+        float length=rigLit?.5f:1;
         var buffer=CAMERA_VERTICES.get();
         if(buffer.length<skinned.length){
             buffer=new float[skinned.length];
@@ -907,7 +909,7 @@ public final class GltfModel {
         }
         for(int at=0;at<skinned.length;at+=6){
             pose.pose().transformPosition(skinned[at],skinned[at+1],skinned[at+2],vertex).get(buffer,at);
-            pose.transformNormal(skinned[at+3],skinned[at+4],skinned[at+5],normal).get(buffer,at+3);
+            pose.transformNormal(skinned[at+3],skinned[at+4],skinned[at+5],normal).mul(length).get(buffer,at+3);
         }
         return buffer;
     }

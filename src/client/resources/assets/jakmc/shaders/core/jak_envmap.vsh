@@ -17,7 +17,7 @@ layout(location = 0) out float sphericalVertexDistance;
 layout(location = 1) out float cylindricalVertexDistance;
 layout(location = 6) out vec2 texCoord0;
 layout(location = 7) out vec2 texCoord1;
-layout(location = 8) out float shineAmount;
+layout(location = 8) out vec3 shineAmount;
 
 void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
@@ -26,6 +26,6 @@ void main() {
     cylindricalVertexDistance = fog_cylindrical_distance(Position);
 
     texCoord0 = jak_emerc_st(ModelViewMat, Position, Normal);
-    shineAmount = Color.r;
+    shineAmount = Color.rgb;
     texCoord1 = (vec2(UV1) - 16384.0) / 4096.0;
 }

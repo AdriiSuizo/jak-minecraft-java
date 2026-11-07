@@ -35,7 +35,7 @@ import org.joml.Vector3fc;
  */
 public final class JakCameraCutout {
     /** Globals UBO layout (std140 bytes): vanilla ends at 48, then five mask vec4 and two rooms. */
-    public static final int MASK_AT=48,ECO_AT=128,ROOM_AT=176,ROOM_BYTES=32+2*JakCameraRoom.N*4,UBO_END=ROOM_AT+2*ROOM_BYTES;
+    public static final int MASK_AT=48,ECO_AT=128,ROOM_AT=176,ROOM_BYTES=32+2*JakCameraRoom.N*4,LIGHT_AT=ROOM_AT+2*ROOM_BYTES,UBO_END=LIGHT_AT+80;
     /** Jak's body for the mask: centre height over the feet, and the ellipse half width/height at his depth. */
     static final double BODY=.95,HALF_WIDTH=.85,HALF_HEIGHT=1.25;
     /** Seconds a room cross-fade takes; mask fade rates (1/s) and how long it stays after the last hit. */
@@ -319,6 +319,7 @@ public final class JakCameraCutout {
     public static void write(ByteBuffer buffer){
         for(int i=0;i<MASK.length;i++)buffer.putFloat(MASK_AT+4*i,MASK[i]);
         dev.jakmc.client.darkeco.DarkEcoClient.write(buffer,ECO_AT);
+        dev.jakmc.client.JakLightRig.write(buffer,LIGHT_AT);
         for(int slot=0;slot<2;slot++){
             int at=ROOM_AT+slot*ROOM_BYTES;
             for(int i=0;i<8;i++)buffer.putFloat(at+4*i,ROOM[slot][i]);

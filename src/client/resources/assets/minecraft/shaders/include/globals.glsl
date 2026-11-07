@@ -33,6 +33,12 @@ layout(std140) uniform Globals {
     vec4 JakRoomBInfo;
     uvec4 JakRoomBFoot[8];
     uvec4 JakRoomBRim[8];
+    // JakLightRig: the key's direction and the weather; its colour; the shine's colour; color-mult; color-emissive.
+    vec4 JakLightSun;
+    vec4 JakLightKey;
+    vec4 JakLightEnv;
+    vec4 JakLightMult;
+    vec4 JakLightGlow;
 };
 
 #endif

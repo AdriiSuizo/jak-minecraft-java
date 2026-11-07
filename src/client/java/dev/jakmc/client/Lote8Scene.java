@@ -235,8 +235,23 @@ final class Lote8Scene {
         if(t==1361)capture(c,"lote8-jak-close.png");
         if(t==1363){var jak=c.player.position();look(jak.add(4,2.5,4),jak.add(0,1.2,0));}
         if(t==1366)capture(c,"lote8-jak-far.png");
-        if(t==1370){
-            dev.jakmc.client.model.JakRenderer.frameTrace=null;
+        if(t==1370)dev.jakmc.client.model.JakRenderer.frameTrace=null;
+        // His light by the hour, in a room with no sky, and a pickup's flash.
+        if(t==1372){var jak=c.player.position();look(jak.add(2,1.8,2.4),jak.add(0,1.1,0));command(c,"time set 12400");}
+        if(t==1385)capture(c,"lote8-light-sunset.png");
+        if(t==1387)command(c,"time set midnight");
+        if(t==1400)capture(c,"lote8-light-night.png");
+        if(t==1402)command(c,"time set 1000");
+        if(t==1415)capture(c,"lote8-light-morning.png");
+        if(t==1417)onServer(c,p->{p.level().getServer().getCommands().performPrefixedCommand(p.createCommandSourceStack(),"fill ~-5 ~-1 ~-5 ~5 ~6 ~5 minecraft:stone hollow");});
+        if(t==1432)capture(c,"lote8-light-room.png");
+        if(t==1434){command(c,"time set noon");onServer(c,p->{p.level().getServer().getCommands().performPrefixedCommand(p.createCommandSourceStack(),"fill ~-5 ~-1 ~-5 ~5 ~6 ~5 minecraft:air");
+            p.level().getServer().getCommands().performPrefixedCommand(p.createCommandSourceStack(),"fill ~-5 ~-1 ~-5 ~5 ~-1 ~5 minecraft:stone");});}
+        if(t==1446)onServer(c,p->p.setAttached(dev.jakmc.JakData.AMMO.get(2),p.getAttachedOrCreate(dev.jakmc.JakData.AMMO.get(2))+10));
+        if(t==1447)capture(c,"lote8-light-flash-a.png");
+        if(t==1448)capture(c,"lote8-light-flash-b.png");
+        if(t==1456){
+            result.addProperty("flashes",JakLightRig.flashes);
             view=null;
             onServer(c,p->{
                 synchronized(jump){result.add("jump",jump);}
@@ -256,6 +271,10 @@ final class Lote8Scene {
                 c.execute(()->{running=false;c.options.pauseOnLostFocus=pause;c.stop();});
             });
         }
+    }
+    private static void command(Minecraft client,String line){
+        var server=client.getSingleplayerServer();
+        server.execute(()->server.getCommands().performPrefixedCommand(server.createCommandSourceStack(),line));
     }
     private static void onServer(Minecraft client,java.util.function.Consumer<ServerPlayer> action){
         var server=client.getSingleplayerServer();

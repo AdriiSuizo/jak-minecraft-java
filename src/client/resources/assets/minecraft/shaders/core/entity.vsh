@@ -9,6 +9,7 @@
 #include <minecraft:projection.glsl>
 #include <minecraft:sample_lightmap.glsl>
 #include <jakmc:emerc.glsl>
+#include <minecraft:globals.glsl>
 
 layout(location = 0) in vec3 Position;
 layout(location = 1) in vec4 Color;
@@ -64,18 +65,48 @@ void main() {
     sphericalVertexDistance = fog_spherical_distance(Position);
     cylindricalVertexDistance = fog_cylindrical_distance(Position);
 
+    float jakLength = length(Normal);
+    bool jakRig = jakLength > 0.1 && jakLength < 0.75;
+    vec3 jakNormal = jakRig ? Normal / jakLength : Normal;
+    jakRig = jakRig && jakWorld > 0.5;
 #ifdef PER_FACE_LIGHTING
-    vec2 light = minecraft_compute_light(Light0_Direction, Light1_Direction, Normal);
+    vec2 light = minecraft_compute_light(Light0_Direction, Light1_Direction, jakNormal);
     vertexPerFaceColorBack = minecraft_mix_light_separate(-light, Color);
     vertexPerFaceColorFront = minecraft_mix_light_separate(light, Color);
 #elif defined(NO_CARDINAL_LIGHTING)
     vertexColor = Color;
 #else
-    vertexColor = minecraft_mix_light(Light0_Direction, Light1_Direction, Normal, Color);
+    vertexColor = minecraft_mix_light(Light0_Direction, Light1_Direction, jakNormal, Color);
 #endif
 
 #if !defined(EMISSIVE) && !defined(OIT_ALPHA_ONLY)
     lightMapColor = sample_lightmap(Sampler2, UV2);
+    if (jakRig) {
+        // Rust minecraft_light.rs mc_entity_light: lights.gc's three directional slots and 0.3 ambient, with 0.2 fill,
+        // by the sky's own part of the light; the blocks' added on; up to 1.5.
+        vec3 jakDark = sample_lightmap(Sampler2, ivec2(0, 0)).rgb;
+        vec3 jakSky = max(sample_lightmap(Sampler2, ivec2(0, UV2.y)).rgb - jakDark, vec3(0.0));
+        vec3 jakLocal = sample_lightmap(Sampler2, ivec2(UV2.x, 0)).rgb;
+        vec3 jakKey = normalize(JakLightSun.xyz);
+        vec3 jakFill = normalize(vec3(-jakKey.x, abs(jakKey.y), -jakKey.z));
+        // stand-in: the Rust's bounce takes the fog's colour.
+        vec3 jakRigLight = vec3(0.3) + JakLightSun.w * JakLightKey.rgb * max(dot(jakNormal, jakKey), 0.0)
+            + vec3(0.2 * max(dot(jakNormal, jakFill), 0.0)) + vec3(0.1 * max(-jakNormal.y, 0.0));
+        vec3 jakLit = clamp(jakSky * jakRigLight + jakLocal, vec3(0.0), vec3(1.5));
+        // stand-in (Adrii 07/11, seen in a cave): update-mood-interior's 0.333 and overhead 0.667, neutral, only out of the sky.
+        float jakIndoors = 1.0 - smoothstep(4.0, 10.0, float(UV2.y) / 16.0);
+        jakLit = max(jakLit, vec3(0.333 + 0.667 * max(jakNormal.y, 0.0)) * jakIndoors);
+        // powerups.gc: color-mult scales the lights, color-emissive adds to them.
+        lightMapColor = vec4(jakLit * JakLightMult.rgb + JakLightGlow.rgb, 1.0);
+    }
+#endif
+#ifdef PER_FACE_LIGHTING
+    if (jakRig) {
+        vertexPerFaceColorBack = Color;
+        vertexPerFaceColorFront = Color;
+    }
+#else
+    if (jakRig) vertexColor = Color;
 #endif
 
 #if !defined(NO_OVERLAY) && !defined(OIT_ALPHA_ONLY)
