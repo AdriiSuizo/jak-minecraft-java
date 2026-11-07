@@ -71,6 +71,8 @@ def opengoal_default():
 
 def export_root(active, game): return active/game/'data/decompiler_out'/game
 
+EXTRACTION_GB = {'jak1':12,'jak2':26,'jak3':31}
+
 REQUIRED = {
  'jak1':['levels/beach/flutflut-lod0.glb', 'textures/beach-vis-pris/flut-eye-16x16.png',
          'levels/common/eichar-lod0.glb','levels/common/sidekick-lod0.glb','raw_obj/eichar-ag.go',
@@ -98,6 +100,12 @@ def slim_models(root, game, lists=('model-tokens.txt',)):
         name = path.name
         if name.endswith('-background.glb') or name in required: continue
         if '-lod0' not in name or not needed_model(name, tokens, prefixes): path.unlink()
+
+def slim_audio(root):
+    """import_audio reads audio/sfx and the ISO; the streams ripped beside it were 14 GB of Jak II alone."""
+    for path in (root/'audio').iterdir():
+        if path.is_dir() and path.name!='sfx': shutil.rmtree(path)
+        elif path.is_file(): path.unlink()
 
 def slim_converted(root):
     """What only the conversion read."""
@@ -132,7 +140,8 @@ def junction(target, source):
 
 def prepare_owned(active, workspace, notify, lang):
     canonical = workspace/'owned/active'
-    for game in ('jak1','jak2','jak3'):
+    # The biggest first: the disk's fullest moment is one whole game beside the others already cut.
+    for game in ('jak3','jak2','jak1'):
         source = active/game
         root = export_root(active, game)
         complete = all((root/name).is_file() for name in REQUIRED[game])
@@ -155,10 +164,10 @@ def prepare_owned(active, workspace, notify, lang):
             raise ValueError(words(
                 f'Faltan exportaciones de {game}. Instala los tres juegos en OpenGOAL y selecciona su carpeta (debe contener extractor.exe, data/iso_data y data/decompiler/config).',
                 f'{game} exports are missing. Install all three games in OpenGOAL and select their installation folder (extractor.exe, data/iso_data and data/decompiler/config are required).', lang))
-        # The three together took 60 GB in a clean test: better said here than halfway through.
-        if shutil.disk_usage(workspace).free<25*10**9:
-            raise ValueError(words(f'No hay espacio para extraer {game}: hacen falta unos 25 GB libres por juego (60 GB los tres) en el disco de Minecraft mientras se instala; al terminar se quedan unos 11 GB.',
-                f'Not enough space to extract {game}: about 25 GB free per game (60 GB for all three) is needed on the Minecraft drive while installing; about 11 GB stay afterwards.',lang))
+        # One game whole took up to 29 GB in a clean test: better said here than halfway through.
+        if shutil.disk_usage(workspace).free<EXTRACTION_GB[game]*10**9:
+            raise ValueError(words(f'No hay espacio para extraer {game}: hacen falta unos 35 GB libres en el disco de Minecraft mientras se instala; al terminar se quedan unos 11 GB.',
+                f'Not enough space to extract {game}: about 35 GB free is needed on the Minecraft drive while installing; about 11 GB stay afterwards.',lang))
         notify(words(f'Extrayendo {game} desde tu instalación. Puede tardar varios minutos…',
                      f'Extracting {game} from your installation. This may take several minutes…', lang))
         data = target/'data'; data.mkdir(parents=True, exist_ok=True)
@@ -180,6 +189,7 @@ def prepare_owned(active, workspace, notify, lang):
         if missing: raise ValueError(f'{game}: incomplete OpenGOAL extraction: '+', '.join(missing))
         # Game by game: what the conversion names as well stays, so the three never lie on the disk whole together.
         slim_models(export_root(canonical, game), game, ('model-tokens.txt','conversion-tokens.txt'))
+        slim_audio(export_root(canonical, game))
     return canonical
 
 def import_resources(active, workspace, notify, lang):
