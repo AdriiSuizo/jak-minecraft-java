@@ -19,15 +19,15 @@ El trabajo es llevar a **Minecraft Java real** el contenido y las mecánicas de 
 
 | Uso | Ruta |
 |---|---|
-| Proyecto activo, escritura/build | `C:/Users/vieir/Desktop/Repo/jak-minecraft-java` |
-| Origen Rust de referencia, solo lectura | `C:/Users/vieir/Desktop/Repo/2010-rust-rewrite-mashup-trabajo` |
-| OpenGOAL del propietario, solo lectura | `C:/Users/vieir/Documents/Jak OpenGOAL/active` |
-| Instancia real del launcher | `C:/Users/vieir/AppData/Roaming/.minecraft/instances/jakmod` |
-| Espacio de trabajo de este chat | `C:/Users/vieir/Documents/Codex/2026-10-25/contin-a-el-trabajo-jak-minecraft` |
+| Proyecto activo, escritura/build | `%USERPROFILE%/Desktop/Repo/jak-minecraft-java` |
+| Origen Rust de referencia, solo lectura | `%USERPROFILE%/Desktop/Repo/2010-rust-rewrite-mashup-trabajo` |
+| OpenGOAL del propietario, solo lectura | `%USERPROFILE%/Documents/Jak OpenGOAL/active` |
+| Instancia real del launcher | `%USERPROFILE%/AppData/Roaming/.minecraft/instances/jakmod` |
+| Espacio de trabajo de este chat | `%USERPROFILE%/Documents/Codex/2026-10-25/contin-a-el-trabajo-jak-minecraft` |
 
 No escribir, compilar, instrumentar ni ejecutar pruebas en LSC4/GTA SA/GTA IV. Solo son referencias de metodología cuando sea pertinente. No modificar directamente partidas personales. El mundo normal de la instancia se llama `Mundo nuevo` y sigue presente.
 
-Hay skills instaladas en `C:/Users/vieir/.codex/skills`: `mod-any-game`, `mashup-mods`, `game-automation`, `publish-mod`, etc. Leer las que se apliquen al siguiente trabajo; no repetir el reconocimiento del juego desde cero. Las normas de porting del escritorio son filosofía de trabajo, no una orden para trabajar en los repositorios de GTA.
+Hay skills instaladas en `%USERPROFILE%/.codex/skills`: `mod-any-game`, `mashup-mods`, `game-automation`, `publish-mod`, etc. Leer las que se apliquen al siguiente trabajo; no repetir el reconocimiento del juego desde cero. Las normas de porting del escritorio son filosofía de trabajo, no una orden para trabajar en los repositorios de GTA.
 
 Entorno: Minecraft **26.3**, Fabric Loader **0.20.1**, Fabric API **0.165.0+26.3**, Loom **1.19.3**, Gradle **9.8**, JDK **25**, Rust/Cargo. Esta versión usa SDL/RenderPearl: no aplicar sin comprobar APIs viejas de GLFW/Blaze3D. Fuentes Minecraft locales en `.local/mc-api`, `.local/sources` y caché Loom. Consultar primero esas fuentes para dudas de API.
 

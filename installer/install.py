@@ -79,9 +79,10 @@ REQUIRED = {
  'jak3':['levels/factorya/hellcat-lod0.glb','raw_obj/gun-ag.go',
          'textures/progress-minimap/hud-skullgem.png']}
 
-def model_tokens():
+def model_tokens(*lists):
     """Every word of the mod's sources (tools/build_installer.py): a model it can name. A word ending in - starts a name it builds."""
-    words_ = set((PAYLOAD/'model-tokens.txt').read_text(encoding='utf-8').split())
+    words_ = set()
+    for name in lists: words_.update((PAYLOAD/name).read_text(encoding='utf-8').split())
     return words_, tuple(w for w in words_ if w.endswith('-'))
 
 def needed_model(name, tokens, prefixes):
@@ -89,11 +90,10 @@ def needed_model(name, tokens, prefixes):
     # "flutflutegg-lod0.glb" written whole is the word flutflutegg-lod0.
     return stem in tokens or name.removesuffix('.glb') in tokens or stem.startswith(prefixes)
 
-def slim_models(root, game):
+def slim_models(root, game, lists=('model-tokens.txt',)):
     """Each game holds some 10 GB of models the mod never loads: all but those it names go. Backgrounds stay for the conversion."""
-    tokens, prefixes = model_tokens()
+    tokens, prefixes = model_tokens(*lists)
     required = {Path(name).name for name in REQUIRED[game]}
-    shutil.rmtree(root/'collision', ignore_errors=True)
     for path in (root/'levels').rglob('*.glb'):
         name = path.name
         if name.endswith('-background.glb') or name in required: continue
@@ -101,7 +101,7 @@ def slim_models(root, game):
 
 def slim_converted(root):
     """What only the conversion read."""
-    for folder in ('audio', 'entities'): shutil.rmtree(root/folder, ignore_errors=True)
+    for folder in ('audio', 'entities', 'collision'): shutil.rmtree(root/folder, ignore_errors=True)
     for path in (root/'levels').rglob('*-background.glb'): path.unlink()
 
 def owned_games(canonical):
@@ -178,6 +178,8 @@ def prepare_owned(active, workspace, notify, lang):
             if not (export_root(canonical, game)/'audio/sfx').is_dir(): raise
         missing = [name for name in REQUIRED[game] if not (export_root(canonical, game)/name).is_file()]
         if missing: raise ValueError(f'{game}: incomplete OpenGOAL extraction: '+', '.join(missing))
+        # Game by game: what the conversion names as well stays, so the three never lie on the disk whole together.
+        slim_models(export_root(canonical, game), game, ('model-tokens.txt','conversion-tokens.txt'))
     return canonical
 
 def import_resources(active, workspace, notify, lang):
@@ -329,7 +331,7 @@ def _install(opengoal, minecraft, lang='es', notify=print, assets_only=False):
                 atomic(dest,z.read(info))
     resources=converted if reuse else import_resources(owned,workspace,notify,lang)
     if not reuse:
-        # Only now: the conversion reads models the mod's code never names (07/11: it stopped on a missing one).
+        # What only the conversion named goes now (07/11: cut before it, one of its models was missing and it stopped).
         games=owned_games(owned)
         if games: atomic(stamp,wanted.encode())
         for game in games:

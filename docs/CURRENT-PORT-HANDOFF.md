@@ -6,7 +6,7 @@ The user withdrew custom lowpoly/far-terrain/far-tower work on 2026-11-05. F34â€
 
 ## Projects and ownership
 
-- Write/build/run only `C:/Users/vieir/Desktop/Repo/jak-minecraft-java` (own Git). Original Rust reference: `C:/Users/vieir/Desktop/Repo/2010-rust-rewrite-mashup-trabajo`, read-only. LSC4 and GTA SA are read-only workflow references; never build or instrument there.
+- Write/build/run only `%USERPROFILE%/Desktop/Repo/jak-minecraft-java` (own Git). Original Rust reference: `%USERPROFILE%/Desktop/Repo/2010-rust-rewrite-mashup-trabajo`, read-only. LSC4 and GTA SA are read-only workflow references; never build or instrument there.
 - Minecraft 26.3, Fabric Loader 0.20.1, API 0.165.0+26.3, Loom 1.19.3, JDK 25, Gradle 9.8. Exact MC source jars live under the project's `.gradle/loom-cache/minecraftMaven`. This MC renderer uses SDL/RenderPearl; avoid stale GLFW/Blaze3D API assumptions.
 - Development launches use isolated saves, with the owner's OpenGOAL exports under Documents/Jak OpenGOAL. The authorized frozen installer has also updated `.minecraft/instances/jakmod`; existing saves were preserved. Verification takes use private copies rather than personal worlds. Generated resources, retail audio/GLBs/PNGs, DLLs, saves and evidence are ignored and must stay out of Git/public distribution.
 - Private repository and bilingual installer were subsequently authorized and released: `AdriiSuizo/jak-minecraft-java`, tag `v0.1.0-dev`, profile `26.3.jakmod`. Retail assets are generated locally, excluded from Git/release. Public publication is not authorized. Own adapters/native source Apache 2.0, retained Fabric template license in LICENSE-FABRIC-TEMPLATE.

@@ -1,14 +1,14 @@
 [
   {
-    "source": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\audio\\src\\jak.rs",
+    "source": "%USERPROFILE%\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\audio\\src\\jak.rs",
     "sha256": "d9127b162e2962cb4e03d3273b21477fa6576b594ca7969505bbe180bd2068bf"
   },
   {
-    "source": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\audio\\src\\jak_steps.rs",
+    "source": "%USERPROFILE%\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\audio\\src\\jak_steps.rs",
     "sha256": "5e956823140625b9f16f164ad99ecbccd24ee23184bd9db73ead90dc5c84a4d3"
   },
   {
-    "source": "C:\\Users\\vieir\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak.rs",
+    "source": "%USERPROFILE%\\Desktop\\Repo\\2010-rust-rewrite-mashup-trabajo\\crates\\render_anim\\src\\jak.rs",
     "sha256": "5df4a2f29a58aefac36d1da4778a2d055e49760216dd7c43f071ceb0af19b39a"
   }
 ]

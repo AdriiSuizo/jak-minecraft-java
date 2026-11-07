@@ -1,15 +1,15 @@
 {
   "reference_projects_read_only": [
     {
-      "path": "C:\\Users\\vieir\\Desktop\\LSC4 REPO CARPETA\\large-steal-car-4\\CLAUDE.md",
+      "path": "%USERPROFILE%\\Desktop\\LSC4 REPO CARPETA\\large-steal-car-4\\CLAUDE.md",
       "sha256": "1afd7f461ae47ee35fa44c0cd36a83ba73551256bb682f5723b109513a705f65"
     },
     {
-      "path": "C:\\Users\\vieir\\Desktop\\Repo\\GTA SA\\AGENTS.md",
+      "path": "%USERPROFILE%\\Desktop\\Repo\\GTA SA\\AGENTS.md",
       "sha256": "252ee061b5e9ebbcdf803214b05b340fcb5bd937ff551acf16647e69e78c8ba6"
     },
     {
-      "path": "C:\\Users\\vieir\\Desktop\\Repo\\GTA SA\\tools\\Run-Checks.py",
+      "path": "%USERPROFILE%\\Desktop\\Repo\\GTA SA\\tools\\Run-Checks.py",
       "sha256": "44fd52405903e1210eb855e328189348a5789a93fdaec35dba650dd40752935a"
     }
   ],

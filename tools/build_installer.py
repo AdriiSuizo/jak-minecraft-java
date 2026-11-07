@@ -4,7 +4,7 @@ Prerequisites for maintainers: Java 25, Cargo, PyInstaller, Pillow, NumPy,
 ffmpeg and WinRAR. End users only need Minecraft and their OpenGOAL games.
 """
 from pathlib import Path
-import hashlib, importlib.metadata, json, os, re, shutil, subprocess, sys, urllib.request, uuid
+import hashlib, importlib.metadata, json, os, re, shutil, subprocess, sys, urllib.request, uuid, zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'dist'; STAGE=ROOT/'.local/installer-bundle'
@@ -13,27 +13,40 @@ def run(args):subprocess.run([str(x) for x in args],cwd=ROOT,check=True)
 def copy(src,dst):dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,dst)
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def model_tokens():
+def personal_leaks(payload):
+    """Nothing shipped may carry this machine's user name: a compiler writes build paths into what it makes."""
+    name=os.environ['USERNAME'].lower().encode();hits=[]
+    for path in payload.rglob('*'):
+        if not path.is_file():continue
+        if name in path.read_bytes().lower():hits.append(path.name)
+        if path.suffix=='.jar':
+            with zipfile.ZipFile(path) as jar:hits+=[entry for entry in jar.namelist() if name in jar.read(entry).lower()]
+    if hits:raise SystemExit('Personal paths in the package: '+', '.join(hits[:20]))
+
+def model_tokens(folders=('src/main','src/client','native/jak-core/src','native/jak-jni/src','tools/content-exporter/src','tools'),skip=('content-source',)):
     """What the installer keeps of the games' models: every word of these sources, and the "name-" pieces it builds names from."""
     words=set()
-    for folder in ('src/main','src/client','native/jak-core/src','native/jak-jni/src','tools/content-exporter/src','tools'):
+    for folder in folders:
         for path in (ROOT/folder).rglob('*'):
             if path.suffix not in ('.java','.rs','.py','.json','.toml','.txt') or not path.is_file():continue
-            if any(part in ('target','__pycache__','build','content-source') for part in path.parts):continue
+            if any(part in ('target','__pycache__','build',*skip) for part in path.parts):continue
             text=path.read_text(encoding='utf-8',errors='ignore')
             words.update(w for w in re.findall(r'[a-z0-9][a-z0-9_-]{2,}',text) if not w.endswith('-'))
             words.update(m.rsplit('/',1)[-1] for m in re.findall(r'"([a-z0-9][a-z0-9_/-]*-)"',text) if len(m)>=4)
-    return words
+    return {w for w in words if os.environ['USERNAME'].lower() not in w}
 
 def main():
     if sys.platform!='win32':raise SystemExit('The packaged native core currently targets Windows x86-64')
     props=dict(line.split('=',1) for line in (ROOT/'gradle.properties').read_text().splitlines() if '=' in line)
+    # The binaries must not name this machine's folders: panics keep source paths, the linker the debug file's.
+    os.environ['CARGO_ENCODED_RUSTFLAGS']=f'--remap-path-prefix={Path.home()}=~\x1f-Clink-arg=/PDBALTPATH:%_PDB%'
     run(['cargo','build','--release','--locked','--manifest-path','tools/content-exporter/Cargo.toml'])
     run([ROOT/'gradlew.bat','distributionJar','--no-daemon','--console=plain'])
     payload=STAGE/'payload';payload.mkdir(parents=True,exist_ok=True)
     copy(ROOT/f'build/libs/jak-minecraft-java-{props["version"]}-installer-code.jar',payload/'jakmc-code.jar')
     copy(ROOT/'tools/content-exporter/target/release/jak-content-exporter.exe',payload/'jak-content-exporter.exe')
     (payload/'model-tokens.txt').write_text('\n'.join(sorted(model_tokens())),encoding='utf-8')
+    (payload/'conversion-tokens.txt').write_text('\n'.join(sorted(model_tokens(('tools/content-source',),()))),encoding='utf-8')
     # These are redistributable codec utilities, never game files. Retain their
     # licenses and original notices along with the versions actually bundled.
     ffmpeg=Path(shutil.which('ffmpeg') or '')
@@ -85,6 +98,7 @@ def main():
     for name in ('opengoal','jak-enhanced-trilogy'):
         for notice in ('LICENSE','revision.txt'):copy(ROOT/'third_party'/name/notice,notices/name/notice)
     copy(ROOT/'CONTROLES.md',package/'CONTROLES.md')
+    personal_leaks(payload)
     rar=Path(os.environ.get('ProgramFiles','C:/Program Files'))/'WinRAR/Rar.exe'
     if not rar.is_file():raise SystemExit('WinRAR is required to create a real RAR archive')
     archive=OUT/f'JakMod-{props["minecraft_version"]}-{props["version"]}.rar'

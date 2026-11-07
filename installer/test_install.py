@@ -16,8 +16,9 @@ class InstallerChecks(unittest.TestCase):
                 for name in names:(level/name).write_bytes(b'x')
                 installer.slim_models(root,'jak1')
                 self.assertEqual(sorted(p.name for p in level.iterdir()),['a-background.glb','citizen-fat-lod0.glb','flutflut-lod0.glb','sidekick-lod0.glb','whole-lod0.glb'])
-                self.assertFalse((root/'collision').exists())
+                self.assertTrue((root/'collision').exists())
                 installer.slim_converted(root)
+                self.assertFalse((root/'collision').exists())
                 self.assertFalse((level/'a-background.glb').exists())
             finally:installer.PAYLOAD=old
             mine=Path(temp)/'owned';theirs=Path(temp)/'opengoal';theirs.mkdir();(theirs/'keep').write_text('x');(mine/'jak2').mkdir(parents=True)
