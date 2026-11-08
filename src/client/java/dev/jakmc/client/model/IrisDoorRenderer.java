@@ -69,11 +69,11 @@ public final class IrisDoorRenderer implements BlockEntityRenderer<JakIrisDoor.D
             if(airlock==null&&!airlockMissing)try{
                 var root=RuntimeConfig.gameAssets("jak2").resolve("levels/ctyfarma");
                 // com-airlock-outer: pre-open 35, lock 45, open 45, pre-open speed 2; its sounds by stretch.
-                var outer=leaf(root.resolve("com-airlock-outer-lod0.glb"),"com-airlock-outer","com-airlock-outer-idle",2,
+                var outer=leaf(root.resolve("com-airlock-outer-lod0.glb"),"com-airlock-outer","com-airlock-outer-idle",3,
                     new float[][]{{45,2},{45,2},{-1,1}},new float[][]{{45,2},{0,1}},
                     new String[]{"jak2/airlock_slider",null,"jak2/airlock_seal","jak2/airlock_hit"},new String[]{"jak2/airlock_open","jak2/airlock_hit",null},AIRLOCK_GAIN);
                 // com-airlock-inner: lock 37, pre-open 65, open 75, pre-open speed 0.9; its gear turning and unlocking.
-                var inner=leaf(root.resolve("com-airlock-inner-lod0.glb"),"com-airlock-inner","com-airlock-inner-idle",2,
+                var inner=leaf(root.resolve("com-airlock-inner-lod0.glb"),"com-airlock-inner","com-airlock-inner-idle",3,
                     new float[][]{{37,.9f},{75,2},{-1,1}},new float[][]{{75,2},{0,1}},
                     new String[]{"jak2/airlock_gear","jak2/airlock_turn","jak2/airlock_unlock",null},new String[]{null,null,null},AIRLOCK_GAIN);
                 airlock=new Leaf[]{outer,inner};

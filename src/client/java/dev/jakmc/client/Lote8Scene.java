@@ -97,8 +97,8 @@ final class Lote8Scene {
             // A wall with the airlock in it, not a hole by its sides.
             for(int x=-8;x<=8;x++)for(int y=0;y<4;y++)level.setBlock(base.offset(x,y,-6),stone,2);
             var anchor=base.offset(0,0,-6);
-            for(int part=0;part<4;part++)level.setBlock(JakIrisDoor.cell(anchor,Direction.SOUTH,part,2),air,2);
-            for(int part=0;part<4;part++)level.setBlock(JakIrisDoor.cell(anchor,Direction.SOUTH,part,2),
+            for(int part=0;part<9;part++)level.setBlock(JakIrisDoor.cell(anchor,Direction.SOUTH,part,3),air,2);
+            for(int part=0;part<9;part++)level.setBlock(JakIrisDoor.cell(anchor,Direction.SOUTH,part,3),
                 JakIrisDoor.AIRLOCK.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,Direction.SOUTH).setValue(JakIrisDoor.PART,part),3);
             // A pillar for the ledge and the corner.
             for(int x=-16;x<=-12;x++)for(int z=-4;z<=0;z++)for(int y=0;y<4;y++)level.setBlock(base.offset(x,y,z),stone,2);
@@ -152,7 +152,7 @@ final class Lote8Scene {
         if(t==545)capture(c,"lote8-door-shut.png");
         if(t==550)onServer(c,p->{
             var anchor=base.offset(0,0,-6);
-            for(int part=0;part<4;part++){var cell=JakIrisDoor.cell(anchor,Direction.SOUTH,part,2);p.level().setBlock(cell,p.level().getBlockState(cell).setValue(JakIrisDoor.OPEN,true),3);}
+            for(int part=0;part<9;part++){var cell=JakIrisDoor.cell(anchor,Direction.SOUTH,part,3);p.level().setBlock(cell,p.level().getBlockState(cell).setValue(JakIrisDoor.OPEN,true),3);}
         });
         if(t==610)capture(c,"lote8-door-open.png");
         if(t==640)capture(c,"lote8-door-through.png");

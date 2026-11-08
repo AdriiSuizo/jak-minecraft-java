@@ -12,7 +12,12 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
+import dev.jakmc.content.JakIrisDoor;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
@@ -22,7 +27,8 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Adrii 08/11: Jak's own effects were gone (the splash, the bubbles, the board's Circle). One short run: into the
- * water, a dive, the board on the water with Circle, counting what each part drew of his own effects.
+ * water, a dive, the board on the water with Circle, counting what each part drew of his own effects. Then the 3x3
+ * airlock in a wall: L2 by it with dirt in hand opens it (no dirt placed), and he walks through.
  */
 final class Lote9Scene {
     private static boolean running,pause;
@@ -58,6 +64,12 @@ final class Lote9Scene {
             for(int x=-6;x<=40;x++)for(int z=-8;z<=12;z++)for(int y=-6;y<=12;y++)level.setBlock(base.offset(x,y,z),y<0?stone:air,2);
             // A long pool, four deep: room for the board to ride on it.
             for(int x=10;x<=34;x++)for(int z=2;z<=10;z++)for(int y=-4;y<=-1;y++)level.setBlock(base.offset(x,y,z),Blocks.WATER.defaultBlockState(),3);
+            // The airlock in a wall, as the showcase's.
+            for(int x=-5;x<=5;x++)for(int y=0;y<4;y++)level.setBlock(base.offset(x,y,-6),stone,2);
+            var anchor=base.offset(0,0,-6);
+            for(int part=0;part<9;part++)level.setBlock(JakIrisDoor.cell(anchor,Direction.SOUTH,part,3),air,2);
+            for(int part=0;part<9;part++)level.setBlock(JakIrisDoor.cell(anchor,Direction.SOUTH,part,3),
+                JakIrisDoor.AIRLOCK.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,Direction.SOUTH).setValue(JakIrisDoor.PART,part),3);
             JakPlayers.chooseMode(p,true);
             p.setGameMode(GameType.SURVIVAL);p.getInventory().clearContent();
             p.setAttached(JakData.BOARD,new ItemStack(JakItems.BOARD));
@@ -103,7 +115,21 @@ final class Lote9Scene {
         if(t==316)capture(c,"lote9-board-circle-a.png");
         if(t==351)capture(c,"lote9-board-circle-b.png");
         if(t==380)input(c,0,0,0);
-        if(t==400){
+        // The airlock: dirt in hand, L2 by it, then through it.
+        if(t==400){part="airlock";onServer(c,p->{put(p,0.5,0,-3.6,180);p.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(Items.DIRT,8));});}
+        if(t==410)look(at(3.5,2.5,-1),at(0.5,1.2,-6));
+        if(t==414)capture(c,"lote9-airlock-shut.png");
+        if(t==416)JakInput.clickUseForProbe();
+        if(t==430)capture(c,"lote9-airlock-opening.png");
+        if(t==470){capture(c,"lote9-airlock-open.png");onServer(c,p->{
+            result.addProperty("airlock_open",p.level().getBlockState(base.offset(0,0,-6)).getValue(JakIrisDoor.OPEN));
+            result.addProperty("dirt_left",p.getMainHandItem().getCount());
+            int dirt=0;for(var at:BlockPos.betweenClosed(base.offset(-4,0,-8),base.offset(4,4,-2)))if(p.level().getBlockState(at).is(Blocks.DIRT))dirt++;
+            result.addProperty("dirt_placed",dirt);
+            result.addProperty("door_cells",JakIrisDoor.AIRLOCK.parts());});view=null;}
+        if(t>=475&&t<515)input(c,0,0,1);
+        if(t==515){input(c,0,0,0);onServer(c,p->result.addProperty("through_z",Math.round((p.getZ()-base.getZ())*100)/100.0));}
+        if(t==530){
             view=null;
             onServer(c,p->{
                 result.addProperty("visual_review","required");result.addProperty("reason","complete");

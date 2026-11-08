@@ -198,6 +198,8 @@ public final class JakInput {
     public static boolean controllerReady(int id){return GAMEPAD.has(id);}
     public static boolean useHeld(){return useHeld;}
     public static boolean attackHeld(){return attackHeld;}
+    /** Scenes: L2 pressed once, as the pad does. */
+    static void clickUseForProbe(){useClicked=true;}
     public static boolean consumeUse(){boolean value=useClicked;useClicked=false;return value;}
     public static boolean consumeAttack(){boolean value=attackClicked;attackClicked=false;return value;}
     private static void ui(Minecraft c){

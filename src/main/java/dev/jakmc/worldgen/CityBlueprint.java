@@ -159,7 +159,7 @@ final class CityBlueprint {
             }
         });
         // Adrii 07/11: the tower's and the Krimson station's doors are Haven's airlock (JakIrisDoor): a door in the middle of
-        // each row of gates. A one-block doorway grows into the wall to its two blocks, and what a wider gateway has over
+        // each row of gates. A one-block doorway grows into the wall to its three blocks (3x3 since 08/11), and what a wider gateway has over
         // is walled up with the lintel's block.
         gates.forEach((at,base)->{
             Direction facing=base.getValue(BlockStateProperties.HORIZONTAL_FACING);
@@ -175,10 +175,10 @@ final class CityBlueprint {
             while(reach<6&&open(cell(cells,middle.relative(lateral,reach+1)),gates.containsKey(middle.relative(lateral,reach+1))))reach++;
             while(back<6&&open(cell(cells,middle.relative(lateral,-back-1)),gates.containsKey(middle.relative(lateral,-back-1))))back++;
             for(int side=-back;side<=reach&&lintel!=null;side++)for(int y=0;y<high;y++){
-                if((side==-1||side==0)&&y<2)continue;
+                if(side>=-1&&side<=1&&y<3)continue;
                 put(cells,bounds,middle.relative(lateral,side).above(y),lintel);
             }
-            for(int part=0;part<4;part++)put(cells,bounds,JakIrisDoor.cell(middle,facing,part,2),
+            for(int part=0;part<9;part++)put(cells,bounds,JakIrisDoor.cell(middle,facing,part,3),
                 JakIrisDoor.AIRLOCK.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING,facing).setValue(JakIrisDoor.PART,part));
         });
         if(palace!=null){

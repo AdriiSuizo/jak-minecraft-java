@@ -3,6 +3,8 @@ package dev.jakmc.content;
 import dev.jakmc.JakData;
 import java.util.LinkedHashMap;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
@@ -51,7 +53,9 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  * each with its own opening and closing (com-airlock-outer and com-airlock-inner back to back). stand-in
  * (Adrii 06/11): in place of want-cross-airlock? (anyone within its 143360 open distance) it opens and shuts
  * to a left click or the pad's L2 (Minecraft's use), and it collides as whole blocks shut and not at all open.
- * Adrii 07/11: 2x2, with no cells at its sides to leave holes in a wall; its leaves slide into what stands there.
+ * Adrii 07/11: no cells at its sides to leave holes in a wall; its leaves slide into what stands there. Adrii 08/11:
+ * 3x3 as the iris door, and L2 (use) anywhere near it opens it, whatever the crosshair is on or the hand holds:
+ * in third person it fell on the blocks round it and placed them (stand-in for want-cross-airlock's distance).
  */
 public final class JakIrisDoor extends HorizontalDirectionalBlock implements EntityBlock {
     public static final IntegerProperty PART=IntegerProperty.create("part",0,15);
@@ -66,12 +70,12 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
     private static final java.util.Map<Player,Long> CLICKS=new java.util.WeakHashMap<>();
     /** Haven's airlock rather than the iris door. */
     public final boolean airlock;
-    /** Cells across and up: 3 the iris door, 2 the airlock (Adrii 07/11). */
+    /** Cells across and up: 3 both (Adrii 08/11; the airlock was 2 from 07/11). */
     public final int size;
 
     private JakIrisDoor(Properties properties,boolean airlock){
         super(properties);
-        this.airlock=airlock;this.size=airlock?2:3;
+        this.airlock=airlock;this.size=3;
         registerDefaultState(stateDefinition.any().setValue(FACING,Direction.NORTH).setValue(PART,ANCHOR).setValue(OPEN,false));
     }
 
@@ -87,7 +91,26 @@ public final class JakIrisDoor extends HorizontalDirectionalBlock implements Ent
             if(level instanceof ServerLevel server)click(server,player,at,state);
             return InteractionResult.SUCCESS;
         });
+        UseBlockCallback.EVENT.register((player,level,hand,hit)->near(player,level,hand));
+        UseItemCallback.EVENT.register((player,level,hand)->near(player,level,hand));
     }
+    /** L2 by an airlock: that door, not what the crosshair or the hand would do. */
+    private static InteractionResult near(Player player,Level level,net.minecraft.world.InteractionHand hand){
+        if(player.isShiftKeyDown()||player.isSpectator())return InteractionResult.PASS;
+        var middle=player.position().add(0,.9,0);BlockPos best=null;double closest=REACH*REACH;
+        var from=player.blockPosition();
+        for(var at:BlockPos.betweenClosed(from.offset(-3,-2,-3),from.offset(3,3,3))){
+            var state=level.getBlockState(at);
+            if(state.getBlock()!=AIRLOCK||state.getValue(PART)>=AIRLOCK.parts())continue;
+            double d=Vec3.atCenterOf(at).distanceToSqr(middle);
+            if(d<closest){closest=d;best=anchor(at,state);}
+        }
+        if(best==null)return InteractionResult.PASS;
+        if(hand==net.minecraft.world.InteractionHand.MAIN_HAND&&level instanceof ServerLevel server)click(server,player,best,server.getBlockState(best));
+        return InteractionResult.SUCCESS;
+    }
+    /** How near a cell of the airlock L2 reaches it from: Jak's middle within some two and a half blocks. */
+    private static final double REACH=2.6;
     private static JakIrisDoor door(String name,boolean airlock){
         var key=ResourceKey.create(Registries.BLOCK,JakData.id(name));
         return Registry.register(BuiltInRegistries.BLOCK,key,new JakIrisDoor(Properties.of().setId(key).strength(50,1200).noOcclusion(),airlock));
