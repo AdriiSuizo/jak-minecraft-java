@@ -136,6 +136,8 @@ public final class JakEffects {
   */
  private record Held(int entity,Vec3 origin,JsonObject packet,long tick,long at){}
  private static final java.util.ArrayDeque<Held> HELD=new java.util.ArrayDeque<>();
+ static boolean hasOwner(int entity){return OWNERS.containsKey(entity);}
+ static int heldCount(){return HELD.size();}
  private static void release(long now){
   for(var head=HELD.peek();head!=null;head=HELD.peek()){
    double shown=JakPoses.renderedTick(head.entity);
@@ -338,7 +340,7 @@ public final class JakEffects {
   var client=Minecraft.getInstance();
   if(client.level!=weatherWorld){closeSandstorm();weatherWorld=client.level;}
   float dust=JakAtmosphere.dust();
-  if(client.level==null||OWNERS.isEmpty()&&DECORATIONS.isEmpty()&&BURSTS.isEmpty()&&PULSES.isEmpty()&&sandstorm==null&&dust<=.01f)return;
+  if(client.level==null||OWNERS.isEmpty()&&HELD.isEmpty()&&DECORATIONS.isEmpty()&&BURSTS.isEmpty()&&PULSES.isEmpty()&&sandstorm==null&&dust<=.01f)return;
   manifest();
   var camera=context.levelState().cameraRenderState;long now=System.nanoTime();drawnVertices=0;
   Vector3f forward=camera.orientation.transform(new Vector3f(0,0,-1)),up=camera.orientation.transform(new Vector3f(0,1,0));
