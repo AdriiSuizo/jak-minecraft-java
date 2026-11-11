@@ -83,7 +83,7 @@ public final class JakPoses {
             if(sample==null)sample=HISTORY.lastEntry();
             if(sample!=null){presentedPose=sample.getValue();presentedElapsed=(float)Math.clamp((MOTION.tick()-sample.getKey())*.05,-.1,0);}
         }
-        if(player!=null&&player.getVehicle() instanceof dev.jakmc.entity.JakVehicle car)car.samplePresentation(System.nanoTime());
+        if(player!=null&&player.getVehicle() instanceof dev.jakmc.entity.JakVehicle car)car.samplePresentation(System.nanoTime(),true);
     }
     public static Pose rendered(int id){return presentedPose!=null&&Minecraft.getInstance().player!=null&&id==Minecraft.getInstance().player.getId()?presentedPose:get(id);}
     public static float elapsed(Pose pose){return pose==presentedPose?presentedElapsed:Math.clamp((System.nanoTime()-pose.received())/1e9f-.05f,-.05f,.05f);}

@@ -8,7 +8,7 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 | Cámara | Stick derecho | Stick derecho |
 | Saltar / doble salto en el aire | X | A |
 | Puñetazo | Cuadrado | X |
-| Ataque giratorio | Círculo | B |
+| Patada giratoria (empujar, activar mecanismos y cortar vegetación) | Círculo | B |
 | Agacharse / rodada al avanzar | L1 | LB |
 | Apuntar Morph Gun / cámara al hombro | L2 con Morph Gun | LT con Morph Gun |
 | Disparar Morph Gun / cargar y soltar Wave Concussor | R2 | RT |
@@ -33,7 +33,7 @@ Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo s
 
 Para equipar la turbotabla, usa su casilla propia del inventario o selecciónala en la mano y pulsa L2/LT. Triángulo/Y únicamente saca o guarda la tabla que esté equipada en esa casilla; llevarla en la mano o en otra casilla no basta. R2/RT ejecuta el ataque/minado de Minecraft o dispara el Morph Gun seleccionado. L2/LT conserva la ruta nativa de uso, incluyendo colocar bloques, comer, beber, cargar arcos, usar cubos, puertas, entidades y mano secundaria. Con el Morph Gun también apunta. Al conducir se conservan R2 acelerador y L2 freno. Mantén L3 antes de pulsar el botón del poder luminoso. Con las alas desplegadas, salta y vuelve a pulsar X en el aire para aletear. El escudo, la curación y la ralentización consumen eco luminoso.
 
-Se conservan teclado y ratón: B tabla, G puñetazo, V giro, R disparo, C apuntado, Z oscuro, X alas y Espacio salto; se pueden cambiar en las opciones de Minecraft. Las interacciones normales también mantienen clic derecho.
+En creativo los Morph Guns y los torpedos se pueden disparar sin munición, y los poderes de Jak se pueden usar sin eco. Se conservan teclado y ratón: B tabla, G puñetazo, V giro, R disparo, C apuntado, Z oscuro, X alas y Espacio salto; se pueden cambiar en las opciones de Minecraft. Las interacciones normales también mantienen clic derecho.
 
 La entrada del mando respeta las zonas muertas originales: el núcleo aplica la del movimiento; la cámara usa zona radial 0,18 y el giro original de 180 grados por segundo a máxima inclinación. Los gatillos se leen analógicamente; los botones digitales originales usan presión 0,75 y liberación 0,65. El mando se detecta al conectarlo, libera sus botones al desenchufarlo y suspende movimiento/ataques en menús o al perder foco.
 
@@ -53,6 +53,10 @@ El lagarto aparece en desiertos. El Flut Flut aparece en pantanos y manglares. A
 
 Alimenta al Flut Flut con semillas, inténtalo domar con L2 o clic derecho con la mano vacía y colócale una montura. Los huevos que ponen los adultos se pueden recoger y colocar para incubarlos. Al montar, X salta y vuelve a saltar en el aire, Cuadrado ejecuta el golpe de la montura en el aire y L2 usa puertas y objetos; Triángulo desmonta. Con teclado, usa Espacio para saltar, G para el golpe y F para interactuar o desmontar.
 
+
+## Zoomers
+
+Mantén Círculo/B para accionar el freno de mano en los zoomers tipo coche. En las motos, Círculo/B conserva el salto. Cuadrado/X (G en teclado) sirve de freno de mano en los dos tipos.
 
 ## HellCat
 

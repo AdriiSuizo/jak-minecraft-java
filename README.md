@@ -15,14 +15,14 @@ El mod no incluye **ningún archivo de los juegos**. Su instalador los genera en
 ### Qué incluye
 - **Jak y Daxter:** el movimiento y el combate originales de Jak (saltos, doble salto, rodar, puñetazo, patada giratoria, agarrarse a bordes, nadar, escaleras), con Daxter al hombro.
 - **Poderes:** Jak oscuro (bomba con X+Cuadrado y explosión de rayos con X+Círculo) y Jak de luz (volar, escudo, parar el tiempo, curar).
-- **Armas:** las 12 armas Morph de Jak 3, con munición de eco que se gasta del inventario.
+- **Armas:** las 12 armas Morph de Jak 3. En supervivencia gastan munición de eco del inventario; en creativo puedes dispararlas y usar los poderes de Jak sin llevar munición ni eco.
 - **Turbotabla (JET-Board)**, con barandillas para deslizarse; va sobre el agua.
 - **Objetos de Jak para construir:** el lanzador de eco azul de Jak 1, la puerta iris de la Roca del Géiser (se abre con eco azul) y la esclusa de Villarefugio, de 3x3 bloques. Todas las piezas decorativas de Jak se fabrican en el cortapiedras.
 - **Vehículos:** HellCat, Helldog, zoomers de Villarefugio, coches del desierto, Leapers y Flut Flut, que se puede domar y criar.
 - **Enemigos:** 18 tipos de Jak 1 y Jak 3, más los guardias Krimson de Jak II. Cada uno vive en su bioma y tiene su nido.
 - **Lugares que se generan en mundos normales:** Villarefugio (Haven City) con su tráfico y ciudadanos, Spargus en el desierto, Sandover y la cueva del cráter.
 - **Ciudadanos** con comercio, recetas para todo lo de Jak, eco de colores y respiraderos de eco.
-- **Patada giratoria como un tornado:** golpea todo lo que hay alrededor de Jak, mires donde mires, y rompe bloques, hierba y objetos con sus partículas.
+- **Patada giratoria:** empuja sin herir, puede activar mecanismos y corta vegetación como hierba, trigo o bambú.
 - **Cámara que atraviesa paredes** sin dejar ver el vacío a través de ellas, para ver bien a Jak en cuevas y sitios estrechos.
 - **Mando** (PlayStation/Xbox) y teclado. Los controles están en [CONTROLES.md](CONTROLES.md).
 
@@ -58,14 +58,14 @@ The mod ships **no game files at all**. Its installer builds them on your PC fro
 ### What's included
 - **Jak and Daxter:** Jak's original movement and combat (jumps, double jump, roll, punch, spin kick, ledge grab, swimming, ladders), with Daxter on his shoulder.
 - **Powers:** Dark Jak (bomb with X+Square, lightning blast with X+Circle) and Light Jak (flight, shield, time freeze, healing).
-- **Guns:** all 12 Jak 3 Morph Guns, with eco ammo taken from your inventory.
+- **Guns:** all 12 Jak 3 Morph Guns. Survival uses eco ammo from your inventory; Creative lets you fire them and use Jak's powers without carrying ammo or eco.
 - **JET-Board**, with grind rails; it rides over water.
 - **Jak pieces to build with:** Jak 1's blue eco launcher, the Geyser Rock iris door (opens with blue eco) and Haven's airlock, 3x3 blocks. Every Jak decorative piece is made in the stonecutter.
 - **Vehicles:** HellCat, Helldog, Haven zoomers, desert cars, Leapers and the Flut Flut, which can be tamed and bred.
 - **Enemies:** 18 types from Jak 1 and Jak 3, plus Jak II's Krimson Guards. Each lives in its own biome and has its own nests.
 - **Places generated in normal worlds:** Haven City with its traffic and citizens, Spargus in the desert, Sandover and the crater cave.
 - **Citizens** with trades, recipes for all of Jak's gear, coloured eco and eco vents.
-- **Spin kick like a tornado:** it hits everything around Jak wherever you look, and breaks blocks, grass and objects with their particles.
+- **Spin kick:** shoves targets without hurting them, can activate mechanisms, and cuts vegetation such as grass, wheat and bamboo.
 - **A camera that passes through walls** without showing the void behind them, so Jak stays visible in caves and tight spots.
 - **Controller** (PlayStation/Xbox) and keyboard. Controls are in [CONTROLES.md](CONTROLES.md).
 
@@ -114,9 +114,9 @@ Project code follows the source repository's Apache-2.0 license; the initial Fab
 
 On this machine, double-click `PROBAR-JAK.bat`. It sets Java 25 only for its own process and runs the isolated Fabric development client; it does not install into the personal Minecraft profile. The configured dev world opens automatically. No automatic test scene starts.
 
-Jak activates automatically and starts in third person. Use `/gamemode creative` and `/jak equipment` for creative testing. `/jak off` explicitly disables Jak; the choice persists. Right-click the JET-Board or move it into its dedicated native inventory slot (above offhand), then B to mount/stow. Shift-click equips it from the inventory. It follows native keepInventory and Vanishing rules on death. Hold a Morph Gun and press R to fire; hold/release R to charge/fire the Wave Concussor. G punches, V spins, Space jumps. Creature eggs are in the Jak creatures creative tab; `/summon jakmc:grunt ~ ~ ~4` is a direct example. Switch to survival to test enemy aggression. Z/X use dark/light powers when sufficient eco is available. Controls can be rebound in Minecraft options.
+Jak activates automatically and starts in third person. Use `/gamemode creative` and `/jak equipment` for creative testing. `/jak off` explicitly disables Jak; the choice persists. Right-click the JET-Board or move it into its dedicated native inventory slot (above offhand), then B to mount/stow. Shift-click equips it from the inventory. It follows native keepInventory and Vanishing rules on death. Hold a Morph Gun and press R to fire; hold/release R to charge/fire the Wave Concussor. G punches, V spins, Space jumps. Creature eggs are in the Jak creatures creative tab; `/summon jakmc:grunt ~ ~ ~4` is a direct example. Switch to survival to test enemy aggression. Z/X use dark/light powers; in survival they require eco. Controls can be rebound in Minecraft options.
 
 Controller. Left stick moves and right stick looks. PlayStation X / Xbox A jumps and double-jumps, Square / X punches and Circle / B spins. L1 rolls with movement, L2 uses/interacts through Minecraft and aims held Morph Guns; R2 attacks/mines or fires the held Morph Gun. Triangle / Y deploys/stows the JET-Board only when equipped in its own slot. Select / Back opens inventory and Start pauses. Hold R3 with D-pad Up or Down to zoom into or out of first person. Tap D-pad Down to drop one item; hold it to drop the whole stack. L3 controls transformations and Light Jak chords. See [CONTROLES.md](CONTROLES.md) for the complete mapping.
 
 
-Eco y munición se consumen del inventario real, incluidas shulkers y bolsas. Las recetas, la durabilidad y los comercios se explican en [Inventario y economía](docs/INVENTORY-ECONOMY.md). Para localizar las ciudades de generación normal: `/jak locate haven` y `/jak locate spargus`.
+En supervivencia, el eco y la munición se consumen del inventario real, incluidas shulkers y bolsas. Las recetas, la durabilidad y los comercios se explican en [Inventario y economía](docs/INVENTORY-ECONOMY.md). Para localizar las ciudades de generación normal: `/jak locate haven` y `/jak locate spargus`.

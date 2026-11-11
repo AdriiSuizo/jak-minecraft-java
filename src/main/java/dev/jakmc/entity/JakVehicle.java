@@ -118,9 +118,6 @@ public final class JakVehicle extends Entity {
     /** Ticks between blows that still count as in a row (Rust zoomers STRIKE_GAP 1.6 s). */
     private static final int STRIKE_GAP=32;
     private boolean high;
-    /** The player who last stepped off it and the tick he did: its hull is solid to him (see {@link #supportsLanding}). */
-    private java.util.UUID lastRider;
-    private long exitedAt=Long.MIN_VALUE/2;
     private JakPackets.Input controls;
     private JsonObject currentFrame,previousFrame;
     private final float[] trafficNote=new float[4];
@@ -136,14 +133,15 @@ public final class JakVehicle extends Entity {
     private Vec3 displayPosition;
     private double displayBob;
 
-    public void samplePresentation(long now){
+    public void samplePresentation(long now){samplePresentation(now,false);}
+    public void samplePresentation(long now,boolean local){
         if(displayFrames.isEmpty())return;
         var latest=displayFrames.getLast();
         double dt=Math.max(0,(now-displayTime)/displayInterval);
         displayTime=now;
-        double target=latest.tick-2+Math.clamp((now-frameReceived)/displayInterval,0,1);
+        double target=latest.tick-(local?.5:1)+Math.clamp((now-frameReceived)/displayInterval,0,1);
         double predicted=displayClock+dt;
-        displayClock=Math.min(latest.tick,predicted+Math.clamp((target-predicted)*.1,-.1,.1)*dt);
+        displayClock=Math.min(latest.tick+(local?.5:0),predicted+Math.clamp((target-predicted)*.5,-.5,.5)*dt);
         var left=displayFrames.getFirst();
         var right=left;
         for(var candidate:displayFrames){
@@ -155,6 +153,13 @@ public final class JakVehicle extends Entity {
         displayFraction=right.tick==left.tick?1:(float)Math.clamp((displayClock-left.tick)/(right.tick-left.tick),0,1);
         displayPosition=displayVector(displayBefore,"worldPosition",position()).lerp(
             displayVector(displayAfter,"worldPosition",position()),displayFraction);
+        // A locally driven hull may advance at most half a tick from its last confirmed velocity.
+        if(local&&displayClock>latest.tick&&previousFrame!=null){
+            var lastStep=displayVector(latest.frame,"worldPosition",position()).subtract(displayVector(previousFrame,"worldPosition",position()));
+            var motion=displayVector(latest.frame,"velocity",Vec3.ZERO).scale(.05);
+            // A stopped chassis, or one that just bounced, must not be extrapolated through its contact.
+            if(lastStep.dot(motion)>0)displayPosition=displayPosition.add(motion.scale(displayClock-latest.tick));
+        }
         // Rust zoomers.rs: the hover's bob, sin(clock*2.1+phase)*0.07 m, its phase the zoomer's own.
         displayBob=Math.sin(displayClock/20.0*2.1+(getId()*0.618%1)*Math.PI*2)*0.07/(6400.0/4096);
     }
@@ -162,6 +167,7 @@ public final class JakVehicle extends Entity {
         return frame!=null&&frame.has(key)?JakPlayers.vector(frame.getAsJsonArray(key)):fallback;
     }
     public float presentationFraction(){return displayFraction;}
+    public double presentationSeconds(){return displayClock/20;}
     public JsonObject presentationBefore(){return displayBefore==null?previousFrame():displayBefore;}
     public JsonObject presentationAfter(){return displayAfter==null?frame():displayAfter;}
     public Vec3 presentationPosition(){return displayPosition==null?position():displayPosition;}
@@ -203,8 +209,10 @@ public final class JakVehicle extends Entity {
      */
     public Vec3 presentationRider(){
         Vec3 point=displayedSeat(presentationBefore()).lerp(displayedSeat(presentationAfter()),displayFraction).add(0,presentationLift(),0);
+        var a=presentationBefore();var b=presentationAfter();
+        if(a!=null&&b!=null)point=point.add(presentationPosition().subtract(displayVector(a,"worldPosition",position())
+            .lerp(displayVector(b,"worldPosition",position()),displayFraction)));
         float boarding=presentationBoarding();
-        var b=presentationAfter();
         if(boarding>=0&&b!=null&&b.has("boardingFrom"))
             point=getOn(displayVector(b,"boardingFrom",point),point,boarding*getOn().aframesPerSecond());
         return point;
@@ -256,7 +264,7 @@ public final class JakVehicle extends Entity {
             long now=System.nanoTime();
             long tick=currentFrame.has("serverTick")?currentFrame.get("serverTick").getAsLong():tickCount;
             if(displayFrames.isEmpty()||tick<=displayFrames.getLast().tick){
-                displayFrames.clear();displayClock=tick-2;displayTime=now;displayInterval=50_000_000;
+                displayFrames.clear();displayClock=tick-1;displayTime=now;displayInterval=50_000_000;
             }else{
                 double interval=(now-frameReceived)/(double)(tick-displayFrames.getLast().tick);
                 displayInterval+=(Math.clamp(interval,1_000_000,250_000_000)-displayInterval)*.1;
@@ -363,7 +371,6 @@ public final class JakVehicle extends Entity {
             // target-pilot-get-off: the original exit, taken from the seat by the Jak that comes of this.
             if(model.hover()){
                 JakPlayers.pilotExit(rider,model.bike(),velocity);
-                lastRider=rider.getUUID();exitedAt=server.getGameTime();
             }
             rider.stopRiding();
             if(!model.hover())playCue(model.asset+"-stop");
@@ -409,13 +416,14 @@ public final class JakVehicle extends Entity {
             if(model.hover()){
                 // 16: vehicle-flag riding, somebody aboard (their weight is on the roll thrusters).
                 // 32: he is in the stance (target-pilot-stance), the get-on over, so a hard hit smacks him (target-pilot-impact).
-                int zoomer=(edges&1)|(held&6)|(traffic?8:0)|(rider!=null?16:0)|(rider!=null&&boardingSeconds<0?32:0);
+                // Bikes already hop with Circle. Car zoomers can use it as a second handbrake button.
+                int zoomer=(edges&1)|(held&2)|(model.bike()?held&4:(held&4)>>1)|(traffic?8:0)|(rider!=null?16:0)|(rider!=null&&boardingSeconds<0?32:0);
                 float hour=(server.getDefaultClockTime()%24000+6000)%24000/1000f;
                 encoded=NativeJak.hoverStep(handle,steer,lean,throttle,brake,zoomer,
                     (float)moved.x,(float)moved.y,(float)moved.z,hour%24,health/model.hitPoints,rider!=null||traffic);
             }else{
                 encoded=NativeJak.carStep(handle,steer,lean,throttle,brake,actions,
-                    (float)moved.x,(float)moved.y,(float)moved.z,3);
+                    (float)moved.x,(float)moved.y,(float)moved.z,6);
             }
             var frame=JsonParser.parseString(encoded).getAsJsonObject();
             Vec3 step=JakPlayers.vector(frame.getAsJsonArray("position"));
@@ -463,27 +471,32 @@ public final class JakVehicle extends Entity {
         }
     }
 
-    /**
-     * Whether its hull is solid to this actor's Jak: the one who stepped off it, for a minute and while he is within eight
-     * blocks. stand-in: the original's vehicles are solid to Jak always (he lands on a car's roof or beside it); here only the
-     * one he left is, because the others move in and out of the town's streets with nothing to carry him.
-     */
-    public boolean supportsLanding(Entity actor){
-        return model.hover()&&!isRemoved()&&actor!=null&&actor.getUUID().equals(lastRider)&&actor.getVehicle()!=this
-            &&level().getGameTime()-exitedAt<1200&&actor.distanceToSqr(this)<64;
+    /** A hull can be walked or landed on, except by its own passenger. */
+    public boolean blocksJak(Entity actor){
+        return !isRemoved()&&actor!=null&&actor!=this&&actor.getVehicle()!=this;
     }
-    /**
-     * stand-in: the hull of its collision (zoomer.rs half sizes, 0.8 x 0.6 x 1.5 m for a bike and 1.4 x 0.7 x 2.4 for a car, turned
-     * with it) from its bottom up to the seat Jak sat on, as a closed box in the session's coordinates, for
-     * {@link dev.jakmc.nativebridge.MinecraftCollision#triangles}. The visible body is not as tall as that hull, and the seat is
-     * where he was drawn, so he stands where he sat.
-     */
+    /** Add the same oriented chassis to Jak's native terrain query. */
     public void appendHull(Vec3 origin,java.nio.ByteBuffer data){
-        double metre=.64,yaw=Math.toRadians(getYRot());
-        double hx=(model.bike()?.8:1.4)*metre,hy=(model.bike()?.6:.7)*metre,hz=(model.bike()?1.5:2.4)*metre;
+        double yaw=Math.toRadians(getYRot());
+        var half=collisionHalf();
+        double hx=half.x,hy=half.y,hz=half.z;
         var at=position();
         dev.jakmc.nativebridge.MinecraftCollision.turnedBox(data,at.x-origin.x,at.z-origin.z,-Math.sin(yaw),Math.cos(yaw),hx,hz,
-            at.y-hy-origin.y,at.y+Math.max(seat.y,-hy+.1)-origin.y);
+            at.y-hy-origin.y,at.y+Math.max(seat.y,hy)-origin.y);
+    }
+
+    /** Native chassis half extents in Minecraft blocks, shared by entity and Jak collisions. */
+    public Vec3 collisionHalf(){
+        if(model==Model.TOAD)return new Vec3(2.3,1.15,4.8).scale(.64);
+        if(model==Model.SNAKE)return new Vec3(1.8,.65,3.5).scale(.64);
+        return model.bike()?new Vec3(.8,.6,1.5).scale(.64):new Vec3(1.4,.7,2.4).scale(.64);
+    }
+
+    public void kickPush(Vec3 impulse){
+        if(!(level() instanceof ServerLevel))return;
+        Vec3 speed=impulse.scale(20);
+        if(handle==0)velocity=velocity.add(speed);
+        else NativeJak.wheeledImpulse(handle,model.hover(),(float)speed.x,(float)speed.y,(float)speed.z);
     }
 
     static JsonArray jsonVector(Vec3 point){

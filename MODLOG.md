@@ -1,5 +1,10 @@
 # Jak Worlds — Minecraft Java
 
+2026-11-11 — Shared gameplay revision for the normal and Movie profiles:
+- Creative bypasses ammo and eco requirements while keeping real inventory and vehicle ammunition intact. Spin kick shoves without damage, operates reachable mechanisms and only clears vegetation.
+- Hover and desert chassis meet one another and Jak on foot. The desert cars now simulate six 120 Hz steps per 20 Hz game tick. Zoomer car handbrakes accept Circle/B; bikes retain their hop and use Square/X to park.
+- A driven chassis accepts input from the render loop as well as the regular client tick. Chassis, passengers and camera use the same presentation clock; the mounted Flut Flut uses Jak's animation clock.
+
 2026-11-03: Full Jak port authorized. Target actual Minecraft Java 26.3, Fabric 0.20.1, Java 25. Separate project and dev gameDir; no changes to Minecraft personal saves or the Rust runtime.
 
 Scope: Jak/Daxter, movement, combat and guns, eco/powers, JET-Board, fauna/enemies/citizens, mounts, zoomers/HellCat, Jak 3 wheeled vehicles, cities/tower/interiors/props, animation/particles/audio, persistence and controller inputs. Excludes MW2 and Skate 3. JET-Board is included.

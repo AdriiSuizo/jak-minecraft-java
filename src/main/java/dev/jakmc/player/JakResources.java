@@ -66,6 +66,7 @@ public final class JakResources {
         return false;
     }
     public static float[] totals(ServerPlayer player){
+        if(player.hasInfiniteMaterials())return new float[]{100,100,50,100,100,20};
         float[] values=new float[6];
         var inventory=player.getInventory();
         var slots=PlayerInventoryStorage.of(player);
@@ -105,6 +106,7 @@ public final class JakResources {
         if(player.getAttachedOrCreate(type)!=value)player.setAttached(type,value);
     }
     public static void consume(ServerPlayer player,int kind,float amount){
+        if(player.hasInfiniteMaterials())return;
         long needed=Math.max(0,Math.round((double)amount*PRECISION));
         if(needed==0)return;
         var partials=new ArrayList<ItemStack>();

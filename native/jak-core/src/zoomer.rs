@@ -197,7 +197,7 @@ impl Zoomer {
         };
         self.steer = seek(self.steer, input.steer, 8. * DT);
         self.lean = seek(self.lean, input.lean, 8. * DT);
-        self.throttle = seek(self.throttle, input.throttle, 4. * DT);
+        self.throttle = if input.handbrake { 0. } else { seek(self.throttle, input.throttle, 4. * DT) };
         self.brake += (input.brake - self.brake) * (8. * DT);
         if self.throttle > 0.0 && self.brake > 0.0 {
             self.brake = self.brake.min(0.25);
@@ -260,7 +260,7 @@ impl Zoomer {
         }
 
         // Rust zoomers.rs: `self.route.is_none() &&`, the traffic only stops.
-        let reversing = !self.routed && self.brake > 0.05 && forward_speed < 2.0 && self.throttle <= 0.0;
+        let reversing = !self.routed && !input.handbrake && self.brake > 0.05 && forward_speed < 2.0 && self.throttle <= 0.0;
         let throttle = if reversing {
             -0.5 * self.brake
         } else {
@@ -268,7 +268,9 @@ impl Zoomer {
         };
         let intake_limit = 0.83333 * (0.5 + (speed * intake / TOP_SPEED).clamp(0.0, 1.0));
         let thrust = throttle.min(intake_limit);
-        if thrust > self.thrust {
+        if input.handbrake {
+            self.thrust = 0.;
+        } else if thrust > self.thrust {
             self.thrust += (thrust - self.thrust) * (response * DT).min(1.);
         } else {
             self.thrust = seek(self.thrust, thrust, DT);
@@ -283,7 +285,7 @@ impl Zoomer {
         next_speed = seek(
             next_speed,
             0.0,
-            (braking + if input.handbrake { 30. } else { 0. }) * DT,
+            (braking + if input.handbrake { 86. } else { 0. }) * DT,
         );
         if reversing {
             next_speed = next_speed.max(-6.0);
@@ -295,7 +297,8 @@ impl Zoomer {
         };
         let new_ahead = self.heading();
         let new_left = Vec3::Y.cross(new_ahead);
-        let horizontal = new_ahead * next_speed + new_left * (lateral_speed * (-grip * DT).exp());
+        let slide = if input.handbrake { seek(lateral_speed, 0., 86. * DT) } else { lateral_speed * (-grip * DT).exp() };
+        let horizontal = new_ahead * next_speed + new_left * slide;
         self.velocity = horizontal.clamp_length_max(TOP_SPEED * 1.05) + Vec3::Y * rise;
         self.move_hull(terrain, new_ahead, events);
         self.climb *= (-10. * DT).exp();
@@ -353,7 +356,7 @@ impl Zoomer {
             crate::wheeled::hull_hit(g, pos, motion, half, heading)
         };
         if let Some((fraction, normal)) = hit(terrain, self.position, step) {
-            let climb = (self.grounded && normal.y.abs() < 0.3)
+            let climb = (terrain.can_step_on_contact() && self.grounded && normal.y.abs() < 0.3)
                 .then(|| {
                     [0.6, 1.2, 1.8, 2.4, 3.0]
                         .into_iter()

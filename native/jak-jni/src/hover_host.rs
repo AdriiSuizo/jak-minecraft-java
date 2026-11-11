@@ -34,6 +34,11 @@ fn vehicles() -> Result<std::sync::MutexGuard<'static, Vehicles>, String> {
     match mutex.lock() { Ok(guard) => Ok(guard), Err(poison) => { mutex.clear_poison(); Ok(poison.into_inner()) } }
 }
 
+pub(super) fn impulse(id: u64, impulse: Vec3) -> Result<(), String> {
+    if let Some(session)=vehicles()?.active.get_mut(&id) { session.zoomer.velocity+=impulse; }
+    Ok(())
+}
+
 pub fn configure(root: &std::path::Path) -> Result<(), String> {
     if SPECS.get().is_some() {
         return Ok(());
@@ -140,6 +145,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hoverCreate(
                 terrain: Terrain {
                     query: binding?,
                     error: None,
+                    entity_contact: false,
                 },
                 lights: Default::default(),
                 pilot: {

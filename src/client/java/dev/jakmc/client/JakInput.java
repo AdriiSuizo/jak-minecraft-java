@@ -35,6 +35,7 @@ public final class JakInput {
     private static int controllerId;
     private static boolean useClicked,attackClicked,useHeld,attackHeld,aiming,cancelPower,vehicleUseLock,wasBoard,spinTriangle,menuWasOpen;
     private static long spinPress=Long.MIN_VALUE/2;
+    private static long lastVehiclePacket;
     private static Trigger trigger;
     private static final dev.jakmc.client.input.SdlGamepad GAMEPAD=new dev.jakmc.client.input.SdlGamepad();
     private static dev.jakmc.client.input.SdlGamepad.State pad=dev.jakmc.client.input.SdlGamepad.State.EMPTY,uiPad=pad;
@@ -56,6 +57,7 @@ public final class JakInput {
             var look=dev.jakmc.client.input.ControllerMath.look(pad.rightX(),pad.rightY());
             c.player.turn(look[0]*180*dt/.15,-look[1]*180*dt/.15);
         }
+        if(inCar(c)&&enabled(c)&&(pressedPad!=0||now-lastVehiclePacket>=16_666_667L))sendControls(c,now);
     }
 
     public static float cameraZoomFactor(){return cameraZoom==0?1:cameraZoom/DEFAULT_ZOOM;}
@@ -240,24 +242,29 @@ public final class JakInput {
             JakMenuControls.frame(client,uiPad,0,MenuScene.backgroundPad(controllerId)||InputScene.backgroundPad(controllerId));
             ui(client);
             if(!enabled(client)){previous=0;return;}
-            boolean blocked=blocked(client);int held=blocked?0:held(client)|pad.held();if(!blocked&&menuWasOpen)previous=held; // keys still down as a menu closes are not presses (a held F let the HellCat's Jak out)
-            menuWasOpen=blocked;int pressed=(held&~previous)|pressedPad;previous=held;pressedPad=0;
-            float strafe=blocked?0:(client.options.keyRight.isDown()?1:0)-(client.options.keyLeft.isDown()?1:0);
-            float forward=blocked?0:(client.options.keyUp.isDown()?1:0)-(client.options.keyDown.isDown()?1:0);
-            if(pad.leftX()*pad.leftX()+pad.leftY()*pad.leftY()>strafe*strafe+forward*forward){strafe=pad.leftX();forward=pad.leftY();}
-            int viewFlags=client.options.getCameraType().isFirstPerson()?JakPackets.FIRST_PERSON:0;
-            if(blocked||cancelPower)viewFlags|=JakPackets.CANCEL_POWER;
-            cancelPower=false;
-            var pose=JakPoses.get(client.player.getId());
-            boolean flying=pose!=null&&pose.raw().has("hellcat");
-            float brake=blocked?0:pad.brake(),throttle=blocked?0:pad.throttle();
-            if((flying||inCar(client))&&!blocked&&pad.id()==0){
-                brake=client.options.keyDown.isDown()?1:0;
-                throttle=client.options.keyUp.isDown()?1:0;
-                forward=0;
-            }
-            if(ClientPlayNetworking.canSend(JakPackets.Input.TYPE))ClientPlayNetworking.send(new JakPackets.Input(++sequence,held|viewFlags,pressed,strafe,forward,pad.rightX(),pad.rightY(),client.player.getYRot(),client.player.getXRot(),brake,throttle));
+            sendControls(client,System.nanoTime());
         });
+    }
+    private static void sendControls(Minecraft client,long now){
+        if(!ClientPlayNetworking.canSend(JakPackets.Input.TYPE))return;
+        if(inCar(client))lastVehiclePacket=now;
+        boolean blocked=blocked(client);int held=blocked?0:held(client)|pad.held();if(!blocked&&menuWasOpen)previous=held; // keys still down as a menu closes are not presses (a held F let the HellCat's Jak out)
+        menuWasOpen=blocked;int pressed=(held&~previous)|pressedPad;previous=held;pressedPad=0;
+        float strafe=blocked?0:(client.options.keyRight.isDown()?1:0)-(client.options.keyLeft.isDown()?1:0);
+        float forward=blocked?0:(client.options.keyUp.isDown()?1:0)-(client.options.keyDown.isDown()?1:0);
+        if(pad.leftX()*pad.leftX()+pad.leftY()*pad.leftY()>strafe*strafe+forward*forward){strafe=pad.leftX();forward=pad.leftY();}
+        int viewFlags=client.options.getCameraType().isFirstPerson()?JakPackets.FIRST_PERSON:0;
+        if(blocked||cancelPower)viewFlags|=JakPackets.CANCEL_POWER;
+        cancelPower=false;
+        var pose=JakPoses.get(client.player.getId());
+        boolean flying=pose!=null&&pose.raw().has("hellcat");
+        float brake=blocked?0:pad.brake(),throttle=blocked?0:pad.throttle();
+        if((flying||inCar(client))&&!blocked&&pad.id()==0){
+            brake=client.options.keyDown.isDown()?1:0;
+            throttle=client.options.keyUp.isDown()?1:0;
+            forward=0;
+        }
+        ClientPlayNetworking.send(new JakPackets.Input(++sequence,held|viewFlags,pressed,strafe,forward,pad.rightX(),pad.rightY(),client.player.getYRot(),client.player.getXRot(),brake,throttle));
     }
     static int held(Minecraft client){
         if(client.gui.screen()!=null)return 0;

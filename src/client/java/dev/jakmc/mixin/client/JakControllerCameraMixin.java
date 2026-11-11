@@ -90,8 +90,9 @@ abstract class JakControllerCameraMixin {
             jakmc$flightPitch=pitch;
             jakmc$trail=Vec3.ZERO;
         }else{
-            Vec3 trail=jakmc$trail.add(jakmc$lastFlightTarget.subtract(target)).scale(Math.exp(-7*jakmc$dt));
-            jakmc$trail=trail.lengthSqr()>1.92*1.92?trail.normalize().scale(1.92):trail;
+            double limit=jakmc$wheeled?.8:1.92;
+            Vec3 trail=jakmc$trail.add(jakmc$lastFlightTarget.subtract(target)).scale(Math.exp(-(jakmc$wheeled?24:7)*jakmc$dt));
+            jakmc$trail=trail.lengthSqr()>limit*limit?trail.normalize().scale(limit):trail;
             float yawDelta=net.minecraft.util.Mth.wrapDegrees(yaw-jakmc$lastPlayerYaw);
             float pitchDelta=pitch-jakmc$lastPlayerPitch;
             if(Math.abs(yawDelta)+Math.abs(pitchDelta)>.001f){
@@ -107,7 +108,7 @@ abstract class JakControllerCameraMixin {
         jakmc$lastPlayerPitch=pitch;
         jakmc$lastFlightTarget=target;
         jakmc$flightPivot=target.add(jakmc$trail);
-        float swing=1-(float)Math.exp(-5*jakmc$dt);
+        float swing=1-(float)Math.exp(-(jakmc$wheeled?16:5)*jakmc$dt);
         jakmc$flightYaw=net.minecraft.util.Mth.rotLerp(swing,jakmc$flightYaw,targetYaw+jakmc$manualYaw);
         jakmc$flightPitch+=(Math.clamp(targetPitch+jakmc$manualPitch,-70,75)-jakmc$flightPitch)*swing;
         jakmc$pull+=((channel.get("boost").getAsBoolean()?1:0)-jakmc$pull)*(1-(float)Math.exp(-2*jakmc$dt));

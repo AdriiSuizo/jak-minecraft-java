@@ -314,7 +314,8 @@ public final class JakPlayers {
         b.putFloat(Float.isFinite(water)?water:0).putFloat((float)(speed/.1));
         int flags=p.getAttachedOrCreate(JakData.BOARD).is(JakItems.BOARD)?1:0;
         if(Float.isFinite(water))flags|=16;
-        // Creative is the item menu only (Adrii 22/10): rounds still count.
+        // Creative supplies the Morph Gun and powers without spending carried resources.
+        if(p.hasInfiniteMaterials())flags|=32;
         if(flight!=null)flags|=2;
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE))flags|=4;
         if(p.hasEffect(net.minecraft.world.effect.MobEffects.SLOW_FALLING))flags|=8;
@@ -460,8 +461,8 @@ public final class JakPlayers {
             if(s.hostMoved)return;
         }
         boolean kicking=KICKS.contains(nativeState);
-        if(!kicking)s.kicked.clear();
         if(pose.get("attackSpheres") instanceof JsonArray swept)struckInSpheres(p,s.origin,swept,kicking,s.kicked);
+        if(!kicking)s.kicked.clear();
         pose.addProperty("serverTick",p.level().getGameTime());
         var packet=new JakPackets.Pose(p.getId(),input.sequence(),s.origin.x,s.origin.y,s.origin.z,pose.toString());
         ServerPlayNetworking.send(p,packet);
@@ -592,9 +593,9 @@ public final class JakPlayers {
      * interaction.rs: lever, repeater, comparator, note block, buttons, wooden doors, trapdoors and gates)
      * and does not damage it. Kicks only, not punches (Adrii 06/11; the Rust's punches worked them too).
      */
-    private static void strikeBlock(ServerPlayer p,net.minecraft.core.BlockPos at,float damage){
+    private static void strikeBlock(ServerPlayer p,net.minecraft.core.BlockPos at,float damage,boolean kick){
         var level=p.level();var state=level.getBlockState(at);
-        boolean kick=KICKS.contains(strikeState),pound=POUNDS.contains(strikeState);
+        boolean pound=POUNDS.contains(strikeState);
         if(state.getBlock() instanceof net.minecraft.world.level.block.BellBlock bell){
             if(kick)bell.attemptToRing(p,level,at,null);
             else if(pound)level.destroyBlock(at,true,p);
@@ -604,27 +605,23 @@ public final class JakPlayers {
             state.useWithoutItem(level,p,new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(at),net.minecraft.core.Direction.UP,at,false));
             return;
         }
-        JakWorldDamage.hit(p,at,damage);
+        if(!kick)JakWorldDamage.hit(p,at,damage);
     }
     /**
-     * What a blow's spheres go through this step. Any blow breaks an ammo crate it touches (crates.gc: a wood crate
-     * breaks to any `'attack`), whatever the crosshair is on. Adrii 07/11: a spin kick strikes all round Jak, wherever
-     * he looks, as Crash's tornado: every block in its sphere once a kick, 75 % of a dirt block and the same in
-     * proportion of any other (JakWorldDamage.kick; grass and all that has no hardness goes at once). stand-in: the
-     * original has no blocks to wear down; the floor under him is left, or a kick would dig him in.
+     * A kick works switches and clears plants in its swept volume. Punches and slams can break ammo crates.
      */
-    private static void struckInSpheres(ServerPlayer p,Vec3 origin,JsonArray swept,boolean kick,java.util.Set<net.minecraft.core.BlockPos> kicked){
+    private static void struckInSpheres(ServerPlayer p,Vec3 origin,JsonArray swept,boolean lastKick,java.util.Set<net.minecraft.core.BlockPos> kicked){
         var level=p.level();var seen=new java.util.HashSet<net.minecraft.core.BlockPos>();
         for(JsonElement e:swept){
             var a=e.getAsJsonArray();Vec3 c=new Vec3(a.get(0).getAsDouble(),a.get(1).getAsDouble(),a.get(2).getAsDouble()).add(origin);double r=a.get(3).getAsDouble();
+            boolean kick=a.size()>4?a.get(4).getAsBoolean():lastKick;
             var box=new net.minecraft.world.phys.AABB(c,c).inflate(r);
             for(var at:net.minecraft.core.BlockPos.betweenClosed(net.minecraft.core.BlockPos.containing(box.minX,box.minY,box.minZ),net.minecraft.core.BlockPos.containing(box.maxX,box.maxY,box.maxZ))){
-                if(!seen.add(at.immutable()))continue;
                 var state=level.getBlockState(at);
-                if(state.is(dev.jakmc.content.JakAmmoCrate.BLOCK)){
+                if(!kick&&state.is(dev.jakmc.content.JakAmmoCrate.BLOCK)){
                     var crate=state.getCollisionShape(level,at).bounds().move(at);
                     Vec3 inside=new Vec3(Math.clamp(c.x,crate.minX,crate.maxX),Math.clamp(c.y,crate.minY,crate.maxY),Math.clamp(c.z,crate.minZ,crate.maxZ));
-                    if(inside.distanceToSqr(c)<=r*r)JakWorldDamage.hit(p,at.immutable(),1);
+                    if(inside.distanceToSqr(c)<=r*r&&seen.add(at.immutable()))JakWorldDamage.hit(p,at.immutable(),1);
                     continue;
                 }
                 if(!kick||state.isAir()||!state.getFluidState().isEmpty()||at.getY()+1<=p.getY()+.05)continue;
@@ -634,7 +631,7 @@ public final class JakPlayers {
                 if(state.getBlock() instanceof net.minecraft.world.level.block.BellBlock||workedByHand(state)){
                     // A door is worked once, by its lower half.
                     if(!state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)
-                        ||state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)==net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER)strikeBlock(p,at.immutable(),0);
+                        ||state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.DOUBLE_BLOCK_HALF)==net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER)strikeBlock(p,at.immutable(),0,true);
                 }else JakWorldDamage.kick(p,at.immutable());
             }
         }
@@ -647,6 +644,7 @@ public final class JakPlayers {
     }
     private static void applyEvent(ServerPlayer p,Vec3 origin,JsonObject e){
         String kind=e.get("kind").getAsString();
+        boolean kick=kind.equals("strike")&&(e.has("kick")?e.get("kick").getAsBoolean():KICKS.contains(strikeState));
         if(kind.equals("world_hit")){
             Vec3 target=vector(e.getAsJsonArray("pos")).add(origin);
             Vec3 normal=vector(e.getAsJsonArray("normal"));
@@ -673,6 +671,17 @@ public final class JakPlayers {
         if((kind.equals("strike")||kind.equals("impact"))&&e.has("actor")&&!e.get("actor").isJsonNull()){
             Entity victim=p.level().getEntity(e.get("actor").getAsInt());
             if(victim!=null&&victim!=p){
+                if(kick){
+                    Vec3 away=victim.position().subtract(p.position()).multiply(1,0,1);
+                    if(away.lengthSqr()<1e-8)away=p.getViewVector(1).multiply(1,0,1);
+                    away=away.normalize().scale(.55);
+                    Vec3 impulse=away.add(0,.15,0);
+                    if(victim instanceof ServerPlayer target&&active(target))blownOff(target,target.position(),impulse.scale(20));
+                    else if(victim instanceof dev.jakmc.entity.JakVehicle vehicle)vehicle.kickPush(impulse);
+                    else if(victim instanceof dev.jakmc.entity.JakHellcat craft)craft.kickPush();
+                    else victim.push(impulse);
+                    return;
+                }
                 boolean heavy=e.has("heavy")&&e.get("heavy").getAsBoolean();
                 var source=kind.equals("impact")?JakDamage.shot(p,heavy):p.damageSources().playerAttack(p);
                 float damage=e.get("damage").getAsFloat()*2.5f;
@@ -705,14 +714,14 @@ public final class JakPlayers {
                 // outlines (the player's own pick), then the one right under it.
                 if(e.has("center")){
                     // A kick strikes what its sphere goes through, not what the crosshair is on (struckInSpheres).
-                    if(KICKS.contains(strikeState))return;
+                    if(kick)return;
                     WORLD_STRIKES.incrementAndGet();
                     var level=p.level();var marked=MARKED.get(p.getUUID());net.minecraft.core.BlockPos struck=null;
                     if(marked!=null&&level.getBlockState(marked).isAir()&&!level.getBlockState(marked.below()).getCollisionShape(level,marked.below()).isEmpty()
                         &&Vec3.atCenterOf(marked).distanceTo(p.position())<3)struck=marked.below();
                     else if(p.pick(p.blockInteractionRange(),1,false) instanceof net.minecraft.world.phys.BlockHitResult pick&&pick.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK
                         &&Vec3.atCenterOf(pick.getBlockPos()).distanceTo(p.position().add(0,1,0))<2.5){struck=pick.getBlockPos();MARKED.put(p.getUUID(),struck.immutable());}
-                    if(struck!=null){WORLD_STRIKES_FOUND.incrementAndGet();strikeBlock(p,struck,e.get("damage").getAsFloat());}
+                    if(struck!=null){WORLD_STRIKES_FOUND.incrementAndGet();strikeBlock(p,struck,e.get("damage").getAsFloat(),false);}
                     return;
                 }
                 // A slam (no sphere), Rust block_struck: the block along the blow,
@@ -722,7 +731,7 @@ public final class JakPlayers {
                 var hit=clip(p,target.subtract(along.scale(.6)),target.add(along.scale(.5)));
                 if(hit==null)hit=clip(p,target.subtract(along.scale(.3)),target.add(0,-1.2,0));
                 WORLD_STRIKES.incrementAndGet();
-                if(hit!=null){WORLD_STRIKES_FOUND.incrementAndGet();strikeBlock(p,hit.getBlockPos(),e.get("damage").getAsFloat());}
+                if(hit!=null){WORLD_STRIKES_FOUND.incrementAndGet();strikeBlock(p,hit.getBlockPos(),e.get("damage").getAsFloat(),kick);}
             }
         } else if(kind.equals("fall_damage")) p.hurtServer(p.level(),p.damageSources().fall(),e.get("damage").getAsFloat()*2.5f);
         else if(kind.equals("gravity_field"))dev.jakmc.entity.MassInverter.field(p,vector(e.getAsJsonArray("pos")).add(origin));

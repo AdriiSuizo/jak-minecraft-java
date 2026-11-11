@@ -15,7 +15,7 @@ Cada una tiene su título flotante y un cartel. Sigue el camino en orden.
 | Estación | Qué enseña |
 |---|---|
 | Salida | El punto de partida: el camino lleva hasta el espacio entre las dos ciudades |
-| 1 Patada y movimientos | Hierba y flores que se rompen con la patada, un anillo de bloques para la patada giratoria, un muro de salientes de tres alturas y una piscina |
+| 1 Patada y movimientos | Hierba y flores que se cortan con la patada, un anillo de bloques sólidos, un muro de salientes de tres alturas y una piscina |
 | 2 Objetos | Barriles de cada tierra, cajas de munición, lámparas colgantes, la puerta iris y la esclusa |
 | 3 Eco | Las seis fuentes de eco, el lanzador azul, un foso de eco oscuro como el del silo de Jak 1 (mata al instante y deshace lo que caiga) y un cofre de eco |
 | 4 Armas | Dos cofres con las 12 armas y la munición, un corral de lurkers y un muro para destrozar |

@@ -99,7 +99,7 @@ public final class JakCitizenRenderer {
    float phase=(unsigned%1000)*.00628f,tempo=.8f+((unsigned>>8)%1000)*.0004f;
    float steer=after==null||!after.has("steer")?0:before==null||!before.has("steer")?after.get("steer").getAsFloat()
     :net.minecraft.util.Mth.lerp(blend,before.get("steer").getAsFloat(),after.get("steer").getAsFloat());
-   float clock=(car.tickCount+partial)/20f;
+   float clock=(float)car.presentationSeconds();
    float at=5*(1-steer)+(float)java.lang.Math.sin(clock*4.014f*tempo+phase);
    float stance=java.lang.Math.clamp(at/60,0,r.model.duration(clip));
    DRAW.put(state,new Draw(r,r.model.poseAtTime(clip,stance),riderSegments(unsigned,four),0,JakEnemyKind.SCALE*entity.getScale(),null,clip,0,1,1,car.presentationRotation()));

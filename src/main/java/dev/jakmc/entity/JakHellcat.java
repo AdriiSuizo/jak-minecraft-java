@@ -149,6 +149,7 @@ public final class JakHellcat extends Entity {
         entityData.set(PILOT,-1);
         commands|=2;
     }
+    public void kickPush(){if(pilotId()<0&&!wrecked())commands|=8;}
     @Override public boolean hurtServer(ServerLevel server,DamageSource source,float amount){
         if(amount<=0||wrecked()||isInvulnerableToBase(source))return false;
         if(source.is(net.minecraft.world.damagesource.DamageTypes.PLAYER_ATTACK)&&source.getEntity() instanceof Player){
@@ -159,7 +160,7 @@ public final class JakHellcat extends Entity {
         return true;
     }
     /**
-     * Jak's fists and feet do the HellCat no harm (Adrii, Rust jak_entities
+     * Jak's fists do the HellCat no harm (Adrii, Rust jak_entities
      * strike_vehicle): left running the first blow shuts it off; parked, each
      * blow cracks it as a block cracks and the third in a row takes it apart
      * into its item, which keeps its hull.
@@ -268,7 +269,7 @@ public final class JakHellcat extends Entity {
         controls.putFloat(input==null?0:input.strafe()).putFloat(input==null?0:input.forward());
         controls.putFloat(0).putFloat(0);
         controls.putFloat(input==null?0:input.brake()).putFloat(input==null?0:gears.cappedThrottle(input.throttle(),held));
-        int sent=commands|(start?1:0);
+        int sent=commands|(start?1:0)|(pilot!=null&&pilot.hasInfiniteMaterials()?32:0);
         if((sent&2)!=0)gears.leave();
         boolean shifted=gears.step(ready?3:0,((sent&1)!=0||nativePilot)&&(sent&2)==0&&!wrecked(),pressed);
         actorBuffers.reset();
@@ -279,7 +280,7 @@ public final class JakHellcat extends Entity {
         float hour=(server.getDefaultClockTime()%24000+6000)%24000/1000f;
         NativeJak.hellcatLiquid(handle,liquidDepth(server));
         var frame=JsonParser.parseString(NativeJak.hellcatStep(handle,controls,actors,
-            (float)shift.x,(float)shift.y,(float)shift.z,hour,commands|(start?1:0),ready?3:0)).getAsJsonObject();
+            (float)shift.x,(float)shift.y,(float)shift.z,hour,sent,ready?3:0)).getAsJsonObject();
         commands=0;
         if(start)sound("vehicl-ignition",position());
         Vec3 destination=JakPlayers.vector(frame.getAsJsonArray("position")).add(origin);

@@ -100,10 +100,10 @@ public final class JakLeaperRenderer extends EntityRenderer<JakLeaper,JakLeaperR
             var blink=blinks.computeIfAbsent(bird,b->new FlutMaterial.Blink(b.getId()));
             state.plumage=new FlutMaterial(bird.plumage(),blink.closed(state.ageInTicks/20f));
         }
-        var player=JakPoses.get(entity.riderId());
+        var player=JakPoses.rendered(entity.riderId());
         var ride=player!=null&&player.raw().get("ride") instanceof com.google.gson.JsonObject channel?channel:null;
         if(ride!=null&&ride.get("entity").getAsInt()==entity.getId()){
-            float elapsed=Math.clamp((System.nanoTime()-player.received())/1e9f,0,.05f);
+            float elapsed=JakPoses.elapsed(player);
             state.pose=ridePose(model,PREFIX,player,elapsed);
             if(!ride.get("fixed").getAsBoolean()){
                 var client=Minecraft.getInstance();
@@ -111,7 +111,7 @@ public final class JakLeaperRenderer extends EntityRenderer<JakLeaper,JakLeaperR
                 if(rider!=null){
                     var position=rider==client.player?JakPoses.presented():rider.getPosition(partial);
                     if(position!=null){state.x=position.x;state.y=position.y;state.z=position.z;}
-                    state.yaw=player.yaw();
+                    state.yaw=player.yawAt(elapsed);
                 }
             }
         }else{

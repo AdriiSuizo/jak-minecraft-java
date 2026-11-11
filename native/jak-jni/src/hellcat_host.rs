@@ -153,6 +153,11 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatStep(
             let up = ((depth + jak_core::math::meters(1.5)) * 3.0).max(jak_core::math::meters(2.0));
             craft.vel.y = craft.vel.y.max(up);
         }
+        // Creative may fire torpedoes from an empty magazine without changing
+        // what the craft actually carries when it returns to survival.
+        let torpedoes = craft.torpedoes;
+        let endless = commands & 32 != 0;
+        if endless && craft.torpedoes == 0 { craft.torpedoes = 1; }
         let mut popped = false;
         for _ in 0..steps {
             craft.step(&pad, &mut v.world, Some(&mut v.actors));
@@ -161,6 +166,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hellcatStep(
             popped |= v.lamps.step(1.0/60.0, hour, !craft.destroyed && (craft.piloted || craft.idling),
                 stage, craft.health >= 1.0, v.key);
         }
+        if endless { craft.torpedoes = torpedoes; }
         if let Some(error) = v.world.error.take() { return Err(error); }
         let events = std::mem::take(&mut craft.events).into_iter().map(|event| match event {
             HellCatEvent::Fire { pos:p } => json!({"kind":"fire","pos":pos(p)}),

@@ -44,15 +44,22 @@ public final class JakWorldDamage {
         return level.hasChunkAt(pos)&&(player==null||!player.isSpectator()
             &&!player.blockActionRestricted(level,pos,player.gameMode.getGameModeForPlayer())&&level.mayInteract(player,pos));
     }
-    /** Adrii 07/11: what a spin kick takes off a block, 75 % of a dirt block's (hardness 0.5); of a harder one, in proportion. */
-    private static final float KICK=.75f*.5f;
     public static void hit(ServerPlayer player,BlockPos pos,float strength){
         if(!Float.isFinite(strength)||strength<=0)return;
         // Rust mining: the blow in MW2 points (x100/8) over 160 a hardness.
         work(player,pos,strength*DAMAGE_TO_MW2/DAMAGE_PER_HARDNESS,player.hasInfiniteMaterials());
     }
-    /** A spin kick on a block in its reach: the same in creative, or it would level all round him. */
-    public static void kick(ServerPlayer player,BlockPos pos){work(player,pos,KICK,false);}
+    /** A kick clears plants, while solid blocks keep their damage and durability. */
+    public static void kick(ServerPlayer player,BlockPos pos){
+        var level=player.level();
+        if(!permitted(player,level,pos))return;
+        var block=level.getBlockState(pos).getBlock();
+        if(block instanceof net.minecraft.world.level.block.VegetationBlock
+            ||block instanceof net.minecraft.world.level.block.BambooStalkBlock
+            ||block instanceof net.minecraft.world.level.block.BambooSaplingBlock
+            ||block instanceof net.minecraft.world.level.block.SugarCaneBlock)
+            work(player,pos,1,true);
+    }
     private static void work(ServerPlayer player,BlockPos pos,float work,boolean whole){
         var level=player.level();
         if(!permitted(player,level,pos))return;

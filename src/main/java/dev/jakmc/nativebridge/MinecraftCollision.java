@@ -166,8 +166,7 @@ public final class MinecraftCollision {
         }
         var decks=level.getEntitiesOfClass(dev.jakmc.entity.JakHellcat.class,region.inflate(4),
             deck->deck!=actor&&!deck.wrecked()&&(actor==null||deck.pilotId()!=actor.getId()));
-        // A zoomer he stepped off is solid to him (target-pilot-get-off lands him on or beside it): one turned box, 12 triangles.
-        var hulls=level.getEntitiesOfClass(dev.jakmc.entity.JakVehicle.class,region.inflate(4),hull->hull.supportsLanding(actor));
+        var hulls=level.getEntitiesOfClass(dev.jakmc.entity.JakVehicle.class,region.inflate(1),hull->hull.blocksJak(actor));
         int bytes=Math.addExact(Math.addExact(Math.multiplyExact(boxes.used/6,480),trackBytes),Math.multiplyExact(hulls.size(),480));
         int capacity=decks.isEmpty()?bytes:Math.addExact(bytes,Math.multiplyExact(decks.size(),dev.jakmc.entity.JakHellcat.deckCapacity()));
         ByteBuffer data=arena==null?NativeJak.buffer(capacity):arena.acquire(capacity);

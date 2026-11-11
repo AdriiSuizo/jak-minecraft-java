@@ -46,12 +46,15 @@ fn cars() -> Result<std::sync::MutexGuard<'static, Cars>, String> {
 pub(super) struct Terrain {
     pub(super) query: GlobalRef,
     pub(super) error: Option<String>,
+    pub(super) entity_contact: bool,
 }
 impl Ground for Terrain {
+    fn can_step_on_contact(&self) -> bool { !self.entity_contact }
     fn sweep_hull(&mut self,at:Vec3,delta:Vec3,half:Vec3,forward:Vec3)->Option<(f32,Vec3)>{
-        let result=(||->jni::errors::Result<[f32;4]>{
+        self.entity_contact=false;
+        let result=(||->jni::errors::Result<[f32;5]>{
             let mut env=JVM.get().unwrap().attach_current_thread()?;
-            let mut data=[0.0;4];
+            let mut data=[0.0;5];
             let args=[at.x,at.y,at.z,delta.x,delta.y,delta.z,half.x,half.y,half.z,forward.x,forward.y,forward.z].map(JValue::Float);
             let result=env.call_method(self.query.as_obj(),"sweepHull","(FFFFFFFFFFFF)[F",&args).and_then(|value|{
                 let array=jni::objects::JFloatArray::from(value.l()?);
@@ -61,7 +64,10 @@ impl Ground for Terrain {
             result.map(|_|data)
         })();
         match result{
-            Ok([t,x,y,z]) if (0.0..1.0).contains(&t)=>Some((t,Vec3::new(x,y,z))),
+            Ok([t,x,y,z,entity]) if (0.0..1.0).contains(&t)=>{
+                self.entity_contact=entity!=0.;
+                Some((t,Vec3::new(x,y,z)))
+            },
             Ok(_)=>None,Err(error)=>{self.error=Some(error.to_string());None}
         }
     }
@@ -174,6 +180,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_carCreate(
                 Terrain {
                     query: binding?,
                     error: None,
+                    entity_contact: false,
                 },
             ),
         );
@@ -209,7 +216,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_carStep(
     steps: jint,
 ) -> jstring {
     let encoded = protect(&mut env, || {
-        if !(0..=3).contains(&steps)
+        if !(0..=6).contains(&steps)
             || [steer, lean, throttle, brake, x, y, z]
                 .iter()
                 .any(|v| !v.is_finite())
@@ -360,4 +367,17 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_carStep(
     encoded
         .and_then(|s| env.new_string(s).ok())
         .map_or(std::ptr::null_mut(), |s| s.into_raw())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_wheeledImpulse(
+    mut env: JNIEnv, _: JClass, id: jlong, hover: jni::sys::jboolean, vx: f32, vy: f32, vz: f32,
+) {
+    protect(&mut env, || {
+        let impulse=Vec3::new(vx,vy,vz)*(BLOCK/jak_core::METER);
+        if !impulse.is_finite() { return Err("Nonfinite vehicle impulse".into()); }
+        if hover!=0 { super::hover_host::impulse(id as u64,impulse)?; }
+        else if let Some((car,_))=cars()?.active.get_mut(&(id as u64)) { car.velocity+=impulse; }
+        Ok(())
+    });
 }

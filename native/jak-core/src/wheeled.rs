@@ -48,6 +48,8 @@ pub enum Event {
 }
 
 pub trait Ground {
+    /// Entity hulls block travel but cannot be treated as terrain steps.
+    fn can_step_on_contact(&self) -> bool { true }
     fn below(&mut self, start: Vec3, reach: f32) -> Option<f32>;
     fn sweep(&mut self, start: Vec3, step: Vec3, half: Vec3) -> Option<(f32, Vec3)>;
     /// Hosts with native block shapes can sweep the complete oriented chassis.
@@ -345,7 +347,7 @@ impl Car {
             self.position += motion;
             return;
         };
-        if self.support_grace > 0.
+        if ground.can_step_on_contact() && self.support_grace > 0.
             && normal.y.abs() < 0.45
             && self.velocity.y < 3.
             && self.hop_age == 0.

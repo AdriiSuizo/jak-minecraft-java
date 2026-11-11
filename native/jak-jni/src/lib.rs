@@ -526,7 +526,10 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   let before_wings=s.jak.lightjak.wings.map(|w|w.chan);
   s.world.error=None;
   let mut trail:Vec<String>=Vec::new();
+  let mut swept=Vec::new();
   for _ in 0..steps{
+   let was_kicking=matches!(s.jak.state,jak_core::State::Attack|jak_core::State::AttackAir{..}
+       |jak_core::State::BoardJumpKick|jak_core::State::BoardWallKick{..});
    if let Some(body)=BODY_JOINTS.get(){
        body.sample(&mut s.jak,&mut s.joint_rotations);
        if let Some(gun)=POSED_GUN.get(){
@@ -539,6 +542,9 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
        }
    }
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
+   let kicking=was_kicking||matches!(s.jak.state,jak_core::State::Attack|jak_core::State::AttackAir{..}
+       |jak_core::State::BoardJumpKick|jak_core::State::BoardWallKick{..});
+   swept.extend(s.jak.attack.swept.drain(..).map(|(c,r)|{let c=c/BLOCK;json!([c.x,c.y,c.z,r/BLOCK,kicking])}));
    if *LEDGE_TRACE {let c=&s.jak.control;let w=c.wall_contact_pt/BLOCK;let n=c.wall_contact_normal;
    trail.push(format!("{:.3},{:.3},{:.3},{} w{:.3},{:.3},{:.3} n{:.2},{:.2},{:.2} x{:.3}",s.jak.trans().y/BLOCK,s.jak.trans().z/BLOCK,c.transv.z/BLOCK,c.status,w.x,w.y,w.z,n.x,n.y,n.z,s.jak.trans().x/BLOCK));}
    if s.jak.state.is_board() {
@@ -567,7 +573,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    let smash=s.jak.dark||matches!(s.jak.attack.danger,Some(jak_core::attack::Danger::Flop|jak_core::attack::Danger::FlopDown));
    s.audio.advance();events.extend(frame_events.into_iter().map(|e|{
     let heavy=match &e{Event::Strike{..}=>smash,Event::Impact(h)=>blasts.iter().any(|(at,r)|h.surface.distance(*at)<=r+256.),_=>false};
-    let mut v=event(e);v["heavy"]=json!(heavy);v
+    let strike=matches!(&e,Event::Strike{..});
+    let mut v=event(e);v["heavy"]=json!(heavy);if strike{v["kick"]=json!(kicking);}v
    }));pad.pressed=0;
   }
   if let Some(error)=s.world.error.take(){return Err(error);}
@@ -584,8 +591,6 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    let forward=q*Vec3::Z;
    json!({"pos":pos(at),"yaw":(-forward.x).atan2(forward.z).to_degrees()})
   });
-  // The blow's spheres this step (blocks, from the origin, with their radius): the host breaks the plants they touch.
-  let swept:Vec<Value>=std::mem::take(&mut s.jak.attack.swept).into_iter().map(|(c,r)|{let c=c/BLOCK;json!([c.x,c.y,c.z,r/BLOCK])}).collect();
   let ledge_why=if *LEDGE_TRACE && matches!(s.jak.state,jak_core::State::Jump{..}|jak_core::State::DoubleJump{..}|jak_core::State::Falling{..}){s.jak.ledge_why(&mut s.world)}else{String::new()};
   let j=&s.jak;
   let ladder_cycle=j.chan.is_any(&[jak_core::anim::LADDER_UP,jak_core::anim::LADDER_DOWN]);
