@@ -199,5 +199,19 @@
   "block.jakmc.iris_door": "Puerta iris precursora",
   "block.jakmc.airlock_door": "Esclusa de Villarrefugio",
   "entity.jakmc.kermit": "Rana del pantano",
-  "item.jakmc.kermit_spawn_egg": "Generar Rana del pantano"
+  "item.jakmc.kermit_spawn_egg": "Generar Rana del pantano",
+  "book.jakmc.keira.title": "Libro de recetas de Keira",
+  "book.jakmc.keira.index": "Apuntes del taller",
+  "book.jakmc.keira.intro": "Jak, te dejo mis planos. Y sí, Daxter también puede mirar. —Keira",
+  "book.jakmc.keira.guns": "Armas Morph",
+  "book.jakmc.keira.guns.intro": "Empieza por un arma básica. Cuando toque mejorarla, vuelve a la mesa con sus piezas y el eco del color indicado.",
+  "book.jakmc.keira.ammo": "Munición y eco",
+  "book.jakmc.keira.ammo.intro": "Revisa el color antes de salir. He anotado varias formas de recargar con lo que encuentres por el camino.",
+  "book.jakmc.keira.tools": "Artilugios",
+  "book.jakmc.keira.tools.intro": "Turbo, raíles y un poco de eco. Si algo tiene una flecha, comprueba hacia dónde apunta antes de pisarlo.",
+  "book.jakmc.keira.vehicles": "Vehículos",
+  "book.jakmc.keira.vehicles.intro": "Trae las piezas a la mesa de trabajo. Si Daxter insiste en probar el acelerador, que lo haga al aire libre.",
+  "book.jakmc.keira.makes": "Rinde %s",
+  "book.jakmc.keira.any_order": "En cualquier orden",
+  "book.jakmc.keira.stonecutter": "En el cortapiedras"
 }

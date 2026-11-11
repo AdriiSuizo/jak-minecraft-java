@@ -1,6 +1,8 @@
 package dev.jakmc.client.input;
 
 import com.mojang.blaze3d.platform.Window;
+import dev.jakmc.client.JakInput;
+import dev.jakmc.client.KeiraBook;
 import dev.jakmc.mixin.client.JakContainerBounds;
 import dev.jakmc.mixin.client.JakMouseCapture;
 import net.minecraft.client.InputType;
@@ -42,11 +44,12 @@ public final class JakMenuControls {
         if(screen!=lastScreen||lastId!=pad.id()){
             forgetPress(client);
             lastScreen=screen;lastHeld=held;lastDirection=0;lastId=pad.id();
-            cursorMode=screen instanceof AbstractContainerScreen<?>;
+            cursorMode=screen instanceof AbstractContainerScreen<?>||screen instanceof KeiraBook;
         }
         var window=client.getWindow();
         double x=client.mouseHandler.getScaledXPos(window),y=client.mouseHandler.getScaledYPos(window);
-        float[] motion=ControllerMath.look(pad.leftX(),pad.leftY());
+        float[] motion=JakInput.walkInMenu(client)?ControllerMath.look(pad.rightX(),pad.rightY()):
+            ControllerMath.look(pad.leftX(),pad.leftY());
         // Adrii 06/11: in the creative menu the right stick is the mouse wheel, wherever the pointer is
         // (off the screen, so no bundle under it takes the scroll); the left stick alone moves the pointer.
         boolean creative=screen instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
@@ -102,7 +105,7 @@ public final class JakMenuControls {
             double distance=score(targetX-x,targetY-y,direction);
             if(distance<nearest){nearest=distance;bestX=targetX;bestY=targetY;}
         }
-        if(screen instanceof MerchantScreen)for(var child:screen.children()){
+        if(screen instanceof MerchantScreen||screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen)for(var child:screen.children()){
             if(!(child instanceof AbstractWidget widget)||!widget.visible||!widget.active)continue;
             double targetX=widget.getX()+widget.getWidth()*.5,targetY=widget.getY()+widget.getHeight()*.5;
             double distance=score(targetX-x,targetY-y,direction);

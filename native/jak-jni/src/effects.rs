@@ -35,7 +35,7 @@ const BARREL_SCALE:f32=0.375*BLOCK/jak_core::METER;
 impl Decor {
  fn one_shot(self)->bool{matches!(self,Self::Dismantle|Self::DroidExplosion|Self::DarkEcoDeath|Self::KermitImpact|Self::ExplodeDeath|Self::LavaDeath|Self::CrateExplode|Self::DarkEcoBurst|Self::DarkEcoFizzle|Self::DarkEcoNasty)}
  fn group(self)->&'static str{match self{Self::DarkEcoBurst|Self::DarkEcoFizzle=>DARK_ECO_BOX,Self::DarkEcoNasty=>DARK_ECO_NASTY,Self::Barrel=>BARREL_FIRE,Self::Projector=>PROPAGANDA,Self::Dismantle=>DISMANTLE,Self::DroidExplosion=>"group-kg-small-explosion",Self::Vent(index)=>VENT_GROUPS[index as usize],Self::DarkEcoDeath=>DARK_ECO_DEATH,Self::KermitPulse=>KERMIT_PULSE,Self::KermitImpact=>KERMIT_IMPACT,Self::Launcher=>LAUNCHER,Self::ExplodeDeath=>EXPLODE_DEATH,Self::LavaDeath=>LAVA_DEATH,Self::CrateExplode=>CRATE_EXPLODE,Self::Sandstorm=>unreachable!()}}
- fn scale(self)->f32{match self{Self::Barrel|Self::CrateExplode|Self::DarkEcoBurst|Self::DarkEcoNasty=>BARREL_SCALE,Self::DarkEcoFizzle=>BARREL_SCALE*0.45,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion|Self::KermitPulse|Self::KermitImpact|Self::Launcher=>CREATURE,Self::Vent(0..=3)|Self::Sandstorm|Self::DarkEcoDeath|Self::ExplodeDeath|Self::LavaDeath=>1.,Self::Vent(_)=>0.62}}
+ fn scale(self)->f32{match self{Self::Barrel|Self::CrateExplode|Self::DarkEcoBurst|Self::DarkEcoNasty=>BARREL_SCALE,Self::DarkEcoFizzle=>BARREL_SCALE*0.8,Self::Projector=>0.085,Self::Dismantle=>0.25,Self::DroidExplosion|Self::KermitPulse|Self::KermitImpact|Self::Launcher=>CREATURE,Self::Vent(0..=3)|Self::Sandstorm|Self::DarkEcoDeath|Self::ExplodeDeath|Self::LavaDeath=>1.,Self::Vent(_)=>0.62}}
 }
 
 const VENT_GROUPS:[&str;8]=[

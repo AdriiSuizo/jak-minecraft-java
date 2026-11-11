@@ -29,24 +29,18 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
- * Jak 2's wood crate with gun ammunition (engine/common_objs/crates.gc, `skel-crate-krimson`; Haven's crates are all
- * `'wood`, their `eco-info` yellow or red ammo, 20). A wood crate breaks to any attack (crate-standard-event-handler,
- * `'attack`: punch, spin kick, flop...), and in its `die` state plays "wcrate-break" and drops its contents
- * (drop-pickup: yellow as pickups of 10, red of 5, collectables.gc), group-crate-explode going off where it stood
- * (JakEffects). It does not come back (no `cond-respawn`).
- * stand-in: the crate is fitted to its block (the original's is some 1.3 blocks at the creatures' scale).
+ * Jak II's wooden Krimson crate. Breaking one rolls an ammunition colour and amount, plays the
+ * original break sound and emits the crate explosion at the block.
  */
 public final class JakAmmoCrate extends Block implements EntityBlock {
-    /** What it holds: the ammunition (JakItems.AMMUNITION's index) and the pickup it comes out as. */
+    /** The two saved crate appearances. */
     public enum Contents implements StringRepresentable {
-        YELLOW("yellow",1,10),RED("red",0,5);
-        final String name;final int ammunition,pickup;
-        Contents(String name,int ammunition,int pickup){this.name=name;this.ammunition=ammunition;this.pickup=pickup;}
+        YELLOW("yellow"),RED("red");
+        final String name;
+        Contents(String name){this.name=name;}
         @Override public String getSerializedName(){return name;}
     }
     public static final EnumProperty<Contents> CONTENTS=EnumProperty.create("contents",Contents.class);
-    /** Haven's crates: `eco-info` (ammo 20). */
-    public static final int AMOUNT=20;
     private static final VoxelShape SHAPE=Block.box(.5,0,.5,15.5,10,15.5);
     public static JakAmmoCrate BLOCK;public static Item ITEM;public static BlockEntityType<Crate> TYPE;
 
@@ -68,23 +62,24 @@ public final class JakAmmoCrate extends Block implements EntityBlock {
     @Override public BlockEntity newBlockEntity(BlockPos at,BlockState state){return new Crate(at,state);}
 
     @Override public BlockState playerWillDestroy(Level level,BlockPos at,BlockState state,Player player){
-        if(level instanceof ServerLevel server)open(server,at,state);
+        if(level instanceof ServerLevel server)open(server,at);
         return super.playerWillDestroy(level,at,state,player);
     }
     @Override protected void onExplosionHit(BlockState state,ServerLevel level,BlockPos at,Explosion explosion,java.util.function.BiConsumer<ItemStack,BlockPos> drops){
         var blast=explosion.getBlockInteraction();
-        if(blast==Explosion.BlockInteraction.DESTROY||blast==Explosion.BlockInteraction.DESTROY_WITH_DECAY)open(level,at,state);
+        if(blast==Explosion.BlockInteraction.DESTROY||blast==Explosion.BlockInteraction.DESTROY_WITH_DECAY)open(level,at);
         super.onExplosionHit(state,level,at,explosion,drops);
     }
     /** crate `die`: "wcrate-break", then drop-pickup (the amount split into its pickups). */
-    private static void open(ServerLevel level,BlockPos at,BlockState state){
+    private static void open(ServerLevel level,BlockPos at){
         level.playSound(null,at,SoundEvent.createVariableRangeEvent(JakData.id("sfx/jak2/wcrate_break")),SoundSource.BLOCKS,1,1);
         var cue=new dev.jakmc.network.JakPackets.CrateBreak(level.dimension().identifier(),at);
         for(var watcher:net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(level,at))
             if(net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(watcher,dev.jakmc.network.JakPackets.CrateBreak.TYPE))net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(watcher,cue);
-        var contents=state.getValue(CONTENTS);
-        var ammunition=JakItems.AMMUNITION.get(contents.ammunition);
-        for(int left=AMOUNT;left>0;left-=contents.pickup)popResource(level,at,new ItemStack(ammunition,Math.min(left,contents.pickup)));
+        // The saved colour is the crate's appearance. Roll the contents when it breaks.
+        int kind=level.getRandom().nextInt(JakItems.AMMUNITION.size());
+        int amount=switch(kind){case 0,1->10+level.getRandom().nextInt(11);case 2->20+level.getRandom().nextInt(21);default->2+level.getRandom().nextInt(5);};
+        popResource(level,at,new ItemStack(JakItems.AMMUNITION.get(kind),amount));
     }
 
     /** Carries the mesh (CrateRenderer). */

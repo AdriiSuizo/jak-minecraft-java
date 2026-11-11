@@ -57,6 +57,7 @@ public final class CityPopulation {
  }
 
  public static void tick(ServerLevel level){
+  JakCityStructure.tickDecorations(level);
   if(level.getGameTime()%40!=20)return;
   var type=BuiltInRegistries.STRUCTURE_PIECE.getValue(JakData.id("city_blocks"));
   var peopled=PEOPLED_TOWNS.computeIfAbsent(level.dimension(),k->new HashSet<>());
@@ -83,9 +84,12 @@ public final class CityPopulation {
       if(context==null)context=StructurePieceSerializationContext.fromLevel(level);
       var tag=piece.createTag(context);
       String city=tag.getStringOr("City","");
-      if(!city.equals("haven")&&!city.equals("spargus"))continue;
+      boolean populated=city.equals("haven")||city.equals("spargus");
+      if(!populated&&!city.startsWith("sandover"))continue;
       var origin=new BlockPos(tag.getIntOr("X",0),tag.getIntOr("Y",0),tag.getIntOr("Z",0));
-      if(peopled.contains(origin)||Math.hypot(origin.getX()-p.getX(),origin.getZ()-p.getZ())>=PEOPLED)continue;
+      if(Math.hypot(origin.getX()-p.getX(),origin.getZ()-p.getZ())>=PEOPLED)continue;
+      JakCityStructure.queueDecorations(level,start);
+      if(!populated||peopled.contains(origin))continue;
       int turns=tag.getIntOr("Turns",0)&3;
       if(people(level,city,origin,turns,start)){
        peopled.add(origin);

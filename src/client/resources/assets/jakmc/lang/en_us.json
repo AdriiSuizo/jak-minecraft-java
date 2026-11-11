@@ -199,5 +199,19 @@
   "block.jakmc.iris_door": "Precursor Iris Door",
   "block.jakmc.airlock_door": "Haven Airlock",
   "entity.jakmc.kermit": "Swamp Frog",
-  "item.jakmc.kermit_spawn_egg": "Spawn Swamp Frog"
+  "item.jakmc.kermit_spawn_egg": "Spawn Swamp Frog",
+  "book.jakmc.keira.title": "Keira’s Recipe Book",
+  "book.jakmc.keira.index": "Workshop notes",
+  "book.jakmc.keira.intro": "Jak, here are my plans. Yes, Daxter can look too. —Keira",
+  "book.jakmc.keira.guns": "Morph Guns",
+  "book.jakmc.keira.guns.intro": "Start with a basic gun. When it is time to upgrade, bring its parts and the right colour of eco back to the workbench.",
+  "book.jakmc.keira.ammo": "Ammo and eco",
+  "book.jakmc.keira.ammo.intro": "Check the colour before you leave. I wrote down a few ways to refill using things you can find along the way.",
+  "book.jakmc.keira.tools": "Gadgets",
+  "book.jakmc.keira.tools.intro": "Boost, rails and a little eco. If something has an arrow, check where it points before you step on it.",
+  "book.jakmc.keira.vehicles": "Vehicles",
+  "book.jakmc.keira.vehicles.intro": "Bring the parts to the crafting table. If Daxter insists on testing the throttle, make him do it outside.",
+  "book.jakmc.keira.makes": "Makes %s",
+  "book.jakmc.keira.any_order": "In any order",
+  "book.jakmc.keira.stonecutter": "At the stonecutter"
 }

@@ -67,6 +67,7 @@ def main():
         fabric_api=props['fabric_api_version'],mod_version=props['version'],platform='windows-x86_64')
     api=f'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/{props["fabric_api_version"]}/fabric-api-{props["fabric_api_version"]}.jar.sha512'
     manifest['fabric_api_sha512']=urllib.request.urlopen(api,timeout=45).read().decode().strip()
+    manifest['performance_mods']=json.loads((ROOT/'installer/performance-mods.json').read_text(encoding='utf-8'))
     manifest['files']={p.relative_to(payload).as_posix():sha(p) for p in sorted(payload.rglob('*')) if p.is_file() and p.name!='manifest.json'}
     (payload/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
     # Keep a runnable source bundle for headless verification of exactly the

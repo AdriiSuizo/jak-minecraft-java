@@ -105,7 +105,7 @@ public final class CitizenLife {
  }
  /** Jak II civilian 'clear-path: off the street a craft is coming down, to the given point; false while it is not walking its own day. */
  public boolean stepAside(ServerLevel level,Vec3 to){
-  if(!owning||door!=null||state==PANIC||state==INDOORS||kind.jak1())return false;
+  if(body.isTrading()||!owning||door!=null||state==PANIC||state==INDOORS||kind.jak1())return false;
   route.clear();pathed=null;target=to;set(WALK);t=0;length=8;dodging=true;
   return true;
  }

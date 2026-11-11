@@ -143,8 +143,10 @@ public final class JakInput {
             boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
             boolean powers=(held&L3)!=0||DARK.isDown()||LIGHT.isDown();
             boolean gun=JakItems.GUNS.contains(c.player.getMainHandItem().getItem());
+            boolean trading=c.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit
+                &&hit.getEntity() instanceof net.minecraft.world.entity.npc.villager.AbstractVillager merchant&&merchant.isAlive();
             aiming=!board&&!mounted&&!c.player.isInWater()&&!powers
-                &&!c.options.getCameraType().isMirrored()&&(AIM.isDown()||gun&&(held&L2)!=0);
+                &&!c.options.getCameraType().isMirrored()&&(AIM.isDown()||gun&&!trading&&(held&L2)!=0);
             Trigger wanted=powers?Trigger.RESERVED:board||mounted?Trigger.MINE:triggerFor(c.player.getMainHandItem());
             boolean rightDown=(held&R2)!=0;
             if(!rightDown)trigger=null;
@@ -153,8 +155,8 @@ public final class JakInput {
             boolean mineTrigger=trigger==Trigger.MINE;
             // L2 goes through Minecraft's normal use path, including offhand,
             // held/released use, doors and other mods' items and interactions;
-            // with a gun in hand it only aims (Adrii 05/11: no getting in or opening while aiming).
-            useHeld=(held&L2)!=0&&!powers&&!board&&!gun;
+            // A merchant takes L2 even with a Morph Gun in hand.
+            useHeld=(held&L2)!=0&&!powers&&!board&&(!gun||trading);
             attackHeld=mineTrigger;
             useClicked|=useHeld&&(edges&L2)!=0;
             attackClicked|=mineTrigger&&(edges&R2)!=0;
@@ -250,9 +252,16 @@ public final class JakInput {
         if(inCar(client))lastVehiclePacket=now;
         boolean blocked=blocked(client);int held=blocked?0:held(client)|pad.held();if(!blocked&&menuWasOpen)previous=held; // keys still down as a menu closes are not presses (a held F let the HellCat's Jak out)
         menuWasOpen=blocked;int pressed=(held&~previous)|pressedPad;previous=held;pressedPad=0;
-        float strafe=blocked?0:(client.options.keyRight.isDown()?1:0)-(client.options.keyLeft.isDown()?1:0);
-        float forward=blocked?0:(client.options.keyUp.isDown()?1:0)-(client.options.keyDown.isDown()?1:0);
-        if(pad.leftX()*pad.leftX()+pad.leftY()*pad.leftY()>strafe*strafe+forward*forward){strafe=pad.leftX();forward=pad.leftY();}
+        boolean menuWalk=blocked&&walkInMenu(client);
+        float strafe=menuWalk?rawKey(client.options.keyRight)-rawKey(client.options.keyLeft):
+            blocked?0:(client.options.keyRight.isDown()?1:0)-(client.options.keyLeft.isDown()?1:0);
+        float forward=menuWalk?rawKey(client.options.keyUp)-rawKey(client.options.keyDown):
+            blocked?0:(client.options.keyUp.isDown()?1:0)-(client.options.keyDown.isDown()?1:0);
+        var movement=menuWalk?uiPad:pad;
+        if(movement.leftX()*movement.leftX()+movement.leftY()*movement.leftY()>strafe*strafe+forward*forward){
+            strafe=movement.leftX();
+            forward=movement.leftY();
+        }
         int viewFlags=client.options.getCameraType().isFirstPerson()?JakPackets.FIRST_PERSON:0;
         if(blocked||cancelPower)viewFlags|=JakPackets.CANCEL_POWER;
         cancelPower=false;
@@ -265,6 +274,17 @@ public final class JakInput {
             forward=0;
         }
         ClientPlayNetworking.send(new JakPackets.Input(++sequence,held|viewFlags,pressed,strafe,forward,pad.rightX(),pad.rightY(),client.player.getYRot(),client.player.getXRot(),brake,throttle));
+    }
+    public static boolean walkInMenu(Minecraft client){
+        var screen=client.gui.screen();
+        return enabled(client)&&client.player.getVehicle()==null&&client.isWindowActive()
+            &&(screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>||screen instanceof KeiraBook)
+            &&!(screen instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen)
+            &&!(screen.getFocused() instanceof net.minecraft.client.gui.components.EditBox);
+    }
+    private static int rawKey(KeyMapping mapping){
+        var key=KeyMappingHelper.getBoundKeyOf(mapping);
+        return key.getType()==InputConstants.Type.KEYBOARD&&InputConstants.isKeyDown(key.getValue())?1:0;
     }
     static int held(Minecraft client){
         if(client.gui.screen()!=null)return 0;

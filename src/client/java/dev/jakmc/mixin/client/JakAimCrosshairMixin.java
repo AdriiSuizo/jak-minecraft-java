@@ -37,6 +37,12 @@ abstract class JakAimCrosshairMixin {
     @ModifyExpressionValue(method="extractCrosshair",at=@At(value="INVOKE",
         target="Lnet/minecraft/client/CameraType;isFirstPerson()Z"))
     private boolean jakmc$showCrosshair(boolean firstPerson){
-        return firstPerson||JakInput.aiming();
+        if(firstPerson||JakInput.aiming())return true;
+        var client=Minecraft.getInstance();
+        var player=client.player;
+        if(player==null||player.isSpectator()||client.options.getCameraType()!=net.minecraft.client.CameraType.THIRD_PERSON_BACK
+            ||!dev.jakmc.player.JakPlayers.active(player))return false;
+        var pose=dev.jakmc.client.JakPoses.rendered(player.getId());
+        return pose!=null&&!pose.board()&&!(pose.raw().get("ride") instanceof com.google.gson.JsonObject)&&!pose.raw().has("hellcat");
     }
 }

@@ -49,12 +49,13 @@ public final class JakWorldDamage {
         // Rust mining: the blow in MW2 points (x100/8) over 160 a hardness.
         work(player,pos,strength*DAMAGE_TO_MW2/DAMAGE_PER_HARDNESS,player.hasInfiniteMaterials());
     }
-    /** A kick clears plants, while solid blocks keep their damage and durability. */
+    /** A kick clears plants and opens Krimson ammunition crates. */
     public static void kick(ServerPlayer player,BlockPos pos){
         var level=player.level();
         if(!permitted(player,level,pos))return;
         var block=level.getBlockState(pos).getBlock();
-        if(block instanceof net.minecraft.world.level.block.VegetationBlock
+        if(block==dev.jakmc.content.JakAmmoCrate.BLOCK
+            ||block instanceof net.minecraft.world.level.block.VegetationBlock
             ||block instanceof net.minecraft.world.level.block.BambooStalkBlock
             ||block instanceof net.minecraft.world.level.block.BambooSaplingBlock
             ||block instanceof net.minecraft.world.level.block.SugarCaneBlock)

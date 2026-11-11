@@ -302,7 +302,7 @@ public final class ZoomerTraffic {
             Vec3 from=flat(craft.position()),reach=velocity.scale(2);
             double radius=5*M,side=10*M;
             var box=new net.minecraft.world.phys.AABB(craft.position(),craft.position().add(reach)).inflate(radius,3,radius);
-            for(var villager:level.getEntitiesOfClass(Villager.class,box,v->!v.isPassenger()&&v.isAlive())){
+            for(var villager:level.getEntitiesOfClass(Villager.class,box,v->!v.isPassenger()&&!v.isTrading()&&v.isAlive())){
                 Vec3 at=flat(villager.position()).subtract(from);
                 double t=Math.clamp(at.dot(reach)/reach.lengthSqr(),0,1);
                 Vec3 off=at.subtract(reach.scale(t));

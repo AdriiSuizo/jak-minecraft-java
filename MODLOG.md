@@ -1,5 +1,11 @@
 # Jak Worlds — Minecraft Java
 
+2026-11-11 — Keira's recipe book, city detail and client performance:
+- The survival inventory opens a localized written notebook. The 48 entries use the built-in recipe data for each pattern, ingredient and output.
+- The beach crab now holds and reverses the original idle clip on the timing from `lurkercrab.gc`. The Bonelurker uses the original left and right charge swings, with the hit timed to their authored swing cues.
+- Haven, Spargus and Sandover select decorative sites from their blueprints. Existing cities receive the additions one loaded chunk at a time, provided each placement is clear and its original support is intact.
+- The Windows installer downloads pinned Minecraft 26.3 Fabric releases of Sodium, Sodium Extra, Lithium, FerriteCore and Entity Culling. Jak's server only collects nearby actor bounds when no gun or projectile needs the extended query.
+
 2026-11-11 — Shared gameplay revision for the normal and Movie profiles:
 - Creative bypasses ammo and eco requirements while keeping real inventory and vehicle ammunition intact. Spin kick shoves without damage, operates reachable mechanisms and only clears vegetation.
 - Hover and desert chassis meet one another and Jak on foot. The desert cars now simulate six 120 Hz steps per 20 Hz game tick. Zoomer car handbrakes accept Circle/B; bikes retain their hop and use Square/X to park.

@@ -13,6 +13,7 @@ public final class JakData {
     public static final AttachmentType<Float> DARK_ECO=eco("dark_eco");
     public static final AttachmentType<Float> LIGHT_ECO=eco("light_eco");
     public static final AttachmentType<Boolean> INVENTORY_RESOURCES=AttachmentRegistry.create(id("inventory_resources"),b->b.initializer(()->false).persistent(Codec.BOOL).copyOnDeath());
+    public static final AttachmentType<Boolean> CITY_DECORATED=AttachmentRegistry.create(id("city_decorated"),b->b.persistent(Codec.BOOL));
     public static final java.util.List<AttachmentType<Float>> AMMO=java.util.List.of(ammo("red"),ammo("yellow"),ammo("blue"),ammo("dark"));
     private static AttachmentType<Float> ammo(String color){return AttachmentRegistry.create(id("ammo_"+color),b->b.initializer(()->0f).persistent(Codec.FLOAT).copyOnDeath().syncWith(ByteBufCodecs.FLOAT,AttachmentSyncPredicate.targetOnly()));}
     private static AttachmentType<Float> eco(String name){return AttachmentRegistry.create(id(name),b->b.initializer(()->0f).persistent(Codec.FLOAT).copyOnDeath().syncWith(ByteBufCodecs.FLOAT,AttachmentSyncPredicate.targetOnly()));}

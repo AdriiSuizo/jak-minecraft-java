@@ -544,7 +544,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    s.jak.step(&pad,&mut s.world,Some(&mut s.actors));
    let kicking=was_kicking||matches!(s.jak.state,jak_core::State::Attack|jak_core::State::AttackAir{..}
        |jak_core::State::BoardJumpKick|jak_core::State::BoardWallKick{..});
-   swept.extend(s.jak.attack.swept.drain(..).map(|(c,r)|{let c=c/BLOCK;json!([c.x,c.y,c.z,r/BLOCK,kicking])}));
+   let punching=matches!(s.jak.attack.danger,Some(jak_core::attack::Danger::Punch|jak_core::attack::Danger::Uppercut));
+   swept.extend(s.jak.attack.swept.drain(..).map(|(c,r)|{let c=c/BLOCK;json!([c.x,c.y,c.z,r/BLOCK,kicking,punching])}));
    if *LEDGE_TRACE {let c=&s.jak.control;let w=c.wall_contact_pt/BLOCK;let n=c.wall_contact_normal;
    trail.push(format!("{:.3},{:.3},{:.3},{} w{:.3},{:.3},{:.3} n{:.2},{:.2},{:.2} x{:.3}",s.jak.trans().y/BLOCK,s.jak.trans().z/BLOCK,c.transv.z/BLOCK,c.status,w.x,w.y,w.z,n.x,n.y,n.z,s.jak.trans().x/BLOCK));}
    if s.jak.state.is_board() {
@@ -574,7 +575,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
    s.audio.advance();events.extend(frame_events.into_iter().map(|e|{
     let heavy=match &e{Event::Strike{..}=>smash,Event::Impact(h)=>blasts.iter().any(|(at,r)|h.surface.distance(*at)<=r+256.),_=>false};
     let strike=matches!(&e,Event::Strike{..});
-    let mut v=event(e);v["heavy"]=json!(heavy);if strike{v["kick"]=json!(kicking);}v
+    let mut v=event(e);v["heavy"]=json!(heavy);if strike{v["kick"]=json!(kicking);v["punch"]=json!(punching);}v
    }));pad.pressed=0;
   }
   if let Some(error)=s.world.error.take(){return Err(error);}
@@ -672,6 +673,7 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_step(mut env:JNIEnv
   }).collect();
   let mut out=json!({"abi":ABI_VERSION,"session":id,"pos":pos(j.trans()),"velocity":pos(j.velocity()),"yaw":-jak_core::math::to_radians(j.control.y_angle()).to_degrees(),"clip":j.chan.anim.name(),"frame":j.chan.frame,"frameRate":frame_rate,"loop":frame_period>0.,"framePeriod":frame_period,"state":j.state.name(),"status":j.control.status,"board":j.state.is_board(),"boardPose":board_pose,"rootPose":root_pose,"surfaceClip":surface_clip,"darkPose":dark_pose,"walkMix":walk_mix,"transition":transition,"dark":j.dark,"light":j.light(),"lightInterp":j.lightjak.interp,"entityRate":j.world_time_scale(),"hurt":{"ticks":j.time,"invulnerableUntil":j.hurt_invulnerable_until(),"burnStart":j.hurt_fx.burn_start,"shockUntil":j.hurt_fx.shock_until},"shieldHitAge":(j.time-j.lightjak.shield_hit_time)as f32/300.,"wings":wings,"ride":ride,"dismounted":dismounted,"shield":j.lightjak.shield,"aim":manual_aim,"lookYaw":read_f(b,32),"darkEco":j.dark_eco,"lightEco":j.lightjak.eco,"events":events,"sounds":sounds,"loops":loops,"effects":effects,"gun":gun,"models":models,"ammo":j.gun.ammo,"heal":healed});out["blueEco"]=json!(j.has_eco(jak_core::eco_power::EcoKind::Blue));if !swept.is_empty(){out["attackSpheres"]=json!(swept);}out["ecoTimer"]=json!(j.eco_power_shown().map(|(kind,left)|{use jak_core::eco_power::EcoKind::*;[match kind{Yellow=>0.,Red=>1.,Blue=>2.,Green=>3.},left]}));out["bombBlast"]=json!(j.bomb.blast_at.map(|(at,time)|{let d=(at-j.trans())/BLOCK;[d.x,d.y,d.z,(j.time-time) as f32/300.]}));out["freezeClap"]=json!((j.lightjak.freeze_clap>jak_core::lightjak::LONG_AGO).then_some(j.lightjak.freeze_clap));out["nukeFlash"]=json!(j.weapons.flash.map(|at|(j.time-at) as f32/300.));out["nuke"]=json!(j.nuke_screen().map(|(at,age,small)|{let d=at/BLOCK;json!([d.x,d.y,d.z,age,small])}));out["darkVictims"]=json!(j.dark_shock.tints.iter().map(|(key,f)|json!([key,f])).collect::<Vec<_>>());// The ripple meshes `spawn-ripples` made (from Jak, in blocks: root scale, seconds played), and the wade walk's own frame.
 out["ripples"]=json!(j.ripple_meshes().iter().map(|(at,scale,age)|{let d=(*at-j.trans())/BLOCK;json!([d.x,d.y,d.z,scale,age])}).collect::<Vec<_>>());
+out["wideActorQuery"]=json!(!j.projectiles.is_empty()||j.weapons.has_active_attacks());
 if j.wade.is_some()&&j.state==jak_core::State::Walk{
  // The wade walk's own frame, and how fast it ran over these steps (frames a second, for the frames between).
  let (wade_clip,wade_frame)=j.pose_anim();

@@ -142,6 +142,11 @@ abstract class JakControllerCameraMixin {
             &&entity.getVehicle() instanceof dev.jakmc.entity.JakVehicle car?car:null;
     }
 
+    @Unique private boolean jakmc$overhead(){
+        return jakmc$active()&&jakmc$flightPivot==null&&!jakmc$wheeled&&jakmc$mountHeight<.1f
+            &&Minecraft.getInstance().options.getCameraType()==CameraType.THIRD_PERSON_BACK;
+    }
+
     @ModifyArgs(method="alignWithEntity",at=@At(value="INVOKE",target="Lnet/minecraft/client/Camera;setPosition(DDD)V"))
     private void jakmc$follow(Args args){
         if(!jakmc$active())return;
@@ -153,11 +158,12 @@ abstract class JakControllerCameraMixin {
         if(feet==null)return;
         args.set(0,feet.x);
         double height=feet.y+1.62;
-        if(jakmc$mountHeight>.001f){
+        float lift=jakmc$mountHeight+(jakmc$overhead()?1.12f*(1-jakmc$aim):0);
+        if(lift>.001f){
             Vec3 from=new Vec3(feet.x,height,feet.z);
-            var hit=entity.level().clip(new ClipContext(from,from.add(0,jakmc$mountHeight,0),
+            var hit=entity.level().clip(new ClipContext(from,from.add(0,lift,0),
                 ClipContext.Block.VISUAL,ClipContext.Fluid.NONE,entity));
-            height+=hit.getType()==HitResult.Type.MISS?jakmc$mountHeight:
+            height+=hit.getType()==HitResult.Type.MISS?lift:
                 Math.max(0,hit.getLocation().y-height-.12);
         }
         Vec3 target=new Vec3(feet.x,height,feet.z);
@@ -190,12 +196,12 @@ abstract class JakControllerCameraMixin {
 
     @Inject(method="alignWithEntity",at=@At("RETURN"))
     private void jakmc$convergeAim(float partial,CallbackInfo ci){
-        if(!jakmc$active()||jakmc$flightPivot!=null||jakmc$aim<=.001f)return;
+        if(!jakmc$active()||jakmc$flightPivot!=null||(!jakmc$overhead()&&jakmc$aim<=.001f))return;
         var player=Minecraft.getInstance().player;
         var hit=player.raycastHitResult(partial,player);
         // Retain vanilla item picking and align the view to that same interaction ray.
         Vec3 target=hit.getType()==HitResult.Type.MISS
-            ?player.getEyePosition(partial).add(player.getViewVector(partial).scale(24))
+            ?player.getEyePosition(partial).add(player.getViewVector(partial).scale(jakmc$aim>.001f?24:9))
             :hit.getLocation();
         Vec3 look=target.subtract(position());
         float yaw=(float)Math.toDegrees(Math.atan2(-look.x,look.z));

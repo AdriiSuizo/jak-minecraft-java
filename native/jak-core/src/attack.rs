@@ -56,7 +56,7 @@ const fn on(joint: usize, radius: f32) -> HitSphere {
 }
 
 const SPIN: [HitSphere; 1] = [at(6553.6, 9011.2)];
-const PUNCH: [HitSphere; 2] = [at(5324.8, 5324.8), on(27, 5324.8)];
+const PUNCH: [HitSphere; 2] = [on(27, 5324.8), at(5324.8, 5324.8)];
 const UPPERCUT: [HitSphere; 3] = [at(3276.8, 4096.0), on(27, 4096.0), at(9011.2, 4096.0)];
 const FLOP: [HitSphere; 1] = [at(3276.8, 5734.4)];
 const FLOP_DOWN: [HitSphere; 2] = [at(3276.8, 5734.4), at(9011.2, 5734.4)];
@@ -143,6 +143,7 @@ impl Jak {
         };
         let forward = crate::math::z_axis(self.control.quat);
         for sphere in danger.spheres() {
+            let lunge = danger == Danger::Punch && sphere.joint.is_none();
             let center = match sphere.joint {
                 Some(j) => match self.joints.get(j) {
                     Some(&local) => self.control.trans + self.control.quat * local,
@@ -170,6 +171,9 @@ impl Jak {
                     // nearest point so a low obstacle does not hide a tall mob.
                     let origin = self.control.trans + self.control.gravity_normal * crate::METER;
                     let contact = actors.actor_contact(key, origin).unwrap_or(center);
+                    if lunge && (contact - origin).dot(forward) < -0.05 * crate::METER {
+                        continue;
+                    }
                     if crate::collide::fill_and_probe_line_sphere(
                         world, &mut self.probe_cache, origin, contact - origin, 0.01 * crate::METER,
                     ).is_some_and(|hit| hit.u < 0.999) {
@@ -180,7 +184,7 @@ impl Jak {
                         actor: Some(key),
                         pos: center,
                         dir: forward,
-                        damage: danger.damage(),
+                        damage: if lunge && self.control.transv.dot(forward) > crate::METER { 0.8 } else { danger.damage() },
                         sphere: None,
                     });
                 }

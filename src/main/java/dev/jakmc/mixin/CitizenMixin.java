@@ -56,7 +56,36 @@ abstract class CitizenMixin implements CitizenState {
   }
   if(!v.isAlive()||citizenPhase()==0)return;double t=(dev.jakmc.player.JakEntityClock.time(v.level())-citizenPhaseStart())/20.;if(citizenPhase()==1&&(v.onGround()||v.isInWater())&&t>=.15)jakmc$phase(2);else if(citizenPhase()==2&&t>=jakmc$reactionKind().duration("knocked-back-land"))jakmc$phase(3);else if(citizenPhase()==3&&t>=jakmc$reactionKind().duration(jakmc$reactionKind().rise()))jakmc$phase(0);}
  @Unique private CitizenKind jakmc$reactionKind(){var kind=CitizenKind.of(citizenVariant());return kind.monk()?CitizenKind.of(0):kind;}
- @Inject(method="customServerAiStep",at=@At("HEAD"),cancellable=true)private void jakmc$reaction(ServerLevel level,CallbackInfo ci){if(citizenPhase()!=0){if(jakmc$defense!=null)jakmc$defense.interrupt();var v=(Villager)(Object)this;v.getNavigation().stop();v.getMoveControl().setWantedPosition(v.getX(),v.getY(),v.getZ(),0);ci.cancel();}else{var defense=jakmc$defense();if(defense!=null&&defense.tick(level))ci.cancel();}}
+ @Inject(method="customServerAiStep",at=@At("HEAD"),cancellable=true)
+ private void jakmc$reaction(ServerLevel level,CallbackInfo ci){
+  var villager=(Villager)(Object)this;
+  var customer=villager.getTradingPlayer();
+  if(customer!=null){
+   if(!customer.isAlive()||customer.level()!=level||villager.distanceToSqr(customer)>16
+       ||!(customer.containerMenu instanceof net.minecraft.world.inventory.MerchantMenu)){
+    villager.setTradingPlayer(null);
+   }else{
+    if(jakmc$defense!=null)jakmc$defense.interrupt();
+    villager.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+    villager.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.PATH);
+    villager.getNavigation().stop();
+    villager.setDeltaMovement(villager.getDeltaMovement().multiply(0,1,0));
+    villager.getMoveControl().setWantedPosition(villager.getX(),villager.getY(),villager.getZ(),0);
+    villager.getLookControl().setLookAt(customer);
+    ci.cancel();
+    return;
+   }
+  }
+  if(citizenPhase()!=0){
+   if(jakmc$defense!=null)jakmc$defense.interrupt();
+   villager.getNavigation().stop();
+   villager.getMoveControl().setWantedPosition(villager.getX(),villager.getY(),villager.getZ(),0);
+   ci.cancel();
+  }else{
+   var defense=jakmc$defense();
+   if(defense!=null&&defense.tick(level))ci.cancel();
+  }
+ }
  @Inject(method="addAdditionalSaveData",at=@At("TAIL"))private void jakmc$save(ValueOutput out,CallbackInfo ci){out.putInt("JakCitizenVariant",citizenVariant());out.putLong("JakResourceRestockDay",jakmc$restockDay);}
  @Inject(method="readAdditionalSaveData",at=@At("TAIL"))private void jakmc$load(ValueInput in,CallbackInfo ci){jakmc$restockDay=in.getLongOr("JakResourceRestockDay",Long.MIN_VALUE);int variant=in.getIntOr("JakCitizenVariant",-1);if(variant>=0)citizenVariant(variant);}
 }

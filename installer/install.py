@@ -279,6 +279,8 @@ def install_launcher(mc, instance, manifest, lang, download=fetch):
     api=f'fabric-api-{manifest["fabric_api"]}.jar'
     api_url=f'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/{manifest["fabric_api"]}/{api}'
     download(api_url,instance/'mods'/api,manifest['fabric_api_sha512'],'sha512')
+    for mod in manifest.get('performance_mods', []):
+        download(mod['url'],instance/'mods'/mod['filename'],mod['sha512'],'sha512')
     profile['id']=ident
     profile.setdefault('arguments',{}).setdefault('jvm',[]).append('--enable-native-access=ALL-UNNAMED')
     write_json(mc/'versions'/ident/(ident+'.json'),profile)

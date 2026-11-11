@@ -25,7 +25,7 @@ public final class HutLampRenderer implements BlockEntityRenderer<JakHutLamp.Lam
     private static Vector3f low,high;
     public static final class State extends BlockEntityRenderState {boolean ready;float swing,yaw;}
     @Override public State createRenderState(){return new State();}
-    @Override public int getViewDistance(){return 96;}
+    @Override public int getViewDistance(){return 48;}
     @Override public void extractRenderState(JakHutLamp.Lamp lamp,State state,float partial,Vec3 camera,ModelFeatureRenderer.CrumblingOverlay breaking){
         BlockEntityRenderer.super.extractRenderState(lamp,state,partial,camera,breaking);
         if(model==null&&!missing){
@@ -39,7 +39,8 @@ public final class HutLampRenderer implements BlockEntityRenderer<JakHutLamp.Lam
         state.ready=model!=null;
         long seed=Mth.getSeed(lamp.getBlockPos());
         double clock=System.nanoTime()/1e9/PERIOD+(seed&1023)/1024.0;
-        state.swing=SWING*(float)Math.sin(2*Math.PI*clock);
+        double distance=Vec3.atCenterOf(lamp.getBlockPos()).distanceTo(camera);
+        state.swing=SWING*(float)Math.sin(2*Math.PI*clock)*(float)Math.clamp((36-distance)/8,0,1);
         state.yaw=(seed>>>10&3)*90;
     }
     @Override public void submit(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){

@@ -44,10 +44,12 @@ final class CityBlueprint {
     }
     record Patrol(BlockPos start,BlockPos end,Direction facing){}
     record Garage(BlockPos pos,Direction facing,boolean duneHopper){}
+    record Decoration(BlockPos at,BlockState state,BlockPos support,BlockState expected,boolean lamp){}
     private record Prop(int kind,BlockPos origin,int turns){}
     private record Facade(JakAssemblies.Model model,Direction direction){}
     private static final Rotation[] ROTATIONS={Rotation.NONE,Rotation.CLOCKWISE_90,Rotation.CLOCKWISE_180,Rotation.COUNTERCLOCKWISE_90};
     private final Map<Long,Fragment> chunks;
+    final Map<Long,List<Decoration>> decorations;
     final List<Garage> garages;
     final List<Patrol> patrols;
     /** The Krimson station's guard posts (jak:krimson_puesto): the garrison's base. */
@@ -56,8 +58,9 @@ final class CityBlueprint {
     /** The plan's street junctions (its light-blue markers) and the ways a street leaves each. */
     private final Map<BlockPos,java.util.Set<Direction>> streets;
 
-    private CityBlueprint(Map<Long,Fragment> chunks,List<Garage> garages,List<Patrol> patrols,List<BlockPos> posts,int[] bounds,Map<BlockPos,java.util.Set<Direction>> streets){
+    private CityBlueprint(Map<Long,Fragment> chunks,List<Garage> garages,List<Patrol> patrols,List<BlockPos> posts,int[] bounds,Map<BlockPos,java.util.Set<Direction>> streets,Map<Long,List<Decoration>> decorations){
         this.chunks=chunks;
+        this.decorations=decorations;
         this.posts=posts;
         this.garages=garages;
         this.patrols=patrols;
@@ -223,7 +226,68 @@ final class CityBlueprint {
         }
         var streets=new LinkedHashMap<BlockPos,java.util.Set<Direction>>();
         routes.forEach((junction,ways)->streets.put(junction,java.util.Collections.unmodifiableSet(java.util.EnumSet.copyOf(ways))));
-        return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),List.copyOf(selected),List.copyOf(posts),bounds,streets);
+        var decorations=decorate(id,cells,index);
+        return new CityBlueprint(Map.copyOf(index),List.copyOf(garages),List.copyOf(selected),List.copyOf(posts),bounds,streets,decorations);
+    }
+
+    private static Map<Long,List<Decoration>> decorate(String id,Map<Long,Int2ObjectOpenHashMap<BlockState>> cells,Map<Long,Fragment> index){
+        boolean spargus=id.equals("spargus");
+        if(!spargus&&!id.equals("haven")&&!id.startsWith("sandover"))return Map.of();
+        var rock=JakBlocks.BLOCKS.get("wasteland_rock").defaultBlockState();
+        var lamp=dev.jakmc.content.JakHutLamp.BLOCK.defaultBlockState();
+        var sand=JakBlocks.BLOCKS.get("sparg_arena");
+        var empty=net.minecraft.world.level.EmptyBlockGetter.INSTANCE;
+        var result=new HashMap<Long,List<Decoration>>();
+        for(var entry:index.entrySet()){
+            var fragment=entry.getValue();
+            var lamps=new ArrayList<Decoration>();
+            var rocks=new ArrayList<Decoration>();
+            for(int i=0;i<fragment.size();i++){
+                var state=fragment.states()[i];
+                if(state.isAir())continue;
+                var pos=fragment.pos(i);
+                if(pos.getY()<-1)continue;
+                long hash=net.minecraft.util.Mth.getSeed(pos);
+                boolean tryLamp=(hash&15)==0;
+                boolean tryRock=spargus&&(hash&7)==0&&state.getBlock()==sand;
+                if((!tryLamp&&!tryRock)||state.getCollisionShape(empty,pos).isEmpty())continue;
+                if(tryLamp&&open(cell(cells,pos.below()),false)&&open(cell(cells,pos.below(2)),false)){
+                    for(int depth=3;depth<=5;depth++){
+                        var floor=cell(cells,pos.below(depth));
+                        if(floor==null||floor.isAir())continue;
+                        if(!floor.getCollisionShape(empty,pos.below(depth)).isEmpty())lamps.add(new Decoration(pos.below(),lamp,pos,state,true));
+                        break;
+                    }
+                }
+                if(!tryRock)continue;
+                if(!open(cell(cells,pos.above()),false)||!open(cell(cells,pos.above(2)),false)||!open(cell(cells,pos.above(3)),false))continue;
+                // Banks against Spargus walls leave the centre of the street open.
+                for(var side:Direction.Plane.HORIZONTAL){
+                    var neighbour=cell(cells,pos.above().relative(side,2));
+                    if(neighbour==null||!BuiltInRegistries.BLOCK.getKey(neighbour.getBlock()).getPath().endsWith("_pared"))continue;
+                    rocks.add(new Decoration(pos.above(),rock,pos,state,false));
+                    break;
+                }
+            }
+            var chosen=new ArrayList<Decoration>();
+            chooseDecorations(lamps,chosen,5,5);
+            chooseDecorations(rocks,chosen,2,5);
+            if(!chosen.isEmpty())result.put(entry.getKey(),List.copyOf(chosen));
+        }
+        JakMod.LOG.info("Jak city {} has {} hanging lamps and {} rock placements",id,
+            result.values().stream().flatMap(List::stream).filter(Decoration::lamp).count(),
+            result.values().stream().flatMap(List::stream).filter(d->!d.lamp()).count());
+        return Map.copyOf(result);
+    }
+
+    private static void chooseDecorations(List<Decoration> candidates,List<Decoration> chosen,int limit,int gap){
+        candidates.sort(java.util.Comparator.comparingLong(d->net.minecraft.util.Mth.getSeed(d.at())));
+        int added=0;
+        for(var candidate:candidates){
+            if(chosen.stream().anyMatch(d->d.lamp()==candidate.lamp()&&d.at().distSqr(candidate.at())<gap*gap))continue;
+            chosen.add(candidate);
+            if(++added==limit)break;
+        }
     }
 
     private static boolean open(BlockState state,boolean gate){return gate||state==null||state.isAir();}
@@ -387,8 +451,13 @@ final class CityBlueprint {
     }
 
     static BlockPos rotate(BlockPos pos,int turns){
-        for(int i=0;i<turns;i++)pos=new BlockPos(-pos.getZ()-1,pos.getY(),pos.getX());
-        return pos;
+        int x=pos.getX(),y=pos.getY(),z=pos.getZ();
+        return switch(turns){
+            case 1->new BlockPos(-z-1,y,x);
+            case 2->new BlockPos(-x-1,y,-z-1);
+            case 3->new BlockPos(z,y,-x-1);
+            default->pos;
+        };
     }
 
     static BlockState rotate(BlockState state,int turns){

@@ -87,8 +87,13 @@ public final class DarkEco {
         var cell=BlockPos.containing(at).mutable();
         if(!level.getFluidState(cell).getType().isSame(SOURCE))cell.move(net.minecraft.core.Direction.DOWN);
         if(!level.getFluidState(cell).getType().isSame(SOURCE))return at;
+        return over(level,cell,at,.5);
+    }
+    private static net.minecraft.world.phys.Vec3 over(ServerLevel level,BlockPos touched,net.minecraft.world.phys.Vec3 at,double clearance){
+        var cell=touched.mutable();
         while(level.getFluidState(cell.above()).getType().isSame(SOURCE))cell.move(net.minecraft.core.Direction.UP);
-        double top=cell.getY()+level.getFluidState(cell).getHeight(level,cell)+.5;
+        double top=cell.getY()+level.getFluidState(cell).getHeight(level,cell)+clearance;
+        if(!level.getBlockState(cell.above()).getCollisionShape(level,cell.above()).isEmpty())top-=clearance*.7;
         return at.y>=top?at:new net.minecraft.world.phys.Vec3(at.x,top,at.z);
     }
     static void burst(ServerLevel level,net.minecraft.world.phys.Vec3 at,boolean small){
@@ -137,7 +142,7 @@ public final class DarkEco {
         @Override protected void entityInside(Level level,BlockPos pos,Entity entity,InsideBlockEffectApplier effects){
             if(!(level instanceof ServerLevel server))return;
             if(entity instanceof net.minecraft.world.entity.item.ItemEntity item&&item.isAlive()){
-                burst(server,over(server,item.position()),true);
+                burst(server,over(server,pos,item.position(),.9),true);
                 item.discard();
             }else if(entity instanceof LivingEntity living&&!(entity instanceof Player)&&living.isAlive()){
                 burst(server,over(server,living.getBoundingBox().getCenter()),false);

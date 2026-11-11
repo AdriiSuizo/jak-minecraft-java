@@ -42,6 +42,36 @@ import net.minecraft.world.phys.Vec3;
 
 /** Native discoverable city starts with chunk-local placement and seed-stable orientation. */
 public final class JakCityStructure extends Structure {
+    private record DecorationWork(CityPiece city,ChunkPos chunk){}
+    private static final java.util.Map<net.minecraft.server.level.ServerLevel,java.util.LinkedHashMap<Long,DecorationWork>> DECORATING=new java.util.WeakHashMap<>();
+
+    static void queueDecorations(net.minecraft.server.level.ServerLevel level,net.minecraft.world.level.levelgen.structure.StructureStart start){
+        for(var piece:start.getPieces())if(piece instanceof CityPiece city){
+            var plan=CityBlueprint.ready(city.site.id);
+            if(plan==null||plan.decorations.isEmpty())continue;
+            var queue=DECORATING.computeIfAbsent(level,key->new java.util.LinkedHashMap<>());
+            for(long key:plan.decorations.keySet()){
+                var local=CityBlueprint.rotate(new BlockPos((int)(key>>32),0,(int)key),city.turns);
+                var chunk=new ChunkPos((city.origin.getX()>>4)+local.getX(),(city.origin.getZ()>>4)+local.getZ());
+                var loaded=level.getChunkSource().getChunkNow(chunk.x(),chunk.z());
+                if(loaded!=null&&!Boolean.TRUE.equals(loaded.getAttached(JakData.CITY_DECORATED)))
+                    queue.putIfAbsent(ChunkPos.pack(chunk.x(),chunk.z()),new DecorationWork(city,chunk));
+            }
+        }
+    }
+
+    static void tickDecorations(net.minecraft.server.level.ServerLevel level){
+        var queue=DECORATING.get(level);
+        if(queue==null)return;
+        var next=queue.pollFirstEntry();
+        if(next==null){DECORATING.remove(level);return;}
+        var work=next.getValue();
+        var chunk=level.getChunkSource().getChunkNow(work.chunk.x(),work.chunk.z());
+        if(chunk==null||Boolean.TRUE.equals(chunk.getAttached(JakData.CITY_DECORATED)))return;
+        work.city.decorate(level,work.chunk);
+        chunk.setAttached(JakData.CITY_DECORATED,true);
+    }
+
     /** A street between two junctions in world blocks, its floor points from one to the other: see CityBlueprint.stretches. */
     public record Street(BlockPos from,BlockPos to,java.util.List<Vec3> points){}
     public static java.util.List<Street> streets(net.minecraft.world.level.levelgen.structure.StructureStart start){
@@ -296,6 +326,7 @@ public final class JakCityStructure extends Structure {
                     level.setBlock(at,fill,Block.UPDATE_KNOWN_SHAPE);
                 }
             }
+            decorate(level,chunk);
             // The crater cave's band: JakEcology's nest at its CAVE_MARK (Rust: jak_enemies.rs cave_band).
             if(site==Site.CRATER_CAVE)return;
             if(site.sandover()){
@@ -321,6 +352,21 @@ public final class JakCityStructure extends Structure {
                 var spot=Vec3.atBottomCenterOf(pos.above()).add(0,1.1,0);
                 car.snapTo(spot.x,spot.y,spot.z,CityBlueprint.rotate(garage.facing(),turns).toYRot(),0);
                 level.addFreshEntity(car);
+            }
+        }
+
+        private void decorate(net.minecraft.world.level.LevelAccessor level,ChunkPos chunk){
+            var local=CityBlueprint.rotate(new BlockPos(chunk.x()-(origin.getX()>>4),0,chunk.z()-(origin.getZ()>>4)),(4-turns)&3);
+            long key=((long)local.getX()<<32)|(local.getZ()&0xffffffffL);
+            var decorations=site.plan().decorations.get(key);
+            if(decorations==null)return;
+            for(var decoration:decorations){
+                var at=CityBlueprint.rotate(decoration.at(),turns).offset(origin);
+                var support=CityBlueprint.rotate(decoration.support(),turns).offset(origin);
+                if(!level.isEmptyBlock(at)||!level.getBlockState(support).is(decoration.expected().getBlock()))continue;
+                if(decoration.lamp()&&!level.isEmptyBlock(at.below()))continue;
+                if(!decoration.lamp()&&!level.isEmptyBlock(at.above()))continue;
+                level.setBlock(at,decoration.state(),Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE);
             }
         }
 

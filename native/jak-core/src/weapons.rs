@@ -569,6 +569,10 @@ impl Default for Weapons {
 }
 
 impl Weapons {
+    pub fn has_active_attacks(&self) -> bool {
+        !self.shots.is_empty() || !self.waves.is_empty() || !self.effects.is_empty() || self.arc.is_some()
+    }
+
     pub(crate) fn lightning_requests(&mut self, now: i64) -> Vec<crate::particles::LightningRequest> {
         // The Arc Wielder's sparks and shocks, each while its lightning lasts
         // (`:duration` and `:fade-time`).
