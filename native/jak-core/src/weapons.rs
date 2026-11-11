@@ -2454,8 +2454,9 @@ impl Jak {
                 if !*killed && t >= seconds(0.3) {
                     *killed = true;
                     self.weapons.flash = Some(now);
+                    let radius = super_nova_visual_radius() * 2.0;
                     if let Some(a) = reborrow(&mut actors) {
-                        for (key, c) in a.actors_near(*center, meters(300.0)) {
+                        for (key, c) in a.actors_near(*center, radius) {
                             self.events.push(impact(c, c - *center, 32.0, Some(key)));
                         }
                     }
@@ -2470,7 +2471,7 @@ impl Jak {
                     self.events.push(Event::Explosion {
                         kind: GunKind::Dark3,
                         center: *center,
-                        radius: meters(300.0),
+                        radius,
                     });
                 }
                 t < if *small { seconds(8.0) } else { seconds(10.0) }
@@ -2692,7 +2693,7 @@ impl Jak {
                 } => {
                     let t = (now - start) as f32 / TICKS_PER_SECOND as f32;
                     let fade = (1.0 - (t - 5.0).max(0.0) / 5.0).clamp(0.0, 1.0);
-                    let shock = meters(if *small { 40.0 } else { 120.0 }) * (t / 1.5).min(1.0);
+                    let shock = super_nova_visual_radius() * (t / 1.5).min(1.0);
                     ring(&mut out, *center, shock, [1.0, 0.7, 1.0, (1.0 - t / 2.0).max(0.0)], 6.0, 48);
                     if !*small {
                         let top = *center + Vec3::Y * (meters(5.0) + meters(2.0) * t);
@@ -2720,6 +2721,11 @@ impl Jak {
     }
 }
 
+/// Horizontal half-width of the main glow: gun-part.gc launchers 375 and 392 both use 30 m across.
+fn super_nova_visual_radius() -> f32 {
+    meters(15.0)
+}
+
 fn trail(shot: &mut Shot, max: f32) {
     let trail = shot.tail - shot.trans;
     if trail.length() > max {
@@ -2738,6 +2744,33 @@ fn rotate_y_rad(v: Vec3, a: f32) -> Vec3 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn super_nova_only_hits_within_twice_the_visible_blast() {
+        struct Targets;
+        impl ActorWorld for Targets {
+            fn actor_hit(&mut self, _: Vec3, _: Vec3, _: f32) -> Option<(u64, f32, Vec3)> {
+                None
+            }
+            fn actors_near(&mut self, center: Vec3, radius: f32) -> Vec<(u64, Vec3)> {
+                [(1, Vec3::X * meters(29.9)), (2, Vec3::X * meters(30.1))]
+                    .into_iter().filter(|(_, at)| at.distance(center) <= radius).collect()
+            }
+        }
+        for small in [false, true] {
+            let mut jak = Jak::new(Vec3::ZERO, 0.);
+            jak.time = seconds(0.3);
+            let mut effect = Effect::Nuke { center: Vec3::ZERO, start: 0, killed: false, small };
+            jak.step_effect(&mut effect, &mut crate::EmptyWorld, Some(&mut Targets));
+            let hit: Vec<_> = jak.events.iter().filter_map(|event| match event {
+                Event::Impact(hit) => hit.actor,
+                _ => None,
+            }).collect();
+            assert_eq!(hit, [1]);
+            assert!(jak.events.iter().any(|event| matches!(event,
+                Event::Explosion { kind: GunKind::Dark3, radius, .. } if *radius == meters(30.))));
+        }
+    }
 
     #[test]
     fn the_reflexor_trail_is_whole_near_the_shot_then_dashed() {

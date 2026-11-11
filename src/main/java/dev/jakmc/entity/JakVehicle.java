@@ -105,6 +105,9 @@ public final class JakVehicle extends Entity {
     private long handle,retryAt,lastInput,boardingAt;
     private WheeledCollision collision;
     private Vec3 nativePosition, velocity=Vec3.ZERO, seat=new Vec3(0,.5,0), boardingFrom;
+    private record HullImpact(Vec3 speed,Vec3 point){}
+    private final java.util.ArrayList<HullImpact> hullImpacts=new java.util.ArrayList<>();
+    private int crashTicks;
     /** Seconds into the get-on animation (pilot-states.gc target-pilot-get-on), -1 when on; and Jak's facing as he got on. */
     private float boardingSeconds=-1,boardingYaw;
     /** The tick the get-on animation ended: the sitting loop opens with a tenth of a second's blend from its last pose (target-pilot-*-anim-loop's ja-channel-push!). */
@@ -142,6 +145,15 @@ public final class JakVehicle extends Entity {
         double target=latest.tick-(local?.5:1)+Math.clamp((now-frameReceived)/displayInterval,0,1);
         double predicted=displayClock+dt;
         displayClock=Math.min(latest.tick+(local?.5:0),predicted+Math.clamp((target-predicted)*.5,-.5,.5)*dt);
+        sampleDisplay(local,latest);
+    }
+    public void sampleReplayPresentation(float partialTick){
+        if(displayFrames.isEmpty())return;
+        var latest=displayFrames.getLast();
+        displayClock=latest.tick-1+partialTick;
+        sampleDisplay(false,latest);
+    }
+    private void sampleDisplay(boolean local,DisplayFrame latest){
         var left=displayFrames.getFirst();
         var right=left;
         for(var candidate:displayFrames){
@@ -353,6 +365,7 @@ public final class JakVehicle extends Entity {
     private void tickVehicle() {
         super.tick();
         if(!(level() instanceof ServerLevel server)||server.getGameTime()<retryAt)return;
+        if(crashTicks>0&&--crashTicks==0){wreck();return;}
         // Under water (sunk, put down in it, flooded) it is taken apart into
         // its item, which floats up where it was (Rust zoomers.rs, 15/10).
         if(getFluidHeight(net.minecraft.tags.FluidTags.WATER)>model.height*.5+.1){
@@ -365,7 +378,7 @@ public final class JakVehicle extends Entity {
         boardingSeconds=boardingFrom==null?-1:(server.getGameTime()-boardingAt)/20f;
         if(boardingSeconds>=getOn().seconds()){boardingSeconds=-1;boardingFrom=null;seatedAt=server.getGameTime();}
         boolean ready=boardingSeconds<0||boardingSeconds*getOn().aframesPerSecond()>=READY_AFRAME;
-        boolean fresh=rider!=null&&ready&&controls!=null&&server.getGameTime()-lastInput<7;
+        boolean fresh=crashTicks==0&&rider!=null&&ready&&controls!=null&&server.getGameTime()-lastInput<7;
         int held=fresh?controls.held()|press:0;
         if(fresh&&(press&8)!=0){
             // target-pilot-get-off: the original exit, taken from the seat by the Jak that comes of this.
@@ -382,7 +395,7 @@ public final class JakVehicle extends Entity {
         press=0;
         if(rider==null){controls=null;boardingFrom=null;boardingSeconds=-1;}
         if(rider!=null&&route!=null){route=null;ZoomerTraffic.forget(this);}
-        if(rider==null&&route==null&&tickCount>20&&velocity.lengthSqr()<.00001&&tickCount%10!=0
+        if(crashTicks==0&&hullImpacts.isEmpty()&&rider==null&&route==null&&tickCount>20&&velocity.lengthSqr()<.00001&&tickCount%10!=0
             &&(!model.hover()||currentFrame==null||currentFrame.get("lamps").getAsFloat()<.01f))return;
         // A FULL collision chunk is not necessarily ready to tick/retain
         // entities. Do not move the hull into a section that can unload it.
@@ -402,11 +415,18 @@ public final class JakVehicle extends Entity {
             var at=position();
             var moved=at.subtract(collision.origin);
             collision.origin=at;
+            for(var impact:hullImpacts){
+                Vec3 speed=impact.speed(),offset=impact.point().subtract(at);
+                if(model.hover())NativeJak.hoverContact(handle,(float)speed.x,(float)speed.y,(float)speed.z,
+                    (float)offset.x,(float)offset.y,(float)offset.z);
+                else NativeJak.wheeledImpulse(handle,false,(float)speed.x,(float)speed.y,(float)speed.z);
+            }
+            hullImpacts.clear();
             int actions=held&7;
             if((held&64)!=0)actions|=8;
             float steer=fresh?-controls.strafe():0,lean=fresh?controls.forward():0;
             float throttle=fresh?controls.throttle():0,brake=fresh?controls.brake():0;
-            boolean traffic=rider==null&&route!=null&&model.hover();
+            boolean traffic=crashTicks==0&&rider==null&&route!=null&&model.hover();
             if(traffic){
                 var auto=ZoomerTraffic.autopilot(this,velocity);
                 steer=auto.steer();lean=0;throttle=auto.throttle();brake=auto.brake();
@@ -420,12 +440,13 @@ public final class JakVehicle extends Entity {
                 int zoomer=(edges&1)|(held&2)|(model.bike()?held&4:(held&4)>>1)|(traffic?8:0)|(rider!=null?16:0)|(rider!=null&&boardingSeconds<0?32:0);
                 float hour=(server.getDefaultClockTime()%24000+6000)%24000/1000f;
                 encoded=NativeJak.hoverStep(handle,steer,lean,throttle,brake,zoomer,
-                    (float)moved.x,(float)moved.y,(float)moved.z,hour%24,health/model.hitPoints,rider!=null||traffic);
+                    (float)moved.x,(float)moved.y,(float)moved.z,hour%24,Math.max(0,health/model.hitPoints),crashTicks==0&&(rider!=null||traffic));
             }else{
                 encoded=NativeJak.carStep(handle,steer,lean,throttle,brake,actions,
                     (float)moved.x,(float)moved.y,(float)moved.z,6);
             }
             var frame=JsonParser.parseString(encoded).getAsJsonObject();
+            collision.commitImpacts();
             Vec3 step=JakPlayers.vector(frame.getAsJsonArray("position"));
             nativePosition=at.add(step);
             velocity=JakPlayers.vector(frame.getAsJsonArray("velocity"));
@@ -459,6 +480,7 @@ public final class JakVehicle extends Entity {
             if(frame.has("impactPos"))frame.add("impactWorld",jsonVector(at.add(JakPlayers.vector(frame.getAsJsonArray("impactPos")))));
             frame.addProperty("serverTick",server.getGameTime());
             frame.addProperty("boarding",boardingSeconds);
+            if(crashTicks>0)frame.addProperty("crashing",true);
             float seated=(server.getGameTime()-seatedAt)/20f;
             if(rider!=null&&seated<SEAT_BLEND+.05f)frame.addProperty("seated",seated);
             if(boardingSeconds>=0&&boardingFrom!=null){frame.add("boardingFrom",jsonVector(boardingFrom));frame.addProperty("boardingYaw",boardingYaw);}
@@ -492,6 +514,25 @@ public final class JakVehicle extends Entity {
         return model.bike()?new Vec3(.8,.6,1.5).scale(.64):new Vec3(1.4,.7,2.4).scale(.64);
     }
 
+    public double collisionMass(){
+        return switch(model){
+            case BIKEA,BIKEB,BIKEC -> 2;
+            case CARA -> 8;
+            case CARB -> 6;
+            case CARC -> 9;
+            case TOAD -> 16;
+            case SNAKE -> 8;
+        };
+    }
+    public Vec3 collisionVelocity(){
+        Vec3 result=velocity;
+        for(var impact:hullImpacts)result=result.add(impact.speed());
+        return result;
+    }
+    public void queueCollision(Vec3 speed,Vec3 point){
+        if(!isRemoved())hullImpacts.add(new HullImpact(speed,point));
+    }
+
     public void kickPush(Vec3 impulse){
         if(!(level() instanceof ServerLevel))return;
         Vec3 speed=impulse.scale(20);
@@ -507,11 +548,11 @@ public final class JakVehicle extends Entity {
         return result;
     }
     private void hoverImpact(float speed){
-        if(speed<12)return;
+        if(speed<1.5f||crashTicks>0)return;
         String family=model.bike()?"bike":"car";
-        playCue(family+(speed>=32?"-impact-stn":"-glance-stn"));
-        health-=speed>=70?model.hitPoints*2:speed>=32?10:speed>=21?4:0;
-        if(health<=0)wreck();
+        playCue(family+(speed>=25?"-impact-stn":"-glance-stn"),Math.min(1,speed/15));
+        health-=speed>=70?model.hitPoints*2:speed>=32?10:speed>=25?5:0;
+        if(health<=0)crashTicks=20;
     }
     /** A cue played where this vehicle is on this client only (the sounds the engine particles ask for), if the owned banks have it. */
     public void clientCue(String name){cueAt(level(),position(),name);}
@@ -541,12 +582,13 @@ public final class JakVehicle extends Entity {
             if(net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(watcher,packet.type()))
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(watcher,packet);
     }
-    private void playCue(String name){
+    private void playCue(String name){playCue(name,1);}
+    private void playCue(String name,float gain){
         var cue=JakEnemySounds.find("jak3",name);
-        if(cue!=null)level().playSound(null,getX(),getY(),getZ(),cue,SoundSource.NEUTRAL,1,1);
+        if(cue!=null)level().playSound(null,getX(),getY(),getZ(),cue,SoundSource.NEUTRAL,gain,1);
     }
     @Override public boolean hurtServer(ServerLevel server,DamageSource source,float amount){
-        if(amount<=0||isInvulnerableToBase(source))return false;
+        if(amount<=0||crashTicks>0||isInvulnerableToBase(source))return false;
         // Jak's fists and feet do it no harm (Adrii 15/10, Rust zoomers.rs):
         // each blow cracks it as a block cracks; the third in a row takes it
         // apart into its item, which falls where it stood.
@@ -615,14 +657,17 @@ public final class JakVehicle extends Entity {
         roll=in.getFloatOr("Roll",0);
         health=in.getFloatOr("Health",model.hitPoints);
         high=in.getBooleanOr("High",false);
+        crashTicks=Math.clamp(in.getIntOr("CrashTicks",0),0,20);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
-        out.putDouble("VelocityX",velocity.x);
-        out.putDouble("VelocityY",velocity.y);
-        out.putDouble("VelocityZ",velocity.z);
+        Vec3 speed=collisionVelocity();
+        out.putDouble("VelocityX",speed.x);
+        out.putDouble("VelocityY",speed.y);
+        out.putDouble("VelocityZ",speed.z);
         out.putFloat("Pitch",pitch);
         out.putFloat("Roll",roll);
         out.putFloat("Health",health);
         out.putBoolean("High",high);
+        if(crashTicks>0)out.putInt("CrashTicks",crashTicks);
     }
 }

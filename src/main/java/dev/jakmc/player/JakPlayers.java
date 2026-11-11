@@ -667,7 +667,8 @@ public final class JakPlayers {
             float power=switch(e.get("gun").getAsString()){
                 case "Red3" -> 4;case "Dark1" -> 3;case "Dark3" -> JakWorldDamage.NUKE_POWER;case "Yellow3" -> 1.5f;default -> 0;
             };
-            JakWorldDamage.explosion(p.level(),p,p,vector(e.getAsJsonArray("pos")).add(origin),power);
+            float radius=power==JakWorldDamage.NUKE_POWER?e.get("radius").getAsFloat():0;
+            JakWorldDamage.explosion(p.level(),p,p,vector(e.getAsJsonArray("pos")).add(origin),power,radius);
             return;
         }
         if(kind.equals("freeze")){
@@ -713,7 +714,7 @@ public final class JakPlayers {
                 }
                 // survival.rs: a blow that lands on a creature costs 0.1 of exhaustion.
                 if(kind.equals("strike"))p.causeFoodExhaustion(.1f);
-                boolean melee=kind.equals("strike")&&!strikeState.startsWith("dark-bomb");
+                boolean melee=kind.equals("strike")&&!strikeState.startsWith("darkjak-bomb");
                 if(victim instanceof dev.jakmc.entity.JakEnemy enemy)enemy.hurtFromJak(p.level(),source,damage,heavy,melee);
                 else{
                     if(melee&&victim instanceof net.minecraft.world.entity.monster.Monster enemy)damage=Math.min(damage,enemy.getMaxHealth()*.5f);

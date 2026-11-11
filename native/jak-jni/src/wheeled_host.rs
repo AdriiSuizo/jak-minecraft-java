@@ -50,6 +50,29 @@ pub(super) struct Terrain {
 }
 impl Ground for Terrain {
     fn can_step_on_contact(&self) -> bool { !self.entity_contact }
+    fn exchange_impulse(&mut self, velocity: Vec3, normal: Vec3, at: Vec3) -> Option<(f32, Vec3)> {
+        if !self.entity_contact { return None; }
+        let result=(||->jni::errors::Result<Option<[f32;4]>>{
+            let mut env=JVM.get().unwrap().attach_current_thread()?;
+            let args=[velocity.x,velocity.y,velocity.z,normal.x,normal.y,normal.z,at.x,at.y,at.z].map(JValue::Float);
+            let result=env.call_method(self.query.as_obj(),"exchangeImpulse","(FFFFFFFFF)[F",&args).and_then(|value|{
+                let object=value.l()?;
+                if object.is_null(){return Ok(None);}
+                let array=jni::objects::JFloatArray::from(object);
+                let mut data=[0.;4];
+                let read=env.get_float_array_region(&array,0,&mut data);
+                let _=env.delete_local_ref(array);
+                read.map(|_|Some(data))
+            });
+            if result.is_err(){let _=env.exception_clear();}
+            result
+        })();
+        match result{
+            Ok(Some([change,x,y,z]))=>Some((change,Vec3::new(x,y,z))),
+            Ok(None)=>None,
+            Err(error)=>{self.error=Some(error.to_string());None}
+        }
+    }
     fn sweep_hull(&mut self,at:Vec3,delta:Vec3,half:Vec3,forward:Vec3)->Option<(f32,Vec3)>{
         self.entity_contact=false;
         let result=(||->jni::errors::Result<[f32;5]>{
@@ -379,5 +402,18 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_wheeledImpulse(
         if hover!=0 { super::hover_host::impulse(id as u64,impulse)?; }
         else if let Some((car,_))=cars()?.active.get_mut(&(id as u64)) { car.velocity+=impulse; }
         Ok(())
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hoverContact(
+    mut env: JNIEnv, _: JClass, id: jlong, vx: f32, vy: f32, vz: f32, x: f32, y: f32, z: f32,
+) {
+    protect(&mut env, || {
+        let metres = BLOCK / jak_core::METER;
+        let impulse = Vec3::new(vx, vy, vz) * metres;
+        let offset = Vec3::new(x, y, z) * metres;
+        if !impulse.is_finite() || !offset.is_finite(){return Err("Nonfinite Zoomer impact".into());}
+        super::hover_host::contact(id as u64, impulse, offset)
     });
 }

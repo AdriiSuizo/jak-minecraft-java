@@ -113,6 +113,10 @@ pub struct Zoomer {
     /// Town traffic on its route (Rust zoomers.rs `route`): it never backs up when it brakes.
     pub routed: bool,
     yaw_rate: f32,
+    collision_yaw: f32,
+    incoming_impact: f32,
+    /// Frames spent trying to reach the high lane. A roof can abort the ascent.
+    rising_frames: u8,
     tilt: [f32; 2],
     tilt_rate: [f32; 2],
     hop_charge: f32,
@@ -151,6 +155,9 @@ impl Zoomer {
             accel: Vec3::ZERO,
             routed: false,
             yaw_rate: 0.,
+            collision_yaw: 0.,
+            incoming_impact: 0.,
+            rising_frames: 0,
             tilt: [0.; 2],
             tilt_rate: [0.; 2],
             hop_charge: 0.,
@@ -187,8 +194,18 @@ impl Zoomer {
             * Quat::from_rotation_z(self.bank + self.tilt[1])
     }
 
+    /// The original waiting state sends the vehicle back to the low lane.
+    pub fn reset_lane(&mut self) {
+        self.high = false;
+        self.rising_frames = 0;
+    }
+
     pub fn step(&mut self, input: Controls, terrain: &mut dyn Ground, events: &mut Vec<Event>) {
         let car = self.model.car();
+        let impact = std::mem::take(&mut self.incoming_impact);
+        if impact > 0. {
+            events.push(Event::Impact(impact));
+        }
         let start_velocity = self.velocity;
         let (accel, max_brake, max_gain, intake, response) = if car {
             (39., 54., 3.5, 1., 20.)
@@ -204,6 +221,7 @@ impl Zoomer {
         }
         if input.lane {
             self.high = !self.high;
+            self.rising_frames = u8::from(self.high);
             events.push(Event::Lane(self.high));
         }
 
@@ -219,6 +237,16 @@ impl Zoomer {
             self.model.base_hover()
         };
         let below = envelope(terrain, self.position, ahead, target);
+        if self.rising_frames > 0 {
+            if below.is_some_and(|height| (height - target).abs() < 2.) && rise.abs() < 2. {
+                self.rising_frames = 0;
+            } else if self.rising_frames >= 120 {
+                self.reset_lane();
+            } else {
+                self.rising_frames += 1;
+            }
+        }
+        let target = if self.high { HIGH_LANE } else { self.model.base_hover() };
         let mut hop = 0.0;
         if !car && !self.high {
             if input.hop && self.hop_charge > 0.0 {
@@ -253,7 +281,8 @@ impl Zoomer {
         let turn = if self.grounded { steer * gain } else { 0.0 };
         self.yaw_rate += (turn - self.yaw_rate) * (DT / 0.1);
         let old_yaw=self.yaw;
-        self.yaw += self.yaw_rate * DT;
+        self.yaw += (self.yaw_rate + self.collision_yaw) * DT;
+        self.collision_yaw *= (-7. * DT).exp();
         if !self.routed && self.yaw!=old_yaw && crate::wheeled::hull_hit(terrain,self.position,Vec3::ZERO,self.model.half(),self.heading()).is_some()
             && crate::wheeled::hull_hit(terrain,self.position,Vec3::ZERO,self.model.half(),ahead).is_none(){
             self.yaw=old_yaw;self.yaw_rate=0.0;
@@ -340,13 +369,34 @@ impl Zoomer {
             }
             None => {
                 let sway = speed / (speed + 5.0);
-                self.bank += (-20_f32.to_radians() * self.steer * sway - self.bank) * (6.0 * DT);
+                self.bank += (-20_f32.to_radians() * self.steer * sway - self.bank + self.roll.rate / 6.0) * (6.0 * DT);
+                self.roll.rate *= (-7. * DT).exp();
             }
         }
         // vehicle.gc: the scrape sound's envelope eases off 2 a second after the frame's impacts set it.
         self.scrape = seek(self.scrape, 0., 2. * DT);
         self.pitch +=
             (20_f32.to_radians() * self.lean - 0.06 * self.thrust - self.pitch) * (4.0 * DT);
+    }
+
+    pub fn receive_impact(&mut self, impulse: Vec3, offset: Vec3) {
+        self.velocity += impulse;
+        self.rock(impulse, offset);
+        self.incoming_impact = self.incoming_impact.max(impulse.length());
+    }
+
+    fn rock(&mut self, velocity_change: Vec3, offset: Vec3) {
+        let heading = self.heading();
+        let half = self.model.half();
+        // Apply the point impulse about the hull, using the original roll inertia where available.
+        // The contact plane sits below the centre of the hover's roll mass.
+        let offset = offset - Vec3::Y * (half.y * 0.45);
+        let torque = offset.cross(velocity_change);
+        let roll_inertia = self.roll_model.as_ref().map_or((half.x * half.x + half.y * half.y) / 3.,
+            |model| model.inertia / model.mass);
+        self.roll.rate += (torque.dot(heading) / roll_inertia.max(0.15)).clamp(-7., 7.);
+        self.tilt_rate[0] += (torque.dot(Vec3::Y.cross(heading)) / (half.z * half.z).max(1.)).clamp(-4., 4.);
+        self.collision_yaw += (torque.y * 3. / (half.x * half.x + half.z * half.z)).clamp(-4., 4.);
     }
 
     fn move_hull(&mut self, terrain: &mut dyn Ground, heading: Vec3, events: &mut Vec<Event>) {
@@ -388,8 +438,16 @@ impl Zoomer {
                 }
                 let normal_speed = self.velocity.dot(normal);
                 if normal_speed < 0.0 {
-                    self.velocity -= normal * (normal_speed * 1.4);
-                    events.push(Event::Impact(-normal_speed * 1.4));
+                    let (change, offset) = terrain.exchange_impulse(self.velocity, normal, self.position)
+                        .unwrap_or_else(|| {
+                            let right = Vec3::Y.cross(heading);
+                            let side = |projection: f32| if projection.abs() < 0.05 { 0. } else { projection.signum() };
+                            (-normal_speed * 1.4, -right * half.x * side(normal.dot(right))
+                                - heading * half.z * side(normal.dot(heading)))
+                        });
+                    self.velocity += normal * change;
+                    self.rock(normal * change, offset);
+                    if change > 0. { events.push(Event::Impact(change)); }
                 }
             }
         } else {
@@ -402,7 +460,10 @@ impl Zoomer {
             self.position += vertical * fraction;
             let speed = self.velocity.dot(normal);
             if speed < 0.0 {
-                self.velocity -= normal * speed;
+                let (change, offset) = terrain.exchange_impulse(self.velocity, normal, self.position)
+                    .unwrap_or((-speed, Vec3::ZERO));
+                self.velocity += normal * change;
+                if offset != Vec3::ZERO { self.rock(normal * change, offset); }
             }
         } else {
             self.position += vertical;
@@ -440,6 +501,48 @@ mod tests {
             (step.y < 0.0 && floor >= 0.0 && floor + step.y < 0.0)
                 .then_some((-floor / step.y, Vec3::Y))
         }
+    }
+
+    #[test]
+    fn a_side_impact_moves_the_parked_zoomer_and_rocks_the_hull() {
+        let mut zoomer = Zoomer::new(Model::BikeA, 0.);
+        zoomer.roll_model = Some(bike_roll());
+        zoomer.position.y = zoomer.model.base_hover();
+        zoomer.receive_impact(Vec3::X * 8., Vec3::new(-0.8, 0., 1.));
+        let mut events = Vec::new();
+        for _ in 0..10 {
+            zoomer.step(Controls::default(), &mut Flat, &mut events);
+        }
+        assert!(zoomer.position.x > 0.2);
+        assert!(zoomer.bank.abs() > 0.02 && zoomer.yaw.abs() > 0.02);
+        assert!(events.iter().any(|e| matches!(e, Event::Impact(speed) if *speed == 8.)));
+    }
+
+    #[test]
+    fn a_blocked_high_lane_returns_to_low_after_two_seconds() {
+        struct UnderRoof;
+        impl Ground for UnderRoof {
+            fn below(&mut self, at: Vec3, reach: f32) -> Option<f32> {
+                Flat.below(at, reach)
+            }
+            fn sweep(&mut self, at: Vec3, step: Vec3, half: Vec3) -> Option<(f32, Vec3)> {
+                let clearance = 4.0 - at.y - half.y;
+                if step.y > 0. && clearance >= 0. && step.y > clearance {
+                    return Some((clearance / step.y, Vec3::NEG_Y));
+                }
+                Flat.sweep(at, step, half)
+            }
+        }
+        let mut zoomer = Zoomer::new(Model::CarA, 0.);
+        zoomer.position.y = zoomer.model.base_hover();
+        let mut events = Vec::new();
+        zoomer.step(Controls { lane: true, ..Default::default() }, &mut UnderRoof, &mut events);
+        assert!(zoomer.high);
+        for _ in 0..180 {
+            zoomer.step(Controls::default(), &mut UnderRoof, &mut events);
+        }
+        assert!(!zoomer.high);
+        assert!((zoomer.position.y - zoomer.model.base_hover()).abs() < 0.15);
     }
 
     /// The floor, and a wall facing -x at x = 3 that stands while `wall` is set.

@@ -39,6 +39,13 @@ pub(super) fn impulse(id: u64, impulse: Vec3) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) fn contact(id: u64, impulse: Vec3, offset: Vec3) -> Result<(), String> {
+    if let Some(session) = vehicles()?.active.get_mut(&id) {
+        session.zoomer.receive_impact(impulse, offset);
+    }
+    Ok(())
+}
+
 pub fn configure(root: &std::path::Path) -> Result<(), String> {
     if SPECS.get().is_some() {
         return Ok(());
@@ -208,7 +215,11 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_hoverStep(
         zoomer.impact_pos -= Vec3::new(x, y, z) * metres;
         zoomer.routed = buttons & 8 != 0;
         // vehicle-flag riding: somebody is aboard, and the hit-points the power fluctuation follows.
-        zoomer.riding = buttons & 16 != 0;
+        let riding = buttons & 16 != 0;
+        if zoomer.riding && !riding {
+            zoomer.reset_lane();
+        }
+        zoomer.riding = riding;
         zoomer.hit_points = health;
         let mut control = Controls {
             steer: steer.clamp(-1., 1.),

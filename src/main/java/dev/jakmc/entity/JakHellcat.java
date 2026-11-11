@@ -48,6 +48,7 @@ public final class JakHellcat extends Entity {
     private static final EntityDataAccessor<Float> WIND=SynchedEntityData.defineId(JakHellcat.class,EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<Float> HEALTH=SynchedEntityData.defineId(JakHellcat.class,EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<String> BEAMS=SynchedEntityData.defineId(JakHellcat.class,EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<Integer> HULL_TINT=SynchedEntityData.defineId(JakHellcat.class,EntityDataSerializers.INT);
     public static EntityType<JakHellcat> TYPE,DOG_TYPE;
     public static Item ITEM,DOG_ITEM;
 
@@ -111,6 +112,7 @@ public final class JakHellcat extends Entity {
         builder.define(WIND,0f);
         builder.define(HEALTH,1f);
         builder.define(BEAMS,"");
+        builder.define(HULL_TINT,0xffffff);
     }
     public boolean hellDog(){return getType()==DOG_TYPE;}
     public int pilotId(){return entityData.get(PILOT);}
@@ -121,6 +123,8 @@ public final class JakHellcat extends Entity {
     public float wind(){return entityData.get(WIND);}
     public float hullHealth(){return entityData.get(HEALTH);}
     public String beamData(){return entityData.get(BEAMS);}
+    public int hullTint(){return entityData.get(HULL_TINT);}
+    public void setHullTint(int rgb){entityData.set(HULL_TINT,rgb&0xffffff);}
     public boolean wrecked(){return entityData.get(WRECK);}
     @Override protected AABB makeBoundingBox(Vec3 position){
         return HellcatDeck.bounds(position,attitude(),hellDog());
@@ -430,6 +434,7 @@ public final class JakHellcat extends Entity {
         out.putDouble("FlightX",velocity.x);
         out.putDouble("FlightY",velocity.y);
         out.putDouble("FlightZ",velocity.z);
+        if(hullTint()!=0xffffff)out.putInt("HullTint",hullTint());
         tank.save(out);
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
@@ -440,5 +445,6 @@ public final class JakHellcat extends Entity {
         tank.load(in);
         velocity=new Vec3(in.getDoubleOr("FlightX",0),in.getDoubleOr("FlightY",0),in.getDoubleOr("FlightZ",0));
         entityData.set(WRECK,health<0);
+        setHullTint(in.getIntOr("HullTint",0xffffff));
     }
 }

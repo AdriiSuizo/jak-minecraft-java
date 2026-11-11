@@ -60,7 +60,7 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
     public static class State extends EntityRenderState {
         final Quaternionf attitude=new Quaternionf();
         float flame,lamps;
-        int stage;
+        int stage,tint;
         boolean wrecked;
         /** Seconds since it blew up (jak_entities.rs draw: craft.time - destroyed_at). */
         float wreckSeconds;
@@ -81,13 +81,14 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         var client=Minecraft.getInstance();
         long now=System.nanoTime();
         var orient=orientations.computeIfAbsent(craft,e->new Orientation(new Quaternionf(e.attitude()),now));
+        boolean replay=JakPoses.inReplay();
         if(!orient.to.equals(craft.attitude())){
-            orient.sample(now,state.attitude);
-            orient.from.set(state.attitude);
+            orient.from.set(replay?orient.to:orient.sample(now,state.attitude));
             orient.to.set(craft.attitude());
             orient.since=now;
         }
-        orient.sample(now,state.attitude);
+        if(replay)orient.from.slerp(orient.to,partial,state.attitude);
+        else orient.sample(now,state.attitude);
         var pose=JakPoses.rendered(craft.pilotId());
         if(pose!=null&&client.player!=null&&craft.pilotId()==client.player.getId()
             &&pose.raw().get("hellcat") instanceof com.google.gson.JsonObject channel
@@ -107,6 +108,7 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         state.wreckSeconds=state.wrecked?(craft.tickCount+partial-WRECKED.get(craft))/20f:0;
         state.stage=Math.min(2,(int)((1-Math.clamp(craft.hullHealth(),0,1))*3));
         state.beams=craft.beamData();
+        state.tint=craft.hullTint();
     }
     @Override public void submit(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){
         super.submit(state,stack,collector,camera);
@@ -126,6 +128,7 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         stack.scale(MODEL_SCALE,MODEL_SCALE,MODEL_SCALE);
         // jak_entities.rs draw: darkened as a wreck (colour x 0.25), flickering while it burns.
         if(state.wrecked){float t=state.wreckSeconds;GltfModel.colourNext(t<.6f?t%.1f<.05f?0xffeea4:0xff5b18:0x404040);}
+        else if(state.tint!=0xffffff)GltfModel.colourNext(state.tint);
         model.submit(rest,stack,collector,state.lightCoords,1,OverlayTexture.NO_OVERLAY,1L<<state.stage);
         stack.popPose();
         if(!state.wrecked)effects(state,stack,collector,camera);

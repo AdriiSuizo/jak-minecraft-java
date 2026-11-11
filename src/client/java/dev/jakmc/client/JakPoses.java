@@ -86,7 +86,13 @@ public final class JakPoses {
         if(player!=null&&player.getVehicle() instanceof dev.jakmc.entity.JakVehicle car)car.samplePresentation(System.nanoTime(),true);
     }
     public static Pose rendered(int id){return presentedPose!=null&&Minecraft.getInstance().player!=null&&id==Minecraft.getInstance().player.getId()?presentedPose:get(id);}
-    public static float elapsed(Pose pose){return pose==presentedPose?presentedElapsed:Math.clamp((System.nanoTime()-pose.received())/1e9f-.05f,-.05f,.05f);}
+    public static float elapsed(Pose pose){
+        if(pose==presentedPose)return presentedElapsed;
+        // Replay Mod can advance three exported frames in a few milliseconds, or take much longer.
+        // Use the replay tick fraction shared with the entity position instead of elapsed wall time.
+        if(inReplay())return (Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false)-1)*.05f;
+        return Math.clamp((System.nanoTime()-pose.received())/1e9f-.05f,-.05f,.05f);
+    }
     /** Same render timestamp used for local body, held items and camera. */
     public static double renderedTick(int entity){
         var client=Minecraft.getInstance();var pose=get(entity);
@@ -121,11 +127,12 @@ public final class JakPoses {
         BoardPose board=json.get("boardPose") instanceof JsonObject b?BoardPose.read(b):null;
         Pose previous=POSES.get(p.entityId());
         boolean continuous=previous!=null&&previous.raw().get("session").getAsLong()==nextSession;
-        var boardFrom=board!=null&&continuous?previous.boardAt((now-previous.received())/1e9f):null;
+        float fromElapsed=inReplay()?0:continuous?(now-previous.received())/1e9f:0;
+        var boardFrom=board!=null&&continuous?previous.boardAt(fromElapsed):null;
         var root=RootPose.read(json.getAsJsonObject("rootPose"));
-        var rootFrom=continuous?previous.rootAt((now-previous.received())/1e9f):root;
+        var rootFrom=continuous?previous.rootAt(fromElapsed):root;
         float yaw=json.get("yaw").getAsFloat();
-        float yawFrom=continuous?previous.yawAt((now-previous.received())/1e9f):yaw;
+        float yawFrom=continuous?previous.yawAt(fromElapsed):yaw;
         var pose=new Pose(position,yaw,json.get("clip").getAsString(),json.get("frame").getAsFloat(),
             json.get("board").getAsBoolean(),json.get("dark").getAsBoolean(),json.get("light").getAsBoolean(),json,now,board,boardFrom,root,rootFrom,yawFrom);
         POSES.put(p.entityId(),pose);
@@ -169,5 +176,9 @@ public final class JakPoses {
     }
     public static Pose get(int id){return POSES.get(id);}
     public static Map<Integer,Pose> all(){return java.util.Collections.unmodifiableMap(POSES);}
+    public static boolean inReplay(){
+        var player=Minecraft.getInstance().player;
+        return player!=null&&player.getClass().getName().startsWith("com.replaymod");
+    }
     public static void clear(){POSES.clear();HISTORY.clear();presentedPose=null;presented=null;motionFrame=null;MOTION.clear();fallbackTick=0;dev.jakmc.client.model.JakShotRenderer.clear();}
 }

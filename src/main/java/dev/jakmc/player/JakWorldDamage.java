@@ -85,16 +85,26 @@ public final class JakWorldDamage {
     }
     /**
      * The Super Nova's blast on the world: a big TNT one (Adrii 06/11: "como una nuke"). stand-in: the
-     * original's 300 m reach is damage only and breaks nothing; this power (four TNT's, some 19 blocks of
-     * crater), the TNT-like hurt and throw of the creatures near it, and TNT's drop decay are Adrii's ask.
+     * terrain power controls the crater. The weapon's own radius bounds entity damage and knockback.
      */
     public static final float NUKE_POWER=16;
     public static void explosion(ServerLevel level,Entity source,ServerPlayer owner,Vec3 center,float power){
+        explosion(level,source,owner,center,power,0);
+    }
+    static void explosion(ServerLevel level,Entity source,ServerPlayer owner,Vec3 center,float power,float entityRadius){
         if(!Float.isFinite(power)||power<=0||!Double.isFinite(center.lengthSqr()))return;
-        boolean nuke=power>=NUKE_POWER;
+        boolean nuke=entityRadius>0&&Float.isFinite(entityRadius);
         var calculator=new ExplosionDamageCalculator(){
-            @Override public boolean shouldDamageEntity(Explosion explosion,Entity entity){return nuke&&entity!=owner&&entity!=owner.getVehicle();}
-            @Override public float getKnockbackMultiplier(Entity entity){return nuke&&entity!=owner?1:0;}
+            private boolean inBlast(Entity entity){
+                if(!nuke||entity==owner||entity==owner.getVehicle())return false;
+                var box=entity.getBoundingBox();
+                double x=center.x-Math.clamp(center.x,box.minX,box.maxX);
+                double y=center.y-Math.clamp(center.y,box.minY,box.maxY);
+                double z=center.z-Math.clamp(center.z,box.minZ,box.maxZ);
+                return x*x+y*y+z*z<=entityRadius*entityRadius;
+            }
+            @Override public boolean shouldDamageEntity(Explosion explosion,Entity entity){return inBlast(entity);}
+            @Override public float getKnockbackMultiplier(Entity entity){return inBlast(entity)?1:0;}
             @Override public boolean shouldBlockExplode(Explosion explosion,BlockGetter world,BlockPos pos,BlockState state,float energy){
                 return permitted(owner,level,pos);
             }

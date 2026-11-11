@@ -19,6 +19,10 @@ public final class WheeledCollision {
     private final boolean floats;
     public Vec3 origin;
     private final float[] contact=new float[5];
+    private Entity contactEntity;
+    private final float[] exchanged=new float[4];
+    private final java.util.ArrayList<Impact> impacts=new java.util.ArrayList<>();
+    private record Impact(JakVehicle target,Vec3 speed,Vec3 point){}
     private java.util.List<Entity> neighbours=java.util.List.of();
     private AABB neighbourhood;
     private long neighbourTick=Long.MIN_VALUE;
@@ -62,6 +66,7 @@ public final class WheeledCollision {
         var body=new AABB(center.x-rx,center.y-halfY,center.z-rz,center.x+rx,center.y+halfY,center.z+rz);
         var range=body.expandTowards(delta).inflate(.001);
         contact[0]=1;contact[1]=contact[2]=contact[3]=contact[4]=0;
+        contactEntity=null;
         int minX=(int)Math.floor(range.minX)>>4,maxX=(int)Math.floor(range.maxX)>>4;
         int minZ=(int)Math.floor(range.minZ)>>4,maxZ=(int)Math.floor(range.maxZ)>>4;
         for(int cx=minX;cx<=maxX;cx++)for(int cz=minZ;cz<=maxZ;cz++){
@@ -82,10 +87,45 @@ public final class WheeledCollision {
             if(other instanceof JakVehicle vehicle){
                 var half=vehicle.collisionHalf();
                 double yaw=Math.toRadians(vehicle.getYRot());
-                sweepBody(center,delta,vehicle.position(),half.x,half.y,half.z,-Math.sin(yaw),Math.cos(yaw),true);
-            }else sweepBox(center,delta,other.getBoundingBox(),true);
+                sweepBody(center,delta,vehicle.position(),half.x,half.y,half.z,-Math.sin(yaw),Math.cos(yaw),vehicle);
+            }else{
+                var box=other.getBoundingBox();
+                sweepBody(center,delta,box.getCenter(),box.getXsize()/2,box.getYsize()/2,box.getZsize()/2,0,1,other);
+            }
         }
         return contact;
+    }
+
+    /** Called only when the native hull commits a sweep hit. JNI for the target runs after the source step. */
+    public float[] exchangeImpulse(float vx,float vy,float vz,float nx,float ny,float nz,float x,float y,float z){
+        if(!(owner instanceof JakVehicle source)||!(contactEntity instanceof JakVehicle target))return null;
+        Vec3 normal=new Vec3(nx,ny,nz);
+        Vec3 velocity=target.collisionVelocity();
+        for(var impact:impacts)if(impact.target()==target)velocity=velocity.add(impact.speed());
+        double closing=velocity.scale(METRES_PER_BLOCK).subtract(new Vec3(vx,vy,vz)).dot(normal);
+        double sourceMass=source.collisionMass(),targetMass=target.collisionMass();
+        double change=Math.max(0,closing)*1.24*targetMass/(sourceMass+targetMass);
+        Vec3 center=origin.add(x/METRES_PER_BLOCK,y/METRES_PER_BLOCK,z/METRES_PER_BLOCK);
+        Vec3 ahead=new Vec3(forwardX,0,forwardZ),right=new Vec3(forwardZ,0,-forwardX);
+        Vec3 toward=target.position().subtract(center);
+        Vec3 offset=right.scale(contactCoordinate(toward.dot(right),normal.dot(right),halfX))
+            .add(ahead.scale(contactCoordinate(toward.dot(ahead),normal.dot(ahead),halfZ)))
+            .add(0,contactCoordinate(toward.y,ny,halfY),0);
+        if(change>0)impacts.add(new Impact(target,normal.scale(-change*sourceMass/targetMass/METRES_PER_BLOCK),center.add(offset)));
+        exchanged[0]=(float)change;
+        exchanged[1]=(float)(offset.x*METRES_PER_BLOCK);
+        exchanged[2]=(float)(offset.y*METRES_PER_BLOCK);
+        exchanged[3]=(float)(offset.z*METRES_PER_BLOCK);
+        return exchanged;
+    }
+
+    private static double contactCoordinate(double toward,double normal,double half){
+        return Math.abs(normal)>.15?-Math.copySign(half,normal):Math.clamp(toward,-half,half);
+    }
+
+    public void commitImpacts(){
+        for(var impact:impacts)impact.target().queueCollision(impact.speed(),impact.point());
+        impacts.clear();
     }
 
     private static boolean contains(AABB outer,AABB inner){
@@ -93,17 +133,14 @@ public final class WheeledCollision {
             &&outer.maxX>=inner.maxX&&outer.maxY>=inner.maxY&&outer.maxZ>=inner.maxZ;
     }
     private void sweepBox(Vec3 at,Vec3 motion,AABB shape){
-        sweepBox(at,motion,shape,false);
+        sweepBody(at,motion,shape.getCenter(),shape.getXsize()/2,shape.getYsize()/2,shape.getZsize()/2,0,1,null);
     }
-    private void sweepBox(Vec3 at,Vec3 motion,AABB shape,boolean entity){
-        sweepBody(at,motion,shape.getCenter(),shape.getXsize()/2,shape.getYsize()/2,shape.getZsize()/2,0,1,entity);
-    }
-    private void sweepBody(Vec3 at,Vec3 motion,Vec3 other,double ex,double ey,double ez,double fx,double fz,boolean entity){
+    private void sweepBody(Vec3 at,Vec3 motion,Vec3 other,double ex,double ey,double ez,double fx,double fz,Entity entity){
         axes[5][0]=fz;axes[5][2]=-fx;
         axes[6][0]=fx;axes[6][2]=fz;
         double enter=Double.NEGATIVE_INFINITY,exit=contact[0],nx=0,ny=0,nz=0;
         double penetration=Double.POSITIVE_INFINITY,px=0,py=0,pz=0;
-        for(int i=0;i<(entity?7:5);i++){
+        for(int i=0;i<(entity!=null?7:5);i++){
             var axis=axes[i];
             double x=axis[0],y=axis[1],z=axis[2];
             double distance=(at.x-other.x)*x+(at.y-other.y)*y+(at.z-other.z)*z;
@@ -126,6 +163,7 @@ public final class WheeledCollision {
         if(enter>=contact[0])return;
         contact[0]=(float)Math.max(0,enter-1e-4);
         contact[1]=(float)nx;contact[2]=(float)ny;contact[3]=(float)nz;
-        contact[4]=entity?1:0;
+        contact[4]=entity!=null?1:0;
+        contactEntity=entity;
     }
 }

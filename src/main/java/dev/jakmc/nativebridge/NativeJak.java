@@ -57,6 +57,7 @@ public final class NativeJak {
     public static native long carCreate(Object world,int model,float yaw,float vx,float vy,float vz,float pitch,float roll);
     public static native void carDestroy(long session);
     public static native void wheeledImpulse(long session,boolean hover,float vx,float vy,float vz);
+    public static native void hoverContact(long session,float vx,float vy,float vz,float x,float y,float z);
     public static native String carStep(long session,float steer,float lean,float throttle,float brake,int buttons,
         float originX,float originY,float originZ,int steps);
     public static native long hellcatCreate(Object query,float yaw,float vx,float vy,float vz,float health,int flags,int torpedoes,long key);

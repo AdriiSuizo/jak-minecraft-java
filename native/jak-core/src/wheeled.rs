@@ -50,6 +50,10 @@ pub enum Event {
 pub trait Ground {
     /// Entity hulls block travel but cannot be treated as terrain steps.
     fn can_step_on_contact(&self) -> bool { true }
+    /// Velocity change along the last contact's normal when the other hull can move.
+    fn exchange_impulse(&mut self, _velocity: Vec3, _normal: Vec3, _at: Vec3) -> Option<(f32, Vec3)> {
+        None
+    }
     fn below(&mut self, start: Vec3, reach: f32) -> Option<f32>;
     fn sweep(&mut self, start: Vec3, step: Vec3, half: Vec3) -> Option<(f32, Vec3)>;
     /// Hosts with native block shapes can sweep the complete oriented chassis.
@@ -361,9 +365,11 @@ impl Car {
         self.position += motion * fraction.max(0.);
         let blocked = self.velocity.dot(normal);
         if blocked < 0. {
-            self.velocity -= normal * blocked;
-            if -blocked > 2. {
-                events.push(Event::Impact(-blocked));
+            let change = ground.exchange_impulse(self.velocity, normal, self.position)
+                .map_or(-blocked, |(change, _)| change);
+            self.velocity += normal * change;
+            if change > 2. {
+                events.push(Event::Impact(change));
             }
         }
         let mut remaining = motion * (1. - fraction.clamp(0., 1.));
@@ -376,7 +382,12 @@ impl Car {
                 self.position += remaining * time.clamp(0., 1.);
                 remaining *= 1. - time.clamp(0., 1.);
                 remaining -= n * remaining.dot(n).min(0.);
-                self.velocity -= n * self.velocity.dot(n).min(0.);
+                let blocked = self.velocity.dot(n);
+                if blocked < 0. {
+                    let change = ground.exchange_impulse(self.velocity, n, self.position)
+                        .map_or(-blocked, |(change, _)| change);
+                    self.velocity += n * change;
+                }
             } else {
                 self.position += remaining;
                 break;
