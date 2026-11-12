@@ -107,6 +107,17 @@ class InstallerChecks(unittest.TestCase):
         manifest['files'][installer.SHOWCASE_ARCHIVE]='new world'
         self.assertEqual(installer.conversion_stamp(manifest),stamp)
 
+    def test_legacy_showcase_is_used_without_adding_a_second_map(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);stage=root/'staging';stage.mkdir()
+            world=root/'saves/Jak Showcase/level.dat'
+            world.parent.mkdir(parents=True);world.write_bytes(b'player world')
+            tx=installer.InstallationFiles(stage,root/'backups')
+            self.assertEqual(tx.add_showcase(root,root/'unused.zip'),'Jak Showcase')
+            tx.commit('es')
+            self.assertEqual(world.read_bytes(),b'player world')
+            self.assertEqual([p.name for p in (root/'saves').iterdir()],['Jak Showcase'])
+
     def test_showcase_is_rolled_back_when_launcher_commit_fails(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);stage=root/'staging';stage.mkdir()

@@ -3,6 +3,7 @@
 Rust: assets::jak_model::jak1_texture (same roots), render_anim::minecraft_world::celestial_image
 (alpha x2)."""
 import os, pathlib
+import numpy as np
 from PIL import Image
 
 ROOT=pathlib.Path(__file__).resolve().parent.parent
@@ -32,12 +33,37 @@ def jak3_texture(folder,name):
             return img
     raise FileNotFoundError(f'{folder}/{name}.png: no Jak 3 texture export found')
 
+def surface_frames(reflection,size=128,frames=32):
+    """Bake an opaque, repeating liquid from the owner's environment reflection."""
+    source=np.asarray(reflection.convert('RGB'),dtype=np.float32)/255
+    height,width,_=source.shape
+    z,x=np.mgrid[:size,:size].astype(np.float32)*np.float32(2*np.pi/size)
+    images=[]
+    for frame in range(frames):
+        phase=np.float32(frame*2*np.pi/frames)
+        # Periodic coordinates keep the sheet joined across block and animation boundaries.
+        u=.5+.21*np.sin(x+phase+.65*np.sin(2*z-phase))
+        v=.5+.21*np.cos(z-phase+.65*np.cos(2*x+phase))
+        sx=u*(width-1);sz=v*(height-1)
+        ix=sx.astype(np.int32);iz=sz.astype(np.int32)
+        fx=(sx-ix)[...,None];fz=(sz-iz)[...,None]
+        top=source[iz,ix]*(1-fx)+source[iz,ix+1]*fx
+        bottom=source[iz+1,ix]*(1-fx)+source[iz+1,ix+1]*fx
+        colour=top*(1-fz)+bottom*fz
+        colour=np.clip(colour*.85+np.array([.022,.006,.045]),0,1)
+        rgba=np.empty((size,size,4),dtype=np.uint8)
+        rgba[:,:,:3]=np.rint(colour*255).astype(np.uint8)
+        rgba[:,:,3]=255
+        images.append(rgba)
+    return Image.fromarray(np.concatenate(images,axis=0))
+
 def main():
     water=jak1_texture('finalboss-vis-pris','cv-darkecowater')
     shine=jak1_texture('finalboss-vis-pris','environment-darkeco')
     # As they are: the shader lays the pool on from the two (jakmc:dark_eco.glsl).
     DEST.mkdir(parents=True,exist_ok=True)
     water.save(DEST/'dark_eco_still.png');shine.save(DEST/'dark_eco_flow.png')
+    surface_frames(shine).save(DEST/'dark_eco_surface.png')
     # Adrii 06/11: the light eco item drew as its white additive pill in the inventory, lost on the slot. Jak 3's
     # own inventory icon for it (progress-minimap2 inv-items-lighteco-01) instead, the PS2 alpha doubled.
     icon=jak3_texture('progress-minimap2','inv-items-lighteco-01')

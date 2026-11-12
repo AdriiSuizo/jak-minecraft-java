@@ -221,6 +221,7 @@ def prepare_owned(active, workspace, notify, lang):
 REQUIRED_RESOURCES = (
     'assets/jakmc/sounds.json','assets/jakmc/hellcat/deck.json','assets/jakmc/helldog/deck.json',
     'assets/jakmc/flut/eye_open.png','assets/jakmc/textures/block/dark_eco_still.png',
+    'assets/jakmc/textures/block/dark_eco_surface.png',
     'data/jakmc/catalog/haven.jbp','data/jakmc/catalog/spargus.jbp','data/jakmc/catalog/palace.jbp',
     'data/jakmc/catalog/objects/104.json',
 )
@@ -309,8 +310,10 @@ class InstallationFiles:
         self.changes[target] = None
 
     def add_showcase(self, instance, archive):
+        for name in ('Jak Showcase',SHOWCASE):
+            if (instance/'saves'/name/'level.dat').is_file():return name
         target=instance/'saves'/SHOWCASE
-        if os.path.lexists(target):return
+        if os.path.lexists(target):return SHOWCASE
         staged=self.staging/'showcase'
         with zipfile.ZipFile(archive) as world:
             world.getinfo('level.dat')
@@ -321,6 +324,7 @@ class InstallationFiles:
                 world.extract(member,staged)
         self.world=target
         self.changes[target]=staged
+        return SHOWCASE
 
     def commit(self, lang):
         applied = []
@@ -599,8 +603,7 @@ def _install(opengoal, minecraft, lang='es', notify=print, assets_only=False, st
         if not assets_only:
             stage('showcase')
             notify(words('Preparando el mapa de pruebas…','Preparing the test world…',lang))
-            transaction.add_showcase(instance,PAYLOAD/SHOWCASE_ARCHIVE)
-            receipt['showcase']=SHOWCASE
+            receipt['showcase']=transaction.add_showcase(instance,PAYLOAD/SHOWCASE_ARCHIVE)
         stage('commit')
         notify(words('Aplicando los cambios al perfil JakMod…','Applying changes to the JakMod profile…',lang))
         transaction.json(workspace/'installation-receipt.json',receipt)

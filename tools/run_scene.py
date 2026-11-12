@@ -1,6 +1,6 @@
 """Run one bounded native scene and exit. Never leaves an idle test window open."""
 from pathlib import Path
-import argparse,datetime,json,os,shutil,subprocess,time
+import argparse,datetime,json,os,shutil,subprocess,time,zipfile
 from bridge import call,ROOT
 
 def owned_game_pid(parent_pid):
@@ -59,11 +59,8 @@ def run():
             cwd=ROOT,env=env,stdout=build_log,stderr=subprocess.STDOUT,check=True,timeout=600,
             creationflags=subprocess.CREATE_NO_WINDOW)
     if project_client_running():raise RuntimeError('A manual project client opened during compilation; leave it untouched')
-    # Each test opens its own named world and archives it with that run's evidence.
+    # Tests use a temporary world. Only the showcase builder retains its new map.
     template=ROOT/'.local/test-world-template'
-    for metadata in ('level.dat','data/minecraft/world_gen_settings.dat'):
-        if not (template/metadata).exists() and (dev_save/metadata).exists():
-            (template/metadata).parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(dev_save/metadata,template/metadata)
     saves=ROOT/'run/saves';saves.mkdir(parents=True,exist_ok=True)
     world='Jak test '+stamp
     fresh=saves/world
@@ -75,7 +72,12 @@ def run():
         for metadata in ('level.dat','data/minecraft/world_gen_settings.dat'):
             path=fresh/metadata
             path.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copyfile(template/metadata,path)
+            source=template/metadata if (template/metadata).is_file() else dev_save/metadata
+            if source.is_file():
+                shutil.copyfile(source,path)
+            else:
+                with zipfile.ZipFile(ROOT/'dist/JakShowcase-world.zip') as archive:
+                    path.write_bytes(archive.read('Jak Showcase/'+metadata))
     (evidence/'lab-world.txt').write_text(str(fresh),encoding='utf-8')
     command.append('-PjakmcDevWorld='+world)
     options=ROOT/'run/options.txt'
@@ -241,13 +243,14 @@ def run():
         log.close()
         if process.poll() is not None and not project_client_running():
             if previous_options is not None:options.write_bytes(previous_options)
-            # Keep the receipt inspectable outside Minecraft's world selector.
-            # Both resolved paths must stay in the exact directories we own.
             destination=evidence/'world'
             if fresh.exists() and fresh.resolve().parent==(ROOT/'run/saves').resolve() and destination.resolve().parent==evidence.resolve():
                 try:
-                    fresh.rename(destination)
-                    (evidence/'lab-world.txt').write_text(str(destination),encoding='utf-8')
+                    if scene=='showcase':
+                        fresh.rename(destination)
+                        (evidence/'lab-world.txt').write_text(str(destination),encoding='utf-8')
+                    else:
+                        shutil.rmtree(fresh)
                 except OSError as failure:
                     (evidence/'world-move-error.txt').write_text(str(failure),encoding='utf-8')
 

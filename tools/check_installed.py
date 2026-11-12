@@ -56,7 +56,18 @@ def main():
     classpath.append(str(mc/'versions/26.3/26.3.jar'))
     name='Installer-check-'+uuid.uuid4().hex[:8]
     world=instance/'saves'/name
-    shutil.copytree(args.world_template,world,ignore=shutil.ignore_patterns('session.lock'))
+    if args.world_template.is_dir():
+        shutil.copytree(args.world_template,world,ignore=shutil.ignore_patterns('session.lock'))
+    else:
+        if args.world_template!=ROOT/'.local/test-world-template':raise FileNotFoundError(args.world_template)
+        with zipfile.ZipFile(ROOT/'dist/JakShowcase-world.zip') as archive:
+            for entry in archive.infolist():
+                relative=Path(entry.filename).relative_to('Jak Showcase')
+                if entry.is_dir():continue
+                if '..' in relative.parts or relative.is_absolute():raise ValueError(entry.filename)
+                path=world/relative
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_bytes(archive.read(entry))
     # Profile belongs to the lab; prevent alt-tab pauses from blocking a scene.
     (instance/'options.txt').write_text('lang:es_es\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:8\nsimulationDistance:5\n')
     java=Path(os.environ['JAVA_HOME'])/'bin/java.exe'
@@ -123,8 +134,8 @@ def main():
                 except Exception:process.terminate();process.wait(timeout=10)
             for image in (instance/'screenshots').glob('scale-*.png'):
                 if image.stat().st_mtime_ns>=capture_after:shutil.copyfile(image,evidence/image.name)
-            # Retain the private save with its evidence, outside the world list.
-            if world.exists():shutil.move(str(world),str(evidence/name))
+            if world.exists() and world.resolve().parent==(instance/'saves').resolve():
+                shutil.rmtree(world)
             permit.unlink(missing_ok=True)
 
 if __name__=='__main__':main()

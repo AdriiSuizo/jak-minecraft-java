@@ -21,6 +21,7 @@ de Mojang, Microsoft, Sony, Naughty Dog ni OpenGOAL.
    **Instalaciones** y activa **Modificadas**.
 8. En **Un jugador**, abre **Jak Showcase (JakMod)** para probar las mecánicas.
    El instalador añade una copia del mapa y conserva tu progreso si ya la tienes.
+   Si ya existe **Jak Showcase**, utiliza ese mapa.
 
 Internet se utiliza para descargar Fabric, Fabric API y los mods de rendimiento
 incluidos en el perfil (Sodium, Sodium Extra, Lithium, FerriteCore y EntityCulling).

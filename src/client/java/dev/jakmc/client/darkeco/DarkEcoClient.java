@@ -16,13 +16,14 @@ import net.minecraft.resources.Identifier;
 public final class DarkEcoClient {
     private DarkEcoClient(){}
     private static final Identifier WATER=JakData.id("block/dark_eco_still"),SHINE=JakData.id("block/dark_eco_flow");
+    private static final Identifier SURFACE=JakData.id("block/dark_eco_surface");
     public static void initialize(){
         boolean vanilla=dev.jakmc.client.TerrainCompatibility.vanillaTerrain();
         // The vanilla shader uses the black still texture as an alpha mask and
-        // the magenta tint as a marker. Use the visible reflection as a sprite
-        // where that shader is unavailable.
+        // the magenta tint as a marker. Sodium draws the baked opaque liquid sheet.
         FluidRenderingRegistry.register(DarkEco.SOURCE,DarkEco.FLOWING,new FluidModel.Unbaked(
-            new Material(vanilla?WATER:SHINE),new Material(SHINE),null,BlockTintSources.constant(vanilla?0xff00ff:0xd6c4f2)));
+            new Material(vanilla?WATER:SURFACE),new Material(vanilla?SHINE:SURFACE),null,
+            BlockTintSources.constant(vanilla?0xff00ff:0xffffff)));
     }
     private static void sprite(ByteBuffer buffer,int at,TextureAtlasSprite sprite){
         buffer.putFloat(at,sprite.getX()).putFloat(at+4,sprite.getY());

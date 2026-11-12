@@ -21,6 +21,7 @@ Naughty Dog or OpenGOAL product.
    **Installations** and enable **Modded**.
 8. Open **Jak Showcase (JakMod)** under **Singleplayer** to try the mechanics.
    The installer adds a copy of the test world and preserves your progress on updates.
+   An existing **Jak Showcase** world is used when available.
 
 Internet is used to download Fabric, Fabric API and the performance mods
 included in the profile (Sodium, Sodium Extra, Lithium, FerriteCore and
