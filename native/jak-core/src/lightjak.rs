@@ -284,6 +284,9 @@ pub struct LightJak {
     pub swoop: bool,
     /// Light eco, out of [`ECO_MAX`].
     pub eco: f32,
+    /// Hosts with inventory items spend at least one whole unit at a time.
+    pub eco_unit: f32,
+    shield_seconds: f32,
     /// When he last changed into Light Jak.
     pub start_time: i64,
     /// When the change back began, out of the moves that cannot stop for
@@ -359,6 +362,8 @@ impl Default for LightJak {
             on: false,
             swoop: false,
             eco: 0.0,
+            eco_unit: 0.0,
+            shield_seconds: 0.0,
             start_time: LONG_AGO,
             latch_out_time: 0,
             get_on_latch: 0,
@@ -382,6 +387,38 @@ impl Default for LightJak {
 }
 
 impl LightJak {
+    fn price(&self, cost: f32) -> f32 {
+        if self.eco_unit > 0.0 {
+            (cost / self.eco_unit).ceil() * self.eco_unit
+        } else {
+            cost
+        }
+    }
+
+    fn spend(&mut self, cost: f32) {
+        self.eco = (self.eco - self.price(cost)).max(0.0);
+    }
+
+    fn maintain_shield(&mut self, dt: f32) -> bool {
+        let rate = 3.0 * ECO_COST;
+        if self.eco_unit == 0.0 {
+            if self.eco < ECO_COST {
+                return false;
+            }
+            self.spend(rate * dt);
+        } else {
+            if self.shield_seconds <= 0.0 {
+                if self.eco < self.eco_unit {
+                    return false;
+                }
+                self.spend(self.eco_unit);
+                self.shield_seconds += self.eco_unit / rate;
+            }
+            self.shield_seconds -= dt;
+        }
+        true
+    }
+
     /// What the debug readout calls his state.
     pub fn describe(&self) -> String {
         let wings = self.wings.map_or("none".to_owned(), |w| {
@@ -418,7 +455,7 @@ impl Jak {
             return false;
         }
         self.lightjak.shield_hit_time = self.time;
-        self.lightjak.eco = (self.lightjak.eco - 2.0 * ECO_COST).max(0.0);
+        self.lightjak.spend(2.0 * ECO_COST);
         if let Some(particles) = self.particles.as_mut() {
             particles.spawn(
                 "group-lightjak-shield-hit",
@@ -495,6 +532,7 @@ impl Jak {
             l.get_off_lock = false;
             l.on = false;
             l.shield = false;
+            l.shield_seconds = 0.0;
             if l.eco < ECO_COST {
                 l.eco = (l.eco - ECO_COST).max(0.0);
             }
@@ -533,10 +571,7 @@ impl Jak {
             && self.time >= light.freeze_until
             && light.latch_out_time == 0
             && self.pad.hold(button::CIRCLE)
-            && light.eco >= ECO_COST;
-        if light.shield {
-            light.eco = (light.eco - 3.0 * ECO_COST * dt).max(0.0);
-        }
+            && light.maintain_shield(dt);
         // The shield's post: up for 0.1 s, on his way into a standing, a jump, a fall
         // or a landing, and on a surface since its last kick: `target-lightjak-shield`.
         if !light.shield {
@@ -573,7 +608,11 @@ impl Jak {
             // Flying is free (Adrii 22/10): no eco never takes the wings off. The
             // flight is its own stage bit (`lightjak-stage swoop`), kept whatever came after it.
             let flying = self.lightjak.swoop;
-            if self.lightjak.eco < ECO_COST && !changing && !flying && self.attack.danger.is_none() {
+            if self.lightjak.eco < ECO_COST
+                && !self.lightjak.shield && !self.lightjak.freeze_wanted
+                && !matches!(self.state, State::LightJakFreeze)
+                && !changing && !flying && self.attack.danger.is_none()
+            {
                 if matches!(self.state, State::Stance | State::HitGround { .. }) {
                     self.pending = Some(State::LightJakGetOff);
                 } else {
@@ -901,7 +940,7 @@ impl Jak {
                 0 => {
                     let l = &mut self.lightjak;
                     let missing = (1.0 - l.health_fraction) * HEALTH_MAX;
-                    l.regen_left = missing.min((l.eco / ECO_A_POINT).ceil()) as i32;
+                    l.regen_left = missing.min((l.eco / l.price(ECO_A_POINT)).ceil()) as i32;
                     l.regen_loops = 0;
                     l.regen_last = self.time;
                     l.healing = false;
@@ -948,7 +987,7 @@ impl Jak {
                             let point = (1.0 / HEALTH_MAX).min(1.0 - l.health_fraction);
                             l.heal_fraction += point;
                             l.health_fraction += point;
-                            l.eco = (l.eco - ECO_A_POINT).max(0.0);
+                            l.spend(ECO_A_POINT);
                             l.regen_left -= 1;
                         }
                         return None;
@@ -1072,14 +1111,14 @@ impl Jak {
         }
         if !latched && self.pad.pressed(button::SQUARE) {
             self.lightjak.get_off_lock = true;
-            if self.lightjak.eco >= 2.0 * ECO_COST && self.time >= self.lightjak.freeze_until && !self.lightjak.freeze_wanted {
+            if self.lightjak.eco >= self.lightjak.price(2.0 * ECO_COST) && self.time >= self.lightjak.freeze_until && !self.lightjak.freeze_wanted {
                 self.lightjak.power = LightPower::Freeze;
                 self.lightjak.get_on_latch = 32;
             }
         }
         if !latched && self.pad.pressed(button::CIRCLE) {
             self.lightjak.get_off_lock = true;
-            if self.lightjak.eco >= 3.0 * ECO_COST {
+            if self.lightjak.eco >= self.lightjak.price(3.0 * ECO_COST) {
                 self.lightjak.power = LightPower::Shield;
                 self.lightjak.get_on_latch = 64;
             }
@@ -1091,7 +1130,12 @@ impl Jak {
             let swoop = self.lightjak.power == LightPower::Flight;
             self.lightjak.power_started = self.time;
             if self.lightjak.power == LightPower::Freeze {
-                self.lightjak.eco -= (50.0 * ECO_COST).min(self.lightjak.eco - ECO_COST);
+                let l = &mut self.lightjak;
+                if l.eco_unit > 0.0 {
+                    l.spend(50.0 * ECO_COST);
+                } else {
+                    l.eco -= (50.0 * ECO_COST).min(l.eco - ECO_COST);
+                }
                 // Latch 32: Light Jak already, straight to the clap; else the get-on
                 // first (`lightjak-stage freeze`), the clap after it.
                 self.lightjak.freeze_wanted = true;

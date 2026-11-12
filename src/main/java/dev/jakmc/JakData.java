@@ -12,6 +12,7 @@ public final class JakData {
     public static final AttachmentType<ItemStack> BOARD=AttachmentRegistry.create(id("jet_board"), b->b.initializer(()->ItemStack.EMPTY).persistent(ItemStack.OPTIONAL_CODEC).copyOnDeath().syncWith(ItemStack.OPTIONAL_STREAM_CODEC,AttachmentSyncPredicate.all()));
     public static final AttachmentType<Float> DARK_ECO=eco("dark_eco");
     public static final AttachmentType<Float> LIGHT_ECO=eco("light_eco");
+    public static final AttachmentType<Integer> LEGACY_LIGHT_REMAINDER=AttachmentRegistry.create(id("legacy_light_remainder"),b->b.initializer(()->0).persistent(Codec.INT));
     public static final AttachmentType<Boolean> INVENTORY_RESOURCES=AttachmentRegistry.create(id("inventory_resources"),b->b.initializer(()->false).persistent(Codec.BOOL).copyOnDeath());
     public static final AttachmentType<Boolean> CITY_DECORATED=AttachmentRegistry.create(id("city_decorated"),b->b.persistent(Codec.BOOL));
     public static final java.util.List<AttachmentType<Float>> AMMO=java.util.List.of(ammo("red"),ammo("yellow"),ammo("blue"),ammo("dark"));

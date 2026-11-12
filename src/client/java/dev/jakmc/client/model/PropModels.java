@@ -115,7 +115,7 @@ public final class PropModels {
     }
 
     /** Barrels: their texture alpha is the PS2's, not transparency (an opaque can in the games). */
-    private static boolean opaque(Identifier texture){return texture.getPath().contains("barrel");}
+    private static boolean opaque(Identifier texture){return texture.getPath().contains("barrel")||texture.getPath().endsWith("/city-slum-burning-can");}
 
     private static int color(JsonArray rgba,int index){return Math.min(255,2*rgba.get(index).getAsInt());}
 
@@ -142,8 +142,11 @@ public final class PropModels {
                     var point=triangle.points()[Math.min(i,2)];
                     emitter.pos(i,position(point,turns)).uv(i,point.u(),point.v()).color(i,point.color());
                 }
+                boolean opaque=opaque(triangle.texture());
+                // A two-sided source triangle must have the same diffuse shade on both windings.
+                if(opaque)emitter.shadeDirectionOverride(Direction.UP);
                 emitter.materialBake(material,MutableQuadView.BAKE_NORMALIZED)
-                    .chunkLayer(triangle.blended()?ChunkSectionLayer.TRANSLUCENT:opaque(triangle.texture())?ChunkSectionLayer.SOLID
+                    .chunkLayer(triangle.blended()?ChunkSectionLayer.TRANSLUCENT:opaque?ChunkSectionLayer.SOLID
                         :ChunkSectionLayer.byTransparency(material.sprite().transparency()))
                     .ambientOcclusion(net.fabricmc.fabric.api.util.TriState.FALSE).emit();
             }

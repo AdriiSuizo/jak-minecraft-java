@@ -1,4 +1,4 @@
-"""Dark eco liquid textures from the owner's Jak 1 export and the light eco icon from Jak 3 (private, into src/generated).
+"""Dark eco liquid textures from the owner's Jak 1 export (private, into src/generated).
 
 Rust: assets::jak_model::jak1_texture (same roots), render_anim::minecraft_world::celestial_image
 (alpha x2)."""
@@ -22,40 +22,46 @@ def jak1_texture(folder,name):
             return img
     raise FileNotFoundError(f'{folder}/{name}.png: no Jak 1 texture export found')
 
-def jak3_texture(folder,name):
-    roots=[os.environ.get('IW4L_JAK3_TEXTURES')]
-    if os.environ.get('USERPROFILE'):roots.append(os.path.join(os.environ['USERPROFILE'],r'Documents\Jak OpenGOAL\active\jak3\data\decompiler_out\jak3\textures'))
-    for root in filter(None,roots):
-        path=pathlib.Path(root)/folder/(name+'.png')
-        if path.is_file():
-            img=Image.open(path).convert('RGBA')
-            img.putdata([(r,g,b,min(255,a*2)) for r,g,b,a in img.getdata()])
-            return img
-    raise FileNotFoundError(f'{folder}/{name}.png: no Jak 3 texture export found')
+def sample(image,u,v):
+    height,width,_=image.shape
+    sx=(u%1)*width-.5;sz=(v%1)*height-.5
+    ix=np.floor(sx).astype(np.int32);iz=np.floor(sz).astype(np.int32)
+    fx=(sx-ix)[...,None];fz=(sz-iz)[...,None]
+    top=image[iz%height,ix%width]*(1-fx)+image[iz%height,(ix+1)%width]*fx
+    bottom=image[(iz+1)%height,ix%width]*(1-fx)+image[(iz+1)%height,(ix+1)%width]*fx
+    return top*(1-fz)+bottom*fz
 
-def surface_frames(reflection,size=128,frames=32):
-    """Bake an opaque, repeating liquid from the owner's environment reflection."""
+
+def surface_frames(water,reflection,size=128,frames=32):
+    """Bake the silo pool's waves and reflected sky on an eight-block periodic sheet."""
+    mask=np.asarray(water,dtype=np.float32)/255
     source=np.asarray(reflection.convert('RGB'),dtype=np.float32)/255
-    height,width,_=source.shape
-    z,x=np.mgrid[:size,:size].astype(np.float32)*np.float32(2*np.pi/size)
+    z,x=(np.mgrid[:size,:size].astype(np.float32)+.5)*np.float32(8/size)
     images=[]
     for frame in range(frames):
-        phase=np.float32(frame*2*np.pi/frames)
-        # Periodic coordinates keep the sheet joined across block and animation boundaries.
-        u=.5+.21*np.sin(x+phase+.65*np.sin(2*z-phase))
-        v=.5+.21*np.cos(z-phase+.65*np.cos(2*x+phase))
-        sx=u*(width-1);sz=v*(height-1)
-        ix=sx.astype(np.int32);iz=sz.astype(np.int32)
-        fx=(sx-ix)[...,None];fz=(sz-iz)[...,None]
-        top=source[iz,ix]*(1-fx)+source[iz,ix+1]*fx
-        bottom=source[iz+1,ix]*(1-fx)+source[iz+1,ix+1]*fx
-        colour=top*(1-fz)+bottom*fz
-        colour=np.clip(colour*.85+np.array([.022,.006,.045]),0,1)
+        phase=frame*2*np.pi/frames
+
+        def wave(x,z):
+            return (.5208/128)*(25*np.cos(x*np.pi/2+phase)
+                +15*np.cos((z-x)*np.pi/2-2*phase)+4*np.cos((5*x+3*z)*np.pi/2-3*phase))
+
+        dx=wave(x+.5,z)-wave(x-.5,z)
+        dz=wave(x,z+.5)-wave(x,z-.5)
+        normal=np.stack((-6*dx,np.ones_like(x),-6*dz),axis=-1)
+        normal/=np.linalg.norm(normal,axis=-1,keepdims=True)
+        eye=np.array([.18,-.65,.738])
+        ray=eye-2*(normal@eye)[...,None]*normal
+        denom=2*np.sqrt(np.maximum(2+2*ray[:,:,1],.001))
+        shine=sample(source,.5+ray[:,:,0]/denom,.5+ray[:,:,2]/denom)
+        opacity=sample(mask,x/4+.08*np.sin(phase),z/4+.05*np.cos(phase))[:,:,3,None]
+        colour=2.4*shine**2*opacity
+        colour=np.clip(colour+np.array([.025,.012,.048]),0,1)
         rgba=np.empty((size,size,4),dtype=np.uint8)
         rgba[:,:,:3]=np.rint(colour*255).astype(np.uint8)
         rgba[:,:,3]=255
         images.append(rgba)
     return Image.fromarray(np.concatenate(images,axis=0))
+
 
 def main():
     water=jak1_texture('finalboss-vis-pris','cv-darkecowater')
@@ -63,11 +69,7 @@ def main():
     # As they are: the shader lays the pool on from the two (jakmc:dark_eco.glsl).
     DEST.mkdir(parents=True,exist_ok=True)
     water.save(DEST/'dark_eco_still.png');shine.save(DEST/'dark_eco_flow.png')
-    surface_frames(shine).save(DEST/'dark_eco_surface.png')
-    # Adrii 06/11: the light eco item drew as its white additive pill in the inventory, lost on the slot. Jak 3's
-    # own inventory icon for it (progress-minimap2 inv-items-lighteco-01) instead, the PS2 alpha doubled.
-    icon=jak3_texture('progress-minimap2','inv-items-lighteco-01')
-    items=DEST.parent/'item';items.mkdir(parents=True,exist_ok=True);icon.save(items/'light_eco_icon.png')
+    surface_frames(water,shine).save(DEST/'dark_eco_surface.png')
     print('dark eco textures:',DEST)
 
 if __name__=='__main__':main()

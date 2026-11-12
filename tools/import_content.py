@@ -336,6 +336,14 @@ def copy_models():
         (destination/'models/block'/name).unlink(missing_ok=True)
     print(f"Retained {len(deferred)} oversized models in the source export for grid conversion")
 
+def opaque_barrels(destination):
+    from PIL import Image
+    for path in (destination/'assets/jak/textures/block').glob('*.png'):
+        if 'barrel' in path.stem or path.stem=='city-slum-burning-can':
+            with Image.open(path) as image:
+                opaque=image.convert('RGB')
+            opaque.save(path)
+
 def import_blueprints(names):
     catalog=DEST/'data/jakmc/catalog'
     catalog.mkdir(parents=True,exist_ok=True)
@@ -490,6 +498,7 @@ def main():
     if not (SOURCE/'objects/104.json').is_file():raise RuntimeError('Source export is incomplete; run tools/content-exporter first')
     DEST.mkdir(parents=True,exist_ok=True)
     copy_models()
+    opaque_barrels(DEST)
     fit_architecture()
     catalog=DEST/'data/jakmc/catalog';catalog.mkdir(parents=True,exist_ok=True)
     definitions=json.loads((SOURCE/'blocks.json').read_text(encoding='utf-8'))

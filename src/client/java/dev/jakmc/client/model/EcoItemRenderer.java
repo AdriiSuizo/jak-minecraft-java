@@ -34,7 +34,7 @@ public final class EcoItemRenderer implements SpecialModelRenderer<Void> {
  @Override public void submit(Void argument,PoseStack stack,SubmitNodeCollector collector,int lightCoords,int overlay,boolean foil,int outline){
   int index=(light?1:0)+(gui?2:0);State state=STATES[index];if(state==null)STATES[index]=state=new State(light);
   long now=System.nanoTime();float dt=state.last==0?1/30f:Math.clamp((now-state.last)/1e9f,0,.1f);state.last=now;
-  stack.pushPose();stack.translate(.5f,.4f,.5f);float scale=gui?(light?2f:1.25f):light?.25f:.5f;stack.scale(scale,scale,scale);
+  stack.pushPose();stack.translate(.5f,.4f,.5f);float scale=gui?(light?2f:1.25f):light?.4f:.5f;stack.scale(scale,scale,scale);
   var c=net.minecraft.client.Minecraft.getInstance();var inverse=new org.joml.Matrix4f(stack.last().pose()).invert();
   Vector3f eye,forward,up;
   if(gui){eye=new Vector3f(0,0,4);forward=new Vector3f(0,0,-1);up=new Vector3f(0,1,0);}

@@ -21,9 +21,10 @@ public final class DarkEcoClient {
         boolean vanilla=dev.jakmc.client.TerrainCompatibility.vanillaTerrain();
         // The vanilla shader uses the black still texture as an alpha mask and
         // the magenta tint as a marker. Sodium draws the baked opaque liquid sheet.
-        FluidRenderingRegistry.register(DarkEco.SOURCE,DarkEco.FLOWING,new FluidModel.Unbaked(
-            new Material(vanilla?WATER:SURFACE),new Material(vanilla?SHINE:SURFACE),null,
-            BlockTintSources.constant(vanilla?0xff00ff:0xffffff)));
+        var model=new FluidModel.Unbaked(new Material(vanilla?WATER:SURFACE),
+            new Material(vanilla?SHINE:SURFACE),null,BlockTintSources.constant(vanilla?0xff00ff:0xffffff));
+        if(vanilla)FluidRenderingRegistry.register(DarkEco.SOURCE,DarkEco.FLOWING,model);
+        else FluidRenderingRegistry.register(DarkEco.SOURCE,DarkEco.FLOWING,model,new DarkEcoSheet(SURFACE));
     }
     private static void sprite(ByteBuffer buffer,int at,TextureAtlasSprite sprite){
         buffer.putFloat(at,sprite.getX()).putFloat(at+4,sprite.getY());

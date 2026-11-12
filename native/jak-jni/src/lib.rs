@@ -267,6 +267,8 @@ pub extern "system" fn Java_dev_jakmc_nativebridge_NativeJak_create(mut env:JNIE
  protect(&mut env,||{
   if !yaw.is_finite(){return Err("nonfinite yaw".into());}
   let mut jak=Jak::new(Vec3::ZERO,jak_core::math::degrees(-yaw));
+  // One stackable light eco item fills two points of the meter.
+  jak.lightjak.eco_unit=2.0;
   if let Some(anims)=ANIMS.get(){jak.anims=anims.clone();}
   if let Some(library)=effects::LIBRARY.get(){jak.set_particles(library.clone());jak.particles.as_mut().unwrap().start_journal();}
   jak.control.set_body_dimensions(0.3*BLOCK,1.8*BLOCK);

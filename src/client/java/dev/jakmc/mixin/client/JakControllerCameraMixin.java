@@ -1,6 +1,8 @@
 package dev.jakmc.mixin.client;
 
-import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import dev.jakmc.client.camera.JakCameraProbe;
 import dev.jakmc.client.JakInput;
 import dev.jakmc.client.JakPoses;
 import net.minecraft.client.*;
@@ -21,7 +23,10 @@ abstract class JakControllerCameraMixin {
     @Shadow public abstract Vec3 position();
     @Unique private long jakmc$lastFrame;
     @Unique private float jakmc$dt;
-    @Unique private float jakmc$distance=Float.NaN;
+    @Unique private final JakCameraProbe.Rig jakmc$reach=new JakCameraProbe.Rig();
+    @Unique private Vec3 jakmc$lastPivot,jakmc$lastFeet;
+    @Unique private double jakmc$lift;
+    @Unique private net.minecraft.world.level.Level jakmc$lastLevel;
     @Unique private float jakmc$aim;
     @Unique private float jakmc$mountHeight;
 
@@ -39,11 +44,14 @@ abstract class JakControllerCameraMixin {
         JakInput.frame(client);
         JakPoses.beginFrame(client);
         var pose=entity==null?null:JakPoses.rendered(entity.getId());
-        jakmc$prepareFlight(client,pose,deltaTracker.getGameTimeDeltaPartialTick(false));
+        jakmc$prepareFlight(client,pose);
         boolean mounted=pose!=null&&pose.raw().get("ride") instanceof com.google.gson.JsonObject;
         jakmc$mountHeight+=((mounted?.8f:0)-jakmc$mountHeight)*(1-(float)Math.exp(-9*jakmc$dt));
-        if(!jakmc$active()||client.options.getCameraType().isFirstPerson()||client.options.getCameraType().isMirrored()){
-            jakmc$distance=Float.NaN;
+        if(jakmc$lastLevel!=client.level||!jakmc$active()||client.options.getCameraType()!=CameraType.THIRD_PERSON_BACK){
+            jakmc$lastLevel=client.level;
+            jakmc$reach.reset();
+            jakmc$lastPivot=jakmc$lastFeet=null;
+            jakmc$lift=0;
             jakmc$aim=0;
         }else{
             float target=JakInput.aiming()?1:0;
@@ -51,7 +59,7 @@ abstract class JakControllerCameraMixin {
         }
     }
 
-    @Unique private void jakmc$prepareFlight(Minecraft client,JakPoses.Pose pose,float partial){
+    @Unique private void jakmc$prepareFlight(Minecraft client,JakPoses.Pose pose){
         var player=client.player;
         var flight=pose!=null&&pose.raw().get("hellcat") instanceof com.google.gson.JsonObject channel?channel:null;
         var car=jakmc$car();
@@ -64,7 +72,10 @@ abstract class JakControllerCameraMixin {
         if(!chasing||player==null){
             jakmc$lastFlightTarget=null;
             jakmc$trail=Vec3.ZERO;
-            jakmc$flightPivot=null;
+            if(jakmc$flightWeight<.001f||!jakmc$active()||client.options.getCameraType()!=CameraType.THIRD_PERSON_BACK)
+                jakmc$flightPivot=null;
+            else if(JakPoses.presented()!=null)
+                jakmc$flightPivot=JakPoses.presented().add(0,1.62,0);
             jakmc$manualYaw=jakmc$manualPitch=0;
             return;
         }
@@ -143,30 +154,27 @@ abstract class JakControllerCameraMixin {
     }
 
     @Unique private boolean jakmc$overhead(){
-        return jakmc$active()&&jakmc$flightPivot==null&&!jakmc$wheeled&&jakmc$mountHeight<.1f
-            &&Minecraft.getInstance().options.getCameraType()==CameraType.THIRD_PERSON_BACK;
+        return jakmc$active()&&Minecraft.getInstance().options.getCameraType()==CameraType.THIRD_PERSON_BACK;
     }
 
     @ModifyArgs(method="alignWithEntity",at=@At(value="INVOKE",target="Lnet/minecraft/client/Camera;setPosition(DDD)V"))
     private void jakmc$follow(Args args){
         if(!jakmc$active())return;
         var feet=JakPoses.presented();
-        if(jakmc$wheeled){
-            float partial=Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false);
-            feet=jakmc$car().presentationRider();
-        }
+        if(jakmc$wheeled)feet=jakmc$car().presentationRider();
         if(feet==null)return;
-        args.set(0,feet.x);
-        double height=feet.y+1.62;
-        float lift=jakmc$mountHeight+(jakmc$overhead()?1.12f*(1-jakmc$aim):0);
-        if(lift>.001f){
-            Vec3 from=new Vec3(feet.x,height,feet.z);
-            var hit=entity.level().clip(new ClipContext(from,from.add(0,lift,0),
-                ClipContext.Block.VISUAL,ClipContext.Fluid.NONE,entity));
-            height+=hit.getType()==HitResult.Type.MISS?lift:
-                Math.max(0,hit.getLocation().y-height-.12);
-        }
-        Vec3 target=new Vec3(feet.x,height,feet.z);
+        Vec3 base=feet.add(0,1.62,0);
+        Vec3 lead=jakmc$lead(jakmc$lastFeet,feet);
+        jakmc$lastFeet=feet;
+        double wanted=jakmc$overhead()
+            ?jakmc$mountHeight+1.12*(1-jakmc$aim)*(1-jakmc$flightWeight)*(1-jakmc$mountHeight/.8)
+            :0;
+        double hard=jakmc$ceilingLift(base,wanted);
+        double soft=hard;
+        if(lead.lengthSqr()>0.0001)soft=Math.min(soft,jakmc$ceilingLift(base.add(lead.x,0,lead.z),wanted));
+        if(!jakmc$overhead()||jakmc$lastPivot==null)jakmc$lift=hard;
+        else jakmc$lift=Math.min(hard,jakmc$lift+(soft-jakmc$lift)*(1-Math.exp(-12*jakmc$dt)));
+        Vec3 target=base.add(0,jakmc$lift,0);
         if(jakmc$flightPivot!=null)target=target.lerp(jakmc$flightPivot,jakmc$flightWeight);
         args.set(0,target.x);args.set(1,target.y);args.set(2,target.z);
     }
@@ -175,7 +183,10 @@ abstract class JakControllerCameraMixin {
     private float jakmc$aimDistance(float distance){
         if(!jakmc$active())return distance;
         if(jakmc$flightPivot!=null){
-            setRotation(jakmc$flightYaw,jakmc$flightPitch);
+            var player=Minecraft.getInstance().player;
+            float partial=Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false);
+            setRotation(net.minecraft.util.Mth.rotLerp(jakmc$flightWeight,player.getViewYRot(partial),jakmc$flightYaw),
+                net.minecraft.util.Mth.lerp(jakmc$flightWeight,player.getViewXRot(partial),jakmc$flightPitch));
             float chase=(jakmc$wheeled?9f:15.4f)*.64f*(1-.25f*jakmc$speed)*(1+.3f*jakmc$pull);
             return net.minecraft.util.Mth.lerp(jakmc$flightWeight,distance,chase)*JakInput.cameraZoomFactor();
         }
@@ -209,12 +220,42 @@ abstract class JakControllerCameraMixin {
         setRotation(yaw,pitch);
     }
 
-    @ModifyExpressionValue(method="alignWithEntity",at=@At(value="INVOKE",target="Lnet/minecraft/client/Camera;getMaxZoom(F)F"))
-    private float jakmc$recoverFromWall(float clearDistance){
-        if(!jakmc$active())return clearDistance;
-        if(dev.jakmc.client.camera.JakCameraCutout.wanted(entity)){jakmc$distance=clearDistance;return clearDistance;}// JakCameraCutout filters its own distance
-        if(!Float.isFinite(jakmc$distance)||clearDistance<jakmc$distance)jakmc$distance=clearDistance;
-        else jakmc$distance+=(clearDistance-jakmc$distance)*(1-(float)Math.exp(-10*jakmc$dt));
-        return jakmc$distance;
+    @Unique private Vec3 jakmc$lead(Vec3 previous,Vec3 current){
+        if(previous==null||jakmc$dt<=0)return Vec3.ZERO;
+        Vec3 move=current.subtract(previous);
+        if(move.lengthSqr()>4)return Vec3.ZERO;
+        Vec3 lead=move.scale(.14/Math.max(jakmc$dt,.004f));
+        return lead.lengthSqr()>.55*.55?lead.normalize().scale(.55):lead;
+    }
+
+    @Unique private double jakmc$ceilingLift(Vec3 from,double wanted){
+        if(wanted<=0)return 0;
+        var hit=entity.level().clip(new ClipContext(from,from.add(0,wanted+.12,0),
+            ClipContext.Block.VISUAL,ClipContext.Fluid.NONE,entity));
+        return hit.getType()==HitResult.Type.MISS?wanted:Math.clamp(hit.getLocation().y-from.y-.12,0,wanted);
+    }
+
+    @WrapOperation(method="alignWithEntity",at=@At(value="INVOKE",target="Lnet/minecraft/client/Camera;getMaxZoom(F)F"))
+    private float jakmc$recoverFromWall(Camera camera,float desired,Operation<Float> original){
+        if(!jakmc$overhead())return original.call(camera,desired);
+        Vec3 pivot=position();
+        if(dev.jakmc.client.camera.JakCameraCutout.wanted(entity)){
+            jakmc$lastPivot=pivot;
+            return original.call(camera,desired);
+        }
+        if(jakmc$lastPivot==null||jakmc$lastPivot.distanceToSqr(pivot)>4)jakmc$reach.reset();
+        Vec3 lead=jakmc$lead(jakmc$lastPivot,pivot);
+        jakmc$lastPivot=pivot;
+        float hard=original.call(camera,desired);
+        float soft=hard;
+        if(lead.lengthSqr()>.0001){
+            try {
+                setPosition(pivot.add(lead));
+                soft=Math.min(hard,original.call(camera,desired));
+            } finally {
+                setPosition(pivot);
+            }
+        }
+        return (float)jakmc$reach.step(hard,soft,desired,jakmc$dt);
     }
 }

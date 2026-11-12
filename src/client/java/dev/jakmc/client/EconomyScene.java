@@ -50,7 +50,7 @@ final class EconomyScene {
                     for(int y=0;y<7;y++)p.level().setBlock(base.offset(x,y,z),net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
                 }
                 client.getSingleplayerServer().getCommands().performPrefixedCommand(client.getSingleplayerServer().createCommandSourceStack(),"time set noon");
-                nested(p);opaqueBackpack(p);recipes(p);trades(p);board(p);
+                nested(p);legacyLight(p);opaqueBackpack(p);recipes(p);trades(p);board(p);
                 p.getInventory().clearContent();
                 p.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND,new ItemStack(JakItems.GUNS.get(3)));
                 JakResources.grant(p,0,60);JakResources.grant(p,1,36);
@@ -70,6 +70,21 @@ final class EconomyScene {
     }
     private static void check(String name,boolean value){result.addProperty(name,value);if(!value)throw new IllegalStateException(name);}
     private static boolean near(float a,float b){return Math.abs(a-b)<.001f;}
+    private static void legacyLight(ServerPlayer p){
+        for(int i=0;i<4;i++){
+            var partial=new ItemStack(JakItems.LIGHT_ECO);
+            partial.set(DataComponents.MAX_STACK_SIZE,1);
+            net.minecraft.world.item.component.CustomData.update(DataComponents.CUSTOM_DATA,partial,
+                tag->tag.putInt("JakResourceSpent",50_000));
+            p.getInventory().setItem(i,partial);
+        }
+        check("legacy_light_eco_recovers_three_whole_units",near(JakResources.totals(p)[1],6));
+        var stacks=java.util.stream.IntStream.range(0,p.getInventory().getContainerSize())
+            .mapToObj(p.getInventory()::getItem).filter(stack->stack.is(JakItems.LIGHT_ECO)).toList();
+        check("legacy_light_eco_merges_into_one_stack",stacks.size()==1&&stacks.getFirst().getCount()==3
+            &&stacks.getFirst().getMaxStackSize()==64);
+        p.getInventory().clearContent();
+    }
     private static void opaqueBackpack(ServerPlayer p){
         class Pocket extends net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantStorage<net.fabricmc.fabric.api.transfer.v1.item.ItemVariant> {
             final boolean locked;
@@ -88,8 +103,8 @@ final class EconomyScene {
         dev.jakmc.JakMod.LOG.info("Backpack resource audit: accessible={}, locked={}, open={}",total,locked.amount,open.amount);
         check("backpack_counts_only_extractable_eco_once",near(total,12));
         check("backpack_count_rolls_back_simulation",locked.amount==6&&open.amount==6);
-        JakResources.consume(p,1,5);
-        check("backpack_consumes_actual_fuel_and_preserves_locked_pocket",locked.amount==6&&open.amount==3&&near(JakResources.totals(p)[1],7));
+        JakResources.consume(p,1,6);
+        check("backpack_consumes_actual_fuel_and_preserves_locked_pocket",locked.amount==6&&open.amount==3&&near(JakResources.totals(p)[1],6));
         p.getInventory().clearContent();
     }
     private static void nested(ServerPlayer p){
@@ -97,16 +112,16 @@ final class EconomyScene {
         var shulker=new ItemStack(Items.SHULKER_BOX);shulker.set(DataComponents.CONTAINER,ItemContainerContents.fromItems(List.of(new ItemStack(JakItems.DARK_ECO,3),bundle)));
         p.getInventory().setItem(0,shulker);
         var initial=JakResources.totals(p);check("nested_shulker_bundle_count",near(initial[0],12)&&near(initial[1],128));
-        JakResources.consume(p,0,5.25f);JakResources.consume(p,1,.25f);
+        JakResources.consume(p,0,5.25f);JakResources.consume(p,1,2);
         check("resource_cannot_be_repaired_as_tool",java.util.stream.IntStream.range(0,p.getInventory().getContainerSize()).mapToObj(p.getInventory()::getItem).noneMatch(stack->(stack.is(JakItems.LIGHT_ECO)||stack.is(JakItems.DARK_ECO))&&stack.isDamageableItem()));
-        var after=JakResources.totals(p);check("nested_fractional_consumption",near(after[0],6.75f)&&near(after[1],127.75f));
+        var after=JakResources.totals(p);check("nested_dark_fraction_and_whole_light",near(after[0],6.75f)&&near(after[1],126));
         var ops=p.registryAccess().createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE);
         for(int i=0;i<p.getInventory().getContainerSize();i++){
             var stack=p.getInventory().getItem(i);if(stack.isEmpty())continue;
             var tag=ItemStack.CODEC.encodeStart(ops,stack).getOrThrow();
             p.getInventory().setItem(i,ItemStack.CODEC.parse(ops,tag).getOrThrow());
         }
-        var loaded=JakResources.totals(p);check("partial_charge_save_roundtrip",near(loaded[0],6.75f)&&near(loaded[1],127.75f));
+        var loaded=JakResources.totals(p);check("partial_charge_save_roundtrip",near(loaded[0],6.75f)&&near(loaded[1],126));
         p.getInventory().clearContent();check("no_detached_eco_reserve",near(JakResources.totals(p)[0],0));
     }
     private static void recipes(ServerPlayer p){

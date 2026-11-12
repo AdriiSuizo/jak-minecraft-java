@@ -18,11 +18,12 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ContainerComponent;
 import net.minecraft.world.item.component.CustomData;
 
-/** The actual carried stacks own every point, including a partly consumed unit. */
+/** Carried resource stacks and the conversion of legacy fractional light eco. */
 public final class JakResources {
     private static final int PRECISION=100_000;
     private static Item item(int kind){return kind==0?JakItems.DARK_ECO:kind==1?JakItems.LIGHT_ECO:JakItems.AMMUNITION.get(kind-2);}
-    private static int capacity(int kind){return (kind==0?4:kind==1?2:1)*PRECISION;}
+    private static final int LIGHT=1, LIGHT_UNIT=2*PRECISION;
+    private static int capacity(int kind){return kind==LIGHT?LIGHT_UNIT:(kind==0?4:1)*PRECISION;}
     private static int kind(ItemStack stack){
         for(int i=0;i<6;i++)if(stack.is(item(i)))return i;
         return -1;
@@ -42,6 +43,10 @@ public final class JakResources {
     }
     public static void grant(ServerPlayer player,int kind,float amount){
         long points=Math.max(0,Math.round((double)amount*PRECISION));
+        if(kind==LIGHT){
+            storeLight(player,points);
+            return;
+        }
         int each=capacity(kind);
         while(points>=each){
             int count=(int)Math.min(64,points/each);
@@ -51,6 +56,58 @@ public final class JakResources {
             var partial=new ItemStack(item(kind));
             setSpent(partial,each-(int)points);offer(player,partial);
         }
+    }
+    private static void storeLight(ServerPlayer player,long points){
+        if(points<=0)return;
+        points+=player.getAttachedOrCreate(JakData.LEGACY_LIGHT_REMAINDER);
+        player.setAttached(JakData.LEGACY_LIGHT_REMAINDER,(int)(points%LIGHT_UNIT));
+        long units=points/LIGHT_UNIT;
+        while(units>0){
+            int count=(int)Math.min(64,units);
+            offer(player,new ItemStack(JakItems.LIGHT_ECO,count));
+            units-=count;
+        }
+    }
+
+    private static boolean partialLight(ItemStack stack){
+        return stack.is(JakItems.LIGHT_ECO)&&(stack.getMaxStackSize()==1||charge(stack,LIGHT)!=LIGHT_UNIT);
+    }
+
+    private static long collectPartialLight(ItemStack stack,int depth){
+        if(stack.isEmpty()||depth>16)return 0;
+        if(partialLight(stack)){
+            long points=(long)charge(stack,LIGHT)*stack.getCount();
+            stack.setCount(0);
+            return points;
+        }
+        long points=0;
+        for(var component:stack.getComponents()){
+            if(!(component.value() instanceof ContainerComponent<?> contents))continue;
+            var children=contents.itemCopies().toList();
+            boolean changed=false;
+            for(var child:children){
+                boolean occupied=!child.isEmpty();
+                long collected=collectPartialLight(child,depth+1);
+                points+=collected;
+                changed|=collected>0||occupied&&child.isEmpty();
+            }
+            if(changed)replace(stack,component,contents.copyWithContents(children.stream()));
+        }
+        return points;
+    }
+
+    private static long collectPartialLight(Storage<ItemVariant> storage){
+        long points=0;
+        try(var transaction=Transaction.openOuter()){
+            for(var view:storage.nonEmptyViews()){
+                var variant=view.getResource();
+                var stack=variant.toStack();
+                if(partialLight(stack))
+                    points+=charge(stack,LIGHT)*storage.extract(variant,view.getAmount(),transaction);
+            }
+            transaction.commit();
+        }
+        return points;
     }
     private static void setSpent(ItemStack stack,int spent){
         // Fuel is not tool damage: native repair recipes must never regenerate eco/ammunition.
@@ -68,14 +125,18 @@ public final class JakResources {
     public static float[] totals(ServerPlayer player){
         if(player.hasInfiniteMaterials())return new float[]{100,100,50,100,100,20};
         float[] values=new float[6];
+        long legacyLight=0;
         var inventory=player.getInventory();
         var slots=PlayerInventoryStorage.of(player);
         for(int i=0;i<inventory.getContainerSize();i++){
             var stack=inventory.getItem(i);
+            legacyLight+=collectPartialLight(stack,0);
             count(stack,values,0);
             if(!stack.isEmpty()&&!container(stack)){
                 var storage=ContainerItemContext.ofPlayerSlot(player,slots.getSlot(i)).find(ItemStorage.ITEM);
-                if(storage!=null&&storage.supportsExtraction())try(var transaction=Transaction.openOuter()){
+                if(storage==null||!storage.supportsExtraction())continue;
+                legacyLight+=collectPartialLight(storage);
+                try(var transaction=Transaction.openOuter()){
                     // One speculative extraction across the whole storage. Independent
                     // rollbacks per view can count the same accessible slot repeatedly
                     // when another matching pocket is protected against extraction.
@@ -88,6 +149,10 @@ public final class JakResources {
                     }
                 }
             }
+        }
+        if(legacyLight>0){
+            storeLight(player,legacyLight);
+            return totals(player);
         }
         return values;
     }
@@ -108,6 +173,7 @@ public final class JakResources {
     public static void consume(ServerPlayer player,int kind,float amount){
         if(player.hasInfiniteMaterials())return;
         long needed=Math.max(0,Math.round((double)amount*PRECISION));
+        if(kind==LIGHT)needed=Math.round((double)needed/LIGHT_UNIT)*LIGHT_UNIT;
         if(needed==0)return;
         var partials=new ArrayList<ItemStack>();
         var inventory=player.getInventory();

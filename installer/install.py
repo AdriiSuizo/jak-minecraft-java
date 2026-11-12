@@ -248,7 +248,8 @@ def import_resources(active, workspace, notify, lang, stage=lambda _:None):
     content.main()
     # The dark eco liquid's textures (06/11: never made by the installer, the liquid drew as missing).
     import import_dark_eco as dark
-    dark.DEST=output/'assets/jakmc/textures/block'; os.environ['IW4L_JAK1_TEXTURES']=str(export_root(active,'jak1')/'textures'); os.environ['IW4L_JAK3_TEXTURES']=str(export_root(active,'jak3')/'textures')
+    dark.DEST=output/'assets/jakmc/textures/block'
+    os.environ['IW4L_JAK1_TEXTURES']=str(export_root(active,'jak1')/'textures')
     dark.main()
     # A procedural neutral particle is mod code, not an extracted game texture.
     from PIL import Image
