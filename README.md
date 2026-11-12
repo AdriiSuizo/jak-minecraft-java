@@ -94,6 +94,12 @@ Development build (`0.1.0-dev`). Open work is listed in [PENDIENTE-PORT.md](PEND
 
 ## Development port
 
+### Credits / Créditos
+
+Project by AdriiSuizo, developed with assistance from Claude and Codex. Built on Fabric and OpenGOAL, with Sodium, Sodium Extra, Lithium, FerriteCore and EntityCulling in the installer profile. Third-party notices are retained in `third_party` and in the installer. Jak game resources belong to their respective owners and are converted locally from the user's own OpenGOAL installation; they are not included in the download.
+
+Proyecto de AdriiSuizo, desarrollado con asistencia de Claude y Codex. Las licencias y avisos de terceros se conservan en `third_party` y en el instalador. Los recursos de los juegos se convierten localmente desde la instalación de OpenGOAL del usuario.
+
 Development port of the Jak systems from the Rust mashup into actual Minecraft Java. Targets Minecraft 26.3, Fabric Loader 0.20.1, Fabric API 0.165.0+26.3 and Java 25. MW2 and Skate 3 content are excluded; the original Jak JET-Board is included.
 
 Minecraft owns registries, inventories, screens, entities, saves and collision shapes. A small versioned JNI library runs the existing pure Rust Jak simulation. Owned OpenGOAL exports provide the original models, animations, particle definitions and SFX; generated assets and all development saves are ignored by Git.
