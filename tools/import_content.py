@@ -256,28 +256,30 @@ def seal_track_meshes(catalog):
             cell['triangles']=outside
         path.write_text(json.dumps(data,separators=(',',':')),encoding='utf-8')
 
-# Adrii 07/11: the snow barrels, 11 to 13 blocks tall, are some two blocks all told.
-SCALED_OBJECTS={24:2,25:2,26:2}
+# Preserve the part IDs in saved worlds while fitting the recovered barrel meshes.
+SNOW_BARREL_SIZES={24:(2,2,2),25:(2,2,2),26:(1,2,1)}
 
 def scale_objects(catalog):
-    for id,height in SCALED_OBJECTS.items():
+    for id,size in SNOW_BARREL_SIZES.items():
         path=catalog/'objects'/f'{id}.json'
         source=json.loads(path.read_text(encoding='utf-8'))
-        # Stood on the ground of its cell: the mesh's own floor, not the object's nominal box.
-        floor=min(row['cell'][1]+p[1] for row in source['cells'] for tri in row['triangles'] for p in tri['p'])
-        top=max(row['cell'][1]+p[1] for row in source['cells'] for tri in row['triangles'] for p in tri['p'])
-        scale=height/(top-floor)
-        lift=[0,-floor,0]
-        cells={}
-        def cell(key):return cells.setdefault(key,{'boxes':[],'cell':list(key),'triangles':[]})
+        vertices=[tuple(row['cell'][i]+p[i] for i in range(3))
+                  for row in source['cells'] for tri in row['triangles'] for p in tri['p']]
+        minimum=[min(p[i] for p in vertices) for i in range(3)]
+        maximum=[max(p[i] for p in vertices) for i in range(3)]
+        scale=min(size[i]/(maximum[i]-minimum[i]) for i in range(3))
+        keys=[(x,y,z) for x in range(size[0]) for y in range(size[1]) for z in range(size[2])]
+        if id==26:keys.append((0,1,1)) # A former overflow part still exists in saves.
+        cells={key:{'boxes':[],'cell':list(key),'triangles':[]} for key in keys}
         for row in source['cells']:
             at=row['cell']
             for tri in row['triangles']:
-                points=[[(at[i]+p[i]+lift[i])*scale for i in range(3)] for p in tri['p']]
-                key=tuple(max(0,math.floor(sum(p[i] for p in points)/3)) for i in range(3))
-                cell(key)['triangles'].append({**tri,'p':[[p[i]-key[i] for i in range(3)] for p in points]})
+                points=[[(at[i]+p[i]-minimum[i])*scale for i in range(3)] for p in tri['p']]
+                key=tuple(min(size[i]-1,max(0,math.floor(sum(p[i] for p in points)/3))) for i in range(3))
+                cells[key]['triangles'].append({**tri,'p':[[p[i]-key[i] for i in range(3)] for p in points]})
             for box in row['boxes']:
-                low=[max((at[i]+box[i]+lift[i])*scale,0) for i in range(3)];high=[(at[i]+box[i+3]+lift[i])*scale for i in range(3)]
+                low=[max((at[i]+box[i]-minimum[i])*scale,0) for i in range(3)]
+                high=[min((at[i]+box[i+3]-minimum[i])*scale,size[i]) for i in range(3)]
                 for x in range(math.floor(low[0]),math.ceil(high[0])):
                     for y in range(math.floor(low[1]),math.ceil(high[1])):
                         for z in range(math.floor(low[2]),math.ceil(high[2])):
@@ -285,7 +287,7 @@ def scale_objects(catalog):
                             local=[max(low[i]-key[i],0) for i in range(3)]+[min(high[i]-key[i],1) for i in range(3)]
                             # On the 1/16 grid PropBlock rasterizes to, so the many small boxes of the big mesh collapse.
                             snapped=[math.floor(v*16)/16 for v in local[:3]]+[math.ceil(v*16)/16 for v in local[3:]]
-                            if snapped not in cell(key)['boxes']:cell(key)['boxes'].append(snapped)
+                            if snapped not in cells[key]['boxes']:cells[key]['boxes'].append(snapped)
         source['cells']=[cells[key] for key in sorted(cells)]
         source['size']=[max(key[i] for key in cells)+1 for i in range(3)]
         path.write_text(json.dumps(source,separators=(',',':')),encoding='utf-8')

@@ -442,8 +442,9 @@ public final class JakVehicle extends Entity {
                 encoded=NativeJak.hoverStep(handle,steer,lean,throttle,brake,zoomer,
                     (float)moved.x,(float)moved.y,(float)moved.z,hour%24,Math.max(0,health/model.hitPoints),crashTicks==0&&(rider!=null||traffic));
             }else{
+                // Each native step advances two 120 Hz suspension substeps.
                 encoded=NativeJak.carStep(handle,steer,lean,throttle,brake,actions,
-                    (float)moved.x,(float)moved.y,(float)moved.z,6);
+                    (float)moved.x,(float)moved.y,(float)moved.z,3);
             }
             var frame=JsonParser.parseString(encoded).getAsJsonObject();
             collision.commitImpacts();

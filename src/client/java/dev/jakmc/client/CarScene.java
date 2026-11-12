@@ -31,6 +31,8 @@ public final class CarScene {
     private static boolean pause;
     private static volatile java.util.function.Consumer<ServerPlayer> cleanup;
     private static final double[] DISTANCE=new double[2],HEIGHT=new double[2],STEP_SPEED=new double[2];
+    private static final double[] TRAVEL=new double[2],VELOCITY_TRAVEL=new double[2];
+    private static JsonObject previousFrame;
     private static final int[] CONTACTS=new int[2];
     private static double airBoost,airborneSpeed;
     private static int index;
@@ -58,6 +60,7 @@ public final class CarScene {
         java.util.Arrays.fill(FIRED,false);
         java.util.Arrays.fill(DISTANCE,0);java.util.Arrays.fill(HEIGHT,0);
         java.util.Arrays.fill(CONTACTS,0);java.util.Arrays.fill(STEP_SPEED,0);
+        java.util.Arrays.fill(TRAVEL,0);java.util.Arrays.fill(VELOCITY_TRAVEL,0);previousFrame=null;
         airBoost=airborneSpeed=0;maxYawJump=0;renderFrames=0;java.util.Arrays.fill(DROP_STACK,false);
         camera=client.options.getCameraType();
         pause=client.options.pauseOnLostFocus;
@@ -122,12 +125,27 @@ public final class CarScene {
         carId=car.getId();
     }
 
+    private static void sampleClock(JsonObject frame){
+        var before=previousFrame;
+        previousFrame=frame;
+        if(before==null||frame.get("serverTick").getAsLong()-before.get("serverTick").getAsLong()!=1)return;
+        var at=dev.jakmc.player.JakPlayers.vector(frame.getAsJsonArray("worldPosition"));
+        var from=dev.jakmc.player.JakPlayers.vector(before.getAsJsonArray("worldPosition"));
+        if(from.z<start.z+.5||at.z>start.z+10)return;
+        double speed=(frame.getAsJsonArray("velocity").get(2).getAsDouble()
+            +before.getAsJsonArray("velocity").get(2).getAsDouble())*.5;
+        if(speed<=1)return;
+        TRAVEL[index]+=at.z-from.z;
+        VELOCITY_TRAVEL[index]+=speed/20;
+    }
+
     private static void tick(Minecraft client){
         if(pad==null||client.level==null||client.player==null||carId<0||!JakInput.controllerReady(pad.id))return;
         if(!(client.level.getEntity(carId) instanceof JakVehicle car)||car.frame()==null)return;
         tick++;
         var pos=car.position().subtract(start);
         var frame=car.frame();
+        if(!hover)sampleClock(frame);
         int grounded=frame.get("grounded").getAsInt();
         if(hover){
             LAMPS[index]|=frame.get("lamps").getAsFloat()>.8f&&frame.getAsJsonArray("heads").size()>0;
@@ -198,6 +216,7 @@ public final class CarScene {
             view=null;
             index=1;
             tick=0;
+            previousFrame=null;
             int previous=carId;
             carId=-1;
             onServer(client,p->{
@@ -213,6 +232,9 @@ public final class CarScene {
         report.add("height",new com.google.gson.Gson().toJsonTree(HEIGHT));
         report.add("contacts",new com.google.gson.Gson().toJsonTree(CONTACTS));
         report.add("stepSpeed",new com.google.gson.Gson().toJsonTree(STEP_SPEED));
+        var simulationRate=new double[2];
+        if(!hover)for(int i=0;i<2;i++)if(VELOCITY_TRAVEL[i]>0)simulationRate[i]=TRAVEL[i]/VELOCITY_TRAVEL[i];
+        if(!hover)report.add("simulationRate",new com.google.gson.Gson().toJsonTree(simulationRate));
         report.addProperty("airBoostGain",airBoost);
         report.addProperty("dismounted",dismounted);
         report.add("held_down_drops_stack",new com.google.gson.Gson().toJsonTree(DROP_STACK));
@@ -226,7 +248,8 @@ public final class CarScene {
         boolean success=hover?DISTANCE[0]>5&&DISTANCE[1]>5&&LAMPS[0]&&LAMPS[1]&&LANE[0]&&LANE[1]
             &&REVERSE[0]&&REVERSE[1]&&dismounted&&DROP_STACK[0]&&DROP_STACK[1]:
             DISTANCE[0]>=16&&DISTANCE[1]>=16&&CONTACTS[0]>=2&&CONTACTS[1]>=2
-            &&STEP_SPEED[0]>.1&&STEP_SPEED[1]>.1&&airBoost>.02&&dismounted&&FIRED[0]&&FIRED[1]&&grenadeBurst;
+            &&STEP_SPEED[0]>.1&&STEP_SPEED[1]>.1&&airBoost>.02&&dismounted&&FIRED[0]&&FIRED[1]&&grenadeBurst
+            &&Math.abs(simulationRate[0]-1)<.1&&Math.abs(simulationRate[1]-1)<.1;
         report.addProperty("reason",success?"complete":"Vehicle acceptance failed");
         try{
             var folder=client.gameDirectory.toPath().resolve("jakmc/evidence/"+(hover?"zoomers":"cars"));

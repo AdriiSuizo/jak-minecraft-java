@@ -47,6 +47,7 @@ import org.joml.Vector3fc;
 
 /** Source triangles are baked once into the terrain mesh and use the same sprites in inventory. */
 public final class PropModels {
+    public static final int BARREL_QUAD_TAG=0x4a414b42;
     private static final Identifier BLOCK_ATLAS=Identifier.withDefaultNamespace("textures/atlas/blocks.png");
     private record Point(float x,float y,float z,float u,float v,int color){}
     private record Triangle(Point[] points,Identifier texture,boolean blended){}
@@ -144,7 +145,7 @@ public final class PropModels {
                 }
                 boolean opaque=opaque(triangle.texture());
                 // A two-sided source triangle must have the same diffuse shade on both windings.
-                if(opaque)emitter.shadeDirectionOverride(Direction.UP);
+                if(opaque)emitter.shadeDirectionOverride(Direction.UP).tag(BARREL_QUAD_TAG);
                 emitter.materialBake(material,MutableQuadView.BAKE_NORMALIZED)
                     .chunkLayer(triangle.blended()?ChunkSectionLayer.TRANSLUCENT:opaque?ChunkSectionLayer.SOLID
                         :ChunkSectionLayer.byTransparency(material.sprite().transparency()))

@@ -144,6 +144,52 @@ pub fn shape(kind: usize) -> Option<&'static Shape> {
     shapes.get(kind)?.get_or_init(|| make_shape(kind)).as_ref()
 }
 
+/// Follow shared vertices across the extraction box so it selects entire barrels.
+fn snow_barrel_mesh(
+    source: &[crate::jak_pieces::SourceTri],
+    wanted: &[bool],
+    local: impl Fn(Vec3) -> Vec3,
+    lo: Vec3,
+    hi: Vec3,
+) -> Vec<crate::jak_pieces::SourceTri> {
+    let mut nearby = Vec::new();
+    let mut vertices: HashMap<[i32; 3], Vec<usize>> = HashMap::new();
+    let mut seeds = Vec::new();
+    let key = |p: Vec3| (p * 1000.0).round().to_array().map(|v| v as i32);
+    // A neighbouring barrel is at most a few source metres across.
+    let padding = Vec3::splat(5.0);
+    for tri in source {
+        if !wanted.get(usize::from(tri.texture)).copied().unwrap_or(false) {
+            continue;
+        }
+        let p = tri.p.map(&local);
+        let center = (p[0] + p[1] + p[2]) / 3.0;
+        if !center.cmpge(lo - padding).all() || !center.cmple(hi + padding).all() {
+            continue;
+        }
+        let index = nearby.len();
+        if center.cmpge(lo).all() && center.cmple(hi).all() {
+            seeds.push(index);
+        }
+        for point in p {
+            vertices.entry(key(point)).or_default().push(index);
+        }
+        nearby.push(crate::jak_pieces::SourceTri { p, ..*tri });
+    }
+    let mut selected = vec![false; nearby.len()];
+    while let Some(index) = seeds.pop() {
+        if std::mem::replace(&mut selected[index], true) {
+            continue;
+        }
+        for point in nearby[index].p {
+            if let Some(adjacent) = vertices.remove(&key(point)) {
+                seeds.extend(adjacent);
+            }
+        }
+    }
+    nearby.into_iter().zip(selected).filter_map(|(tri, keep)| keep.then_some(tri)).collect()
+}
+
 fn make_shape(kind: usize) -> Option<Shape> {
     let o = &OBJECTS[kind];
     let place = PLACES.iter().position(|p| p.name == o.place)?;
@@ -168,7 +214,10 @@ fn make_shape(kind: usize) -> Option<Shape> {
         Vec3::new(d.dot(along), d.y, d.dot(out))
     };
     let (lo, hi) = (local(Vec3::from_array(o.lo)) - 0.05, Vec3::from_array(o.hi) - Vec3::from_array(o.lo) + local(Vec3::from_array(o.lo)) + 0.05);
-    let tris: Vec<crate::jak_pieces::SourceTri> = source
+    let snow_barrel = o.block.starts_with("objeto_montana_barril_");
+    let tris: Vec<crate::jak_pieces::SourceTri> = if snow_barrel {
+        snow_barrel_mesh(source, &wanted, local, lo, hi)
+    } else { source
         .iter()
         .filter(|t| wanted.get(usize::from(t.texture)).copied().unwrap_or(false))
         // Every triangle reaching into the box (a wall's are often bigger
@@ -187,7 +236,7 @@ fn make_shape(kind: usize) -> Option<Shape> {
             moved.p = t.p.map(local);
             moved
         })
-        .collect();
+        .collect() };
     if tris.is_empty() {
         return None;
     }
@@ -234,6 +283,12 @@ fn make_shape(kind: usize) -> Option<Shape> {
         let offset=Vec3::new((1.-extent.x*scale)*0.5,0.,(1.-extent.z*scale)*0.5);
         for t in &mut tris{t.p=t.p.map(|p|(p-lo)*scale+offset);}
         Some((extent*scale+offset,scale))
+    }
+    else if snow_barrel {
+        let low = tris.iter().flat_map(|t| t.p).reduce(Vec3::min)?;
+        let high = tris.iter().flat_map(|t| t.p).reduce(Vec3::max)?;
+        for tri in &mut tris { tri.p = tri.p.map(|p| p - low); }
+        Some((high - low, 1.0))
     }
     else if o.block=="objeto_spargus_palmera_completa" {Some(fit_grid(&mut tris,(5,5))?)}
     else if o.block=="objeto_haven_propaganda_ajustada" || o.group=="decorado" {Some(fit_grid(&mut tris,(1,1))?)} else{None};

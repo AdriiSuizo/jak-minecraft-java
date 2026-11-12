@@ -11,6 +11,7 @@
     "JakControllerCameraMixin",
     "JakCameraBuriedMixin",
     "JakCameraCutoutMixin",
+    "JakSodiumBarrelMixin",
     "JakViewBlockMixin",
     "JakCameraFadeUboMixin",
     "JakCameraFadeWriteMixin",

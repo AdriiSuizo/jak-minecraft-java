@@ -39,7 +39,8 @@ public final class WheeledCollision {
         if(!level.hasChunkAt(BlockPos.containing(at)))return Float.NaN;
         Vec3 bottom=at.add(0,-reach/METRES_PER_BLOCK,0);
         var result=level.clip(new ClipContext(at,bottom,ClipContext.Block.COLLIDER,floats?ClipContext.Fluid.ANY:ClipContext.Fluid.NONE,owner));
-        if(result.getType()!=HitResult.Type.BLOCK)return Float.NaN;
+        // A wheel probe starting inside a curb or wall hasn't found its top surface.
+        if(result.getType()!=HitResult.Type.BLOCK||(!floats&&result.isInside()))return Float.NaN;
         return (float)((at.y-result.getLocation().y)*METRES_PER_BLOCK);
     }
 
@@ -83,7 +84,7 @@ public final class WheeledCollision {
                 ||e instanceof ServerPlayer p&&JakPlayers.active(p)&&!p.isSpectator());
         }
         for(var other:neighbours){
-            if(other.isRemoved()||!other.getBoundingBox().inflate(1).intersects(range))continue;
+            if(other.isRemoved()||other.getVehicle()==owner||!other.getBoundingBox().inflate(1).intersects(range))continue;
             if(other instanceof JakVehicle vehicle){
                 var half=vehicle.collisionHalf();
                 double yaw=Math.toRadians(vehicle.getYRot());
