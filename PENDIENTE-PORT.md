@@ -1,3 +1,9 @@
+![Jak Worlds](docs/media/jak-worlds-header.gif)
+
+[Inicio](README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](docs/README.md)
+
+---
+
 # Lo que falta portear del Rust (lista viva)
 
 Fuentes: `Desktop\Repo\AUDITORIA-JAK-JAVA-2026-11-05.md` (§5.1, §10) y el registro final del Rust

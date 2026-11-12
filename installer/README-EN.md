@@ -1,3 +1,9 @@
+![Jak Worlds](../docs/media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # JakMod for Minecraft Java — installation
 
 Development build for Windows 10/11 x86-64. Minecraft Java 26.3, Fabric Loader

@@ -1,3 +1,9 @@
+![Jak Worlds](media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # Fixes y diferencias pendientes del port de Jak
 
 Inventario del 4 de noviembre de 2026: **32 trabajos abiertos** y **1 integración resuelta**, **11 contrastes concretos** y **3 pendientes que ya existían en el origen**. Incluye los fallos actuales del usuario y las peticiones nuevas de controles/explosión.

@@ -1,3 +1,9 @@
+![Jak Worlds](../docs/media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # Notices
 
 - Project adapters, installer and converted construction generators: Apache-2.0;

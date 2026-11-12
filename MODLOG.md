@@ -1,3 +1,9 @@
+![Jak Worlds](docs/media/jak-worlds-header.gif)
+
+[Inicio](README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](docs/README.md)
+
+---
+
 # Jak Worlds — Minecraft Java
 
 2026-11-11 — Keira's recipe book, city detail and client performance:

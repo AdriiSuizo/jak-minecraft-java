@@ -1,128 +1,99 @@
-# Jak Worlds for Minecraft Java
+# Jak Worlds: Jak y Daxter en Minecraft
 
-**[Español](#español) · [English](#english)**
+![Jak Worlds — Minecraft con Jak, Daxter, vehículos y ciudades de la trilogía](docs/media/jak-worlds-header.gif)
 
-> **Requisito / Requirement:** OpenGOAL con **los tres juegos instalados**: Jak and Daxter: The Precursor Legacy, Jak II y Jak 3. Usa tus propias copias. / OpenGOAL with **all three games installed**: Jak and Daxter: The Precursor Legacy, Jak II and Jak 3, from your own copies.
+Explora Minecraft como Jak, con Daxter al hombro. Salta por los tejados de Villa Refugio, recorre Spargus, saca la turbotabla o llena tu propio garaje de zoomers. **Jak Worlds** reúne movimientos, poderes, armas, vehículos y lugares de la trilogía en **Minecraft Java 26.3**.
 
----
+## [⬇ Descargar Jak Worlds para Windows — v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/download/v0.1.0-dev.18/JakMod-26.3-0.1.0-dev.rar)
 
-## Español
+**El enlace descarga directamente el instalador en RAR. Extráelo entero antes de abrirlo.** No necesitas descargar el código fuente para jugar. [Notas de la versión y mapa por separado](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18).
 
-Mod para **Minecraft Java 26.3** (Fabric) que convierte al jugador en Jak, con Daxter al hombro. Trae sus movimientos, armas, poderes, vehículos, enemigos y ciudades de la trilogía original, con los modelos, animaciones, partículas y sonidos originales.
+[Guía de instalación](installer/README-ES.md) · [Controles](CONTROLES.md) · [Recorrido del mapa de prueba](docs/SHOWCASE.md) · [Canal de AdriiSuizo](https://www.youtube.com/@AdriiSuizo)
 
-El mod no incluye **ningún archivo de los juegos**. Su instalador los genera en tu ordenador a partir de tu instalación de OpenGOAL. Sin los tres juegos instalados en OpenGOAL, el instalador no continúa.
+## Qué necesitas
 
-### Qué incluye
-- **Jak y Daxter:** el movimiento y el combate originales de Jak (saltos, doble salto, rodar, puñetazo, patada giratoria, agarrarse a bordes, nadar, escaleras), con Daxter al hombro.
-- **Poderes:** Jak oscuro (bomba con X+Cuadrado y explosión de rayos con X+Círculo) y Jak de luz (volar, escudo, parar el tiempo, curar).
-- **Armas:** las 12 armas Morph de Jak 3. En supervivencia gastan munición de eco del inventario; en creativo puedes dispararlas y usar los poderes de Jak sin llevar munición ni eco.
-- **Turbotabla (JET-Board)**, con barandillas para deslizarse; va sobre el agua.
-- **Objetos de Jak para construir:** el lanzador de eco azul de Jak 1, la puerta iris de la Roca del Géiser (se abre con eco azul) y la esclusa de Villarefugio, de 3x3 bloques. Todas las piezas decorativas de Jak se fabrican en el cortapiedras.
-- **Vehículos:** HellCat, Helldog, zoomers de Villarefugio, coches del desierto, Leapers y Flut Flut, que se puede domar y criar.
-- **Enemigos:** 18 tipos de Jak 1 y Jak 3, más los guardias Krimson de Jak II. Cada uno vive en su bioma y tiene su nido.
-- **Lugares que se generan en mundos normales:** Villarefugio (Haven City) con su tráfico y ciudadanos, Spargus en el desierto, Sandover y la cueva del cráter.
-- **Ciudadanos** con comercio, recetas para todo lo de Jak, eco de colores y respiraderos de eco.
-- **Patada giratoria:** empuja sin herir, puede activar mecanismos y corta vegetación como hierba, trigo o bambú.
-- **Cámara que atraviesa paredes** sin dejar ver el vacío a través de ellas, para ver bien a Jak en cuevas y sitios estrechos.
-- **Mando** (PlayStation/Xbox) y teclado. Los controles están en [CONTROLES.md](CONTROLES.md).
+- **Windows 10 u 11 de 64 bits.**
+- **Minecraft Java 26.3**, desde el launcher oficial. Ábrelo una vez antes de instalar el mod.
+- **Jak and Daxter: The Precursor Legacy, Jak II y Jak 3 instalados en OpenGOAL**, desde tus propias copias.
+- Internet durante la instalación. Si OpenGOAL no tiene las exportaciones preparadas, deja unos **35 GB libres** para la extracción; al terminar se conservan unos **11 GB**.
 
-### Requisitos
-- Windows 10/11 de 64 bits.
-- Minecraft Java **26.3** (launcher oficial), abierto al menos una vez antes de instalar.
-- **OpenGOAL con Jak 1, Jak II y Jak 3 instalados**, sin moverlos después de instalar el mod.
-- Internet durante la instalación (para descargar Fabric y Fabric API).
+**Las ISOs se necesitan para instalar los juegos en OpenGOAL. Para instalar Jak Worlds después, no hace falta tenerlas a mano: puedes guardarlas aparte. Lo que debes conservar, sin borrar ni mover, es la instalación de OpenGOAL y sus datos.**
 
-### Instalación
-1. Descarga el RAR de la última versión en [Releases](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
-2. Extrae **todo** el RAR en una carpeta.
-3. Cierra Minecraft y su launcher y ejecuta `JakMod-Installer.exe`.
-4. Elige **es**, comprueba la carpeta de OpenGOAL y la de Minecraft y pulsa **Instalar JakMod**. La primera vez tarda varios minutos.
-5. En el launcher, elige la instalación **26.3.jakmod**.
+Si aún no tienes los tres juegos instalados, sigue el [tutorial de OpenGOAL de AdriiSuizo](https://www.youtube.com/watch?v=wYFE0wLbwic&t=2s).
 
-Tus mundos normales no se tocan: JakMod guarda los suyos en `.minecraft\instances\jakmod`. La guía completa está en [installer/README-ES.md](installer/README-ES.md).
+## Instálalo en cinco pasos
 
-### Mundo de showcase
-El instalador añade **Jak Showcase (JakMod)** a **Un jugador**. El mapa reúne Spargus y Villarefugio y tiene un recorrido de estaciones para probar las mecánicas. La guía está en [docs/SHOWCASE.md](docs/SHOWCASE.md).
+1. **Descarga el RAR** de la [versión v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) y **extráelo entero** en una carpeta. No ejecutes el instalador desde dentro del RAR.
+2. **Cierra Minecraft y su launcher** y abre `JakMod-Installer.exe`.
+3. Elige **Español** y comprueba las dos carpetas: la instalación de **OpenGOAL** y la de **Minecraft**. Usa **Examinar…** si alguna ruta no es la tuya.
+4. Pulsa **Instalar o actualizar JakMod** y espera a que termine. La primera vez puede tardar varios minutos mientras convierte los recursos de tus juegos.
+5. Reabre el launcher y elige **26.3.jakmod**. Si no aparece, entra en **Instalaciones** y activa **Modificadas**. Pulsa **Jugar**.
 
-### Estado
-Versión de desarrollo (`0.1.0-dev`). Los pendientes están en [PENDIENTE-PORT.md](PENDIENTE-PORT.md) y [docs/FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). No es un producto oficial de Naughty Dog, Sony, Mojang, Microsoft ni OpenGOAL.
+El instalador prepara el perfil y sus componentes. No necesitas instalar Python, Rust o Gradle para jugar. JakMod utiliza su propia carpeta de mundos y configuración; la [guía completa](installer/README-ES.md) explica dónde se guarda todo y cómo actualizar.
 
----
+## Empieza por el mundo de prueba
 
-## English
+En **Un jugador**, abre **Jak Showcase (JakMod)**. El instalador incluye este mapa con Villa Refugio, Spargus y estaciones para probar las mecánicas. Si ya tienes **Jak Showcase**, utiliza ese mundo: una actualización conserva tu progreso.
 
-A **Minecraft Java 26.3** (Fabric) mod that turns the player into Jak, with Daxter on his shoulder. It brings the original trilogy's moves, guns, powers, vehicles, enemies and cities, using the original models, animations, particles and sounds.
+Jak se activa al entrar y empieza en tercera persona. Puedes jugar con **teclado y ratón o mando PlayStation/Xbox**. Consulta los [controles completos](CONTROLES.md) y el [recorrido del mapa](docs/SHOWCASE.md).
 
-The mod ships **no game files at all**. Its installer builds them on your PC from your OpenGOAL installation. Without all three games installed in OpenGOAL, the installer will not continue.
+## Qué puedes hacer
 
-### What's included
-- **Jak and Daxter:** Jak's original movement and combat (jumps, double jump, roll, punch, spin kick, ledge grab, swimming, ladders), with Daxter on his shoulder.
-- **Powers:** Dark Jak (bomb with X+Square, lightning blast with X+Circle) and Light Jak (flight, shield, time freeze, healing).
-- **Guns:** all 12 Jak 3 Morph Guns. Survival uses eco ammo from your inventory; Creative lets you fire them and use Jak's powers without carrying ammo or eco.
-- **JET-Board**, with grind rails; it rides over water.
-- **Jak pieces to build with:** Jak 1's blue eco launcher, the Geyser Rock iris door (opens with blue eco) and Haven's airlock, 3x3 blocks. Every Jak decorative piece is made in the stonecutter.
-- **Vehicles:** HellCat, Helldog, Haven zoomers, desert cars, Leapers and the Flut Flut, which can be tamed and bred.
-- **Enemies:** 18 types from Jak 1 and Jak 3, plus Jak II's Krimson Guards. Each lives in its own biome and has its own nests.
-- **Places generated in normal worlds:** Haven City with its traffic and citizens, Spargus in the desert, Sandover and the crater cave.
-- **Citizens** with trades, recipes for all of Jak's gear, coloured eco and eco vents.
-- **Spin kick:** shoves targets without hurting them, can activate mechanisms, and cuts vegetation such as grass, wheat and bamboo.
-- **A camera that passes through walls** without showing the void behind them, so Jak stays visible in caves and tight spots.
-- **Controller** (PlayStation/Xbox) and keyboard. Controls are in [CONTROLES.md](CONTROLES.md).
+### Moverte y combatir como Jak
 
-### Requirements
-- Windows 10/11, 64-bit.
-- Minecraft Java **26.3** (official launcher), launched at least once before installing.
-- **OpenGOAL with Jak 1, Jak II and Jak 3 installed**. Do not move them after installing the mod.
-- Internet during installation (to download Fabric and Fabric API).
+Doble salto, rodar, puñetazo, patada giratoria, agarres a bordes, natación y escaleras, con Daxter al hombro. La patada **empuja sin herir**, activa mecanismos y corta vegetación como hierba, trigo o bambú. La cámara está adaptada para seguir a Jak también en espacios estrechos.
 
-### Installation
-1. Download the RAR of the latest version from [Releases](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
-2. Extract the **whole** RAR into a folder.
-3. Close Minecraft and its launcher, then run `JakMod-Installer.exe`.
-4. Choose **en**, check the OpenGOAL and Minecraft folders and click **Install JakMod**. The first install takes several minutes.
-5. In the launcher, pick the **26.3.jakmod** installation.
+### Usar eco, poderes y las doce armas
 
-Your normal worlds are left alone: JakMod keeps its own in `.minecraft\instances\jakmod`. The full guide is in [installer/README-EN.md](installer/README-EN.md).
+Transformaciones de **Jak oscuro y Jak luminoso**, con bomba oscura, rayos, vuelo, escudo, tiempo detenido y curación. Las **12 armas Morph de Jak 3** usan munición de eco del inventario en supervivencia. En creativo puedes disparar y usar poderes sin llevar munición ni eco.
 
-### Showcase world
-The installer adds **Jak Showcase (JakMod)** to **Singleplayer**. The map brings Spargus and Haven together with a route of stations to try the mechanics. See [docs/SHOWCASE.md](docs/SHOWCASE.md) for the map guide.
+### Montar tu propio garaje
 
-### Status
-Development build (`0.1.0-dev`). Open work is listed in [PENDIENTE-PORT.md](PENDIENTE-PORT.md) and [docs/FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). Not an official Naughty Dog, Sony, Mojang, Microsoft or OpenGOAL product.
+**Turbotabla**, raíles para grind y recorridos sobre el agua; **zoomers, HellCat, Helldog y coches del desierto**; también **Leapers y Flut Flut**, que se puede domar y criar.
 
----
+### Explorar ciudades y encontrarte con sus habitantes
 
-## Development port
+**Villa Refugio**, con ciudadanos y tráfico; **Spargus** en el desierto; **Sandover** y la **cueva del cráter**, que se generan en mundos normales. Hay ciudadanos con comercio, guardias Krimson y **18 tipos de enemigos de Jak 1 y Jak 3**, con sus biomas y nidos.
 
-### Credits / Créditos
+### Construir con piezas de Jak
 
-Project by AdriiSuizo, developed with assistance from Claude and Codex. Built on Fabric and OpenGOAL, with Sodium, Sodium Extra, Lithium, FerriteCore and EntityCulling in the installer profile. Third-party notices are retained in `third_party` and in the installer. Jak game resources belong to their respective owners and are converted locally from the user's own OpenGOAL installation; they are not included in the download.
+Saltadores de eco azul, la puerta iris de la Roca del Géiser, la esclusa de Villa Refugio de 3 × 3 bloques, decoraciones, recetas y respiraderos de eco. Las piezas decorativas se fabrican en el cortapiedras. Encontrarás más detalles en la [guía de inventario y economía](docs/INVENTORY-ECONOMY.md).
 
-Proyecto de AdriiSuizo, desarrollado con asistencia de Claude y Codex. Las licencias y avisos de terceros se conservan en `third_party` y en el instalador. Los recursos de los juegos se convierten localmente desde la instalación de OpenGOAL del usuario.
+## Si algo falla
 
-Development port of the Jak systems from the Rust mashup into actual Minecraft Java. Targets Minecraft 26.3, Fabric Loader 0.20.1, Fabric API 0.165.0+26.3 and Java 25. MW2 and Skate 3 content are excluded; the original Jak JET-Board is included.
+Si el instalador se detiene, pulsa **Copiar para comentar** en la ventana del error. Pega ese informe breve en los comentarios del vídeo de instalación del [canal de AdriiSuizo](https://www.youtube.com/@AdriiSuizo) y añade qué estabas haciendo. **Abrir registro local** permite consultar el detalle en tu equipo.
 
-Minecraft owns registries, inventories, screens, entities, saves and collision shapes. A small versioned JNI library runs the existing pure Rust Jak simulation. Owned OpenGOAL exports provide the original models, animations, particle definitions and SFX; generated assets and all development saves are ignored by Git.
+Si el fallo ocurre dentro del juego, explica qué estabas haciendo y cómo repetirlo. Jak Worlds sigue siendo una **versión de desarrollo**: quedan ajustes de comportamiento, animación y compatibilidad. El rendimiento depende de tu equipo y del mundo; **no se garantiza una cifra de FPS**. Puedes consultar los [pendientes del port](PENDIENTE-PORT.md) y las [correcciones pendientes](docs/FIXES-PENDIENTES.md).
 
-Current integration includes the cinematic Jak/Daxter models, cloth, original movement and combat, Morph Guns, Dark/Light powers, original particles/audio, inventory-owned eco/ammunition, durable JET-Board equipment, native citizens/trades and 18 enemy types plus Krimson Guards. Haven, desert-only Spargus, Sandover and the crater cave generate in normal worlds. Rideable Leapers/Flut Fluts, HellCat/Helldog, zoomers and two Jak 3 wheeled cars use the source simulation. The port is still in development; [docs/CURRENT-PORT-HANDOFF.md](docs/CURRENT-PORT-HANDOFF.md) records current evidence and remaining limits, and [docs/PORTING-SCOPE.md](docs/PORTING-SCOPE.md) retains the feature inventory.
+## Recursos y créditos
 
-Build with Java 25, Cargo and Gradle 9.8 (`gradlew build`). `buildNative` compiles the JNI library into the mod. The current native package is Windows x86-64. `RuntimeConfig` reads `config/jakmc.properties` (`assets=` points to the owned Jak 3 decompiler export; sibling Jak 1 exports are used for its creatures). Optional development overrides are `-Djakmc.assets` and `-Djakmc.native`.
+La descarga **no incluye los juegos ni sus recursos extraídos**. El instalador convierte los modelos, animaciones, partículas y sonidos en tu ordenador, usando tu propia instalación de OpenGOAL.
 
-`tools/import_audio.py` converts the owned OpenGOAL SFX banks with ffmpeg. Run `python tools/import_flut_eyes.py <owned-jak1-eye-layers>` with Pillow to bake the three source eye layers from the Rust project's `crates/assets/data/jak1-eyes` folder. Run `python tools/import_hellcat_deck.py <owned-jak3-export>` to import the HellCat collision relief and authored damage partitions. Pass `--helldog` with the owned Jak II export to import the black Hell Dog hull. The content exporter and `tools/import_content.py` prepare private block/object/blueprint resources. Source provenance and exact validation failures are recorded in [MODLOG.md](MODLOG.md). Retail game assets are not part of the source repository or a public release.
+Proyecto de **AdriiSuizo**, desarrollado con asistencia de **Claude y Codex**, sobre Fabric y OpenGOAL. El perfil incluye Sodium, Sodium Extra, Lithium, FerriteCore y EntityCulling. Los [créditos, licencias y notas de desarrollo](docs/DEVELOPMENT.md) conservan los detalles técnicos y avisos de terceros. No es un producto oficial de Naughty Dog, Sony, Mojang, Microsoft ni OpenGOAL.
 
-The Gradle development client uses `run/`, separate from the personal Minecraft installation. Jak activates automatically in that client and in the installed launcher profile and `/jak equipment` supplies equipment in creative mode. Original enemy spawn eggs are in the Jak creatures creative tab; vanilla `/summon jakmc:<type>` also works. Keyboard actions are under the Jak controls category. SDL controller input now drives the same original movement core in first and third person. Native inventory screens retain Minecraft behavior, with controller input and cursor navigation; see [CONTROLES.md](CONTROLES.md).
+<details>
+<summary><strong>English — download and quick start</strong></summary>
 
-`tools/run_scene.py` drives bounded development scenes through an in-game file bridge, without desktop input. Each destructive take runs in a separate save copy, retained with its receipt outside the world selector, and restores its pre-test options. It records screenshots/results and closes its own client. Screenshots require visual review; native boundary checks and successful compilation do not certify untested gameplay. See `.local/evidence/` for private receipts.
+Play Minecraft as Jak, with Daxter on his shoulder: original movement, Dark/Light powers, the twelve Morph Guns, JET-Board, vehicles, enemies and cities from the trilogy.
 
-Project code follows the source repository's Apache-2.0 license; the initial Fabric template's CC0 notice is retained in `LICENSE-FABRIC-TEMPLATE`. Extracted game content retains its original ownership.
+**[Download the Windows installer — v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18)**. Under **Assets**, choose the installer RAR rather than the source-code archives.
 
-## Local manual play
+You need **64-bit Windows 10/11**, **Minecraft Java 26.3** from the official launcher, and **all three Jak games installed in OpenGOAL from your own copies**. Launch Minecraft once before installation. Internet is required; an initial extraction may need about 35 GB free, with about 11 GB retained afterwards.
 
-On this machine, double-click `PROBAR-JAK.bat`. It sets Java 25 only for its own process and runs the isolated Fabric development client; it does not install into the personal Minecraft profile. The configured dev world opens automatically. No automatic test scene starts.
+Your ISOs are needed to install the games into OpenGOAL, but do not need to remain at hand for Jak Worlds. **Keep the OpenGOAL installation and its extracted data; do not delete or move them after installing the mod.**
 
-Jak activates automatically and starts in third person. Use `/gamemode creative` and `/jak equipment` for creative testing. `/jak off` explicitly disables Jak; the choice persists. Right-click the JET-Board or move it into its dedicated native inventory slot (above offhand), then B to mount/stow. Shift-click equips it from the inventory. It follows native keepInventory and Vanishing rules on death. Hold a Morph Gun and press R to fire; hold/release R to charge/fire the Wave Concussor. G punches, V spins, Space jumps. Creature eggs are in the Jak creatures creative tab; `/summon jakmc:grunt ~ ~ ~4` is a direct example. Switch to survival to test enemy aggression. Z/X use dark/light powers; in survival they require eco. Controls can be rebound in Minecraft options.
+1. Download the release RAR and extract the **whole** archive.
+2. Close Minecraft and its launcher, then run `JakMod-Installer.exe`.
+3. Select **English** and check the OpenGOAL and Minecraft folders.
+4. Click **Install or update JakMod** and wait for conversion to finish.
+5. Reopen the launcher and select **26.3.jakmod**. Enable **Modded** under **Installations** if the profile is hidden.
 
-Controller. Left stick moves and right stick looks. PlayStation X / Xbox A jumps and double-jumps, Square / X punches and Circle / B spins. L1 rolls with movement, L2 uses/interacts through Minecraft and aims held Morph Guns; R2 attacks/mines or fires the held Morph Gun. Triangle / Y deploys/stows the JET-Board only when equipped in its own slot. Select / Back opens inventory and Start pauses. Hold R3 with D-pad Up or Down to zoom into or out of first person. Tap D-pad Down to drop one item; hold it to drop the whole stack. L3 controls transformations and Light Jak chords. See [CONTROLES.md](CONTROLES.md) for the complete mapping.
+The installer includes **Jak Showcase (JakMod)** in Singleplayer. Use an existing **Jak Showcase** world if you already have it; updates preserve progress. Keyboard/mouse and PlayStation/Xbox controllers are supported.
 
+[Full installation guide](installer/README-EN.md) · [Controls](CONTROLES.md) · [Showcase map](docs/SHOWCASE.md) · [Development and credits](docs/DEVELOPMENT.md)
 
-En supervivencia, el eco y la munición se consumen del inventario real, incluidas shulkers y bolsas. Las recetas, la durabilidad y los comercios se explican en [Inventario y economía](docs/INVENTORY-ECONOMY.md). Para localizar las ciudades de generación normal: `/jak locate haven` y `/jak locate spargus`.
+For installer errors, copy the short report from the error window and post it in the installation video's comments on [AdriiSuizo's channel](https://www.youtube.com/@AdriiSuizo), explaining what you were doing. This is a development build; remaining issues and performance depend on the system and world. No FPS target is guaranteed.
+
+No game files are distributed. Assets are converted locally from your own OpenGOAL installation. This is an unofficial project.
+
+</details>

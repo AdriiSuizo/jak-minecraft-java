@@ -1,6 +1,12 @@
-# Controles actuales del port Java
+![Jak Worlds](docs/media/jak-worlds-header.gif)
 
-Abre `PROBAR-JAK.bat`. En la partida: `/jak on`; `/jak equipment` da el equipo si estás en creativo. Usa F5 para alternar las perspectivas. Mantén R3 y usa la cruceta arriba o abajo para acercar o alejar la cámara hasta entrar o salir de primera persona. No hace falta instalar otro mod de mando: se usa SDL, incluido en esta versión de Minecraft.
+[Inicio](README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](docs/README.md)
+
+---
+
+# Controles de Jak Worlds
+
+Abre el perfil **26.3.jakmod** en el launcher. Jak se activa automáticamente al entrar en una partida; si lo habías desactivado, escribe `/jak on`. En creativo, `/jak equipment` te da el equipo para probar las mecánicas. Usa F5 para alternar las perspectivas. Mantén R3 y usa la cruceta arriba o abajo para acercar o alejar la cámara hasta entrar o salir de primera persona. No hace falta instalar otro mod de mando: se usa SDL, incluido en esta versión de Minecraft.
 
 | Acción | PlayStation | Xbox |
 |---|---|---|

@@ -1,3 +1,9 @@
+![Jak Worlds](media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # Jak → real Minecraft Java: current implementation
 
 Updated 2026-11-05. Latest continuation entry point: [HANDOFF-JAK-JAVA-2026-11-05.md](../HANDOFF-JAK-JAVA-2026-11-05.md). Continue the full Jak port from the read-only original Rust mashup. Do not repeat recon or the accepted enemy/weapon takes without a relevant change. No MW2 content or Skate 3; Jak's JET-Board remains in scope. The user wants complete mechanics, effects, sound and normal Minecraft interaction, not only models.

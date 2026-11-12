@@ -1,3 +1,9 @@
+![Jak Worlds](media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # Mundo de showcase
 
 Un mundo normal (no ultraplano) con Spargus y Villarefugio uno al lado del otro. Entre las dos ciudades hay un camino con una jincana de estaciones para enseñar el mod poco a poco.

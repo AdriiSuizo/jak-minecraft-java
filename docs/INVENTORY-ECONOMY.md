@@ -1,6 +1,14 @@
+![Jak Worlds](media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # Inventario, eco, munición y turbotabla
 
-El servidor usa los objetos transportados como única reserva. Una unidad de eco oscuro aporta cuatro puntos y una de eco luminoso dos; el círculo original de Jak III muestra hasta cien puntos por lado. El consumo se descuenta automáticamente durante las acciones. El vuelo luminoso también necesita y consume eco. Creativo conserva munición infinita, como el resto de armas de Minecraft; los poderes necesitan eco transportado.
+En supervivencia, los objetos que llevas son la reserva de eco y munición. Una unidad de eco oscuro aporta cuatro puntos y una de eco luminoso dos; el círculo original de Jak III muestra hasta cien puntos por lado. El consumo se descuenta durante las acciones. El eco luminoso se almacena en unidades apilables y se consume en unidades enteras; el vuelo también consume eco.
+
+**En creativo, tanto las armas como los poderes pueden utilizarse sin llevar munición ni eco y no consumen objetos.**
 
 Se cuentan las ranuras normales y la mano secundaria, los componentes nativos de contenedores (incluidas shulkers y bolsas) y los inventarios extraíbles que las mochilas expongan mediante Fabric ItemStorage/ContainerItemContext. Los bolsillos protegidos de una mochila no se cuentan como combustible extraíble. La simulación del total comparte una transacción entre todas sus vistas para no contar dos veces el mismo bolsillo accesible. Esto no certifica todas las implementaciones privadas de mochilas de otros mods. No se consulta el cofre de Ender ni cofres colocados en el mundo.
 

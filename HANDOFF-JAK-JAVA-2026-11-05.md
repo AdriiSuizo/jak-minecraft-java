@@ -1,3 +1,9 @@
+![Jak Worlds](docs/media/jak-worlds-header.gif)
+
+[Inicio](README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](docs/README.md)
+
+---
+
 # Handoff — Jak en Minecraft Java
 
 Actualizado el **5 de noviembre de 2026, 02:42 CET (Europe/Zurich)**. Este es el punto de entrada para continuar. Lee este archivo completo y después los enlaces pertinentes; no reinicies toda la auditoría ni repitas pruebas aceptadas sin una modificación o un fallo concreto que lo justifique.

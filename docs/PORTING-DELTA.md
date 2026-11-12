@@ -1,3 +1,9 @@
+![Jak Worlds](media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # Inventario del port de Jak a Minecraft Java
 
 Revisión del 4 de noviembre de 2026. Este inventario sigue el código del mashup y la evidencia de ejecución del port. Una función puede conservar su implementación en el núcleo Rust y seguir necesitando el puente con Minecraft para funcionar durante una partida.

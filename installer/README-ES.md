@@ -1,3 +1,9 @@
+![Jak Worlds](../docs/media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # JakMod para Minecraft Java — instalación
 
 Versión de desarrollo para Windows 10/11 de 64 bits. Minecraft Java 26.3,

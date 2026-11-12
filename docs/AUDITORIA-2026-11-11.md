@@ -1,3 +1,9 @@
+![Jak Worlds](media/jak-worlds-header.gif)
+
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Guías](../docs/README.md)
+
+---
+
 # Auditoría de Jak en Minecraft · 11 de noviembre de 2026
 
 ## Entorno
