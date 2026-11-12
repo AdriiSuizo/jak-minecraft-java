@@ -42,7 +42,7 @@ El mod no incluye **ningún archivo de los juegos**. Su instalador los genera en
 Tus mundos normales no se tocan: JakMod guarda los suyos en `.minecraft\instances\jakmod`. La guía completa está en [installer/README-ES.md](installer/README-ES.md).
 
 ### Mundo de showcase
-Cada versión incluye `JakShowcase-world.zip`: un mundo normal con Spargus y Villarefugio juntos y, entre los dos, una jincana de estaciones que enseña el mod paso a paso. Extrae el ZIP en `%APPDATA%\.minecraft\instances\jakmod\saves`. La guía está en [docs/SHOWCASE.md](docs/SHOWCASE.md).
+El instalador añade **Jak Showcase (JakMod)** a **Un jugador**. El mapa reúne Spargus y Villarefugio y tiene un recorrido de estaciones para probar las mecánicas. La guía está en [docs/SHOWCASE.md](docs/SHOWCASE.md).
 
 ### Estado
 Versión de desarrollo (`0.1.0-dev`). Los pendientes están en [PENDIENTE-PORT.md](PENDIENTE-PORT.md) y [docs/FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). No es un producto oficial de Naughty Dog, Sony, Mojang, Microsoft ni OpenGOAL.
@@ -85,7 +85,7 @@ The mod ships **no game files at all**. Its installer builds them on your PC fro
 Your normal worlds are left alone: JakMod keeps its own in `.minecraft\instances\jakmod`. The full guide is in [installer/README-EN.md](installer/README-EN.md).
 
 ### Showcase world
-Each release includes `JakShowcase-world.zip`: a normal world with Spargus and Haven side by side and, between them, a road of stations that shows the mod step by step. Extract the ZIP into `%APPDATA%\.minecraft\instances\jakmod\saves`. The guide is in [docs/SHOWCASE.md](docs/SHOWCASE.md).
+The installer adds **Jak Showcase (JakMod)** to **Singleplayer**. The map brings Spargus and Haven together with a route of stations to try the mechanics. See [docs/SHOWCASE.md](docs/SHOWCASE.md) for the map guide.
 
 ### Status
 Development build (`0.1.0-dev`). Open work is listed in [PENDIENTE-PORT.md](PENDIENTE-PORT.md) and [docs/FIXES-PENDIENTES.md](docs/FIXES-PENDIENTES.md). Not an official Naughty Dog, Sony, Mojang, Microsoft or OpenGOAL product.

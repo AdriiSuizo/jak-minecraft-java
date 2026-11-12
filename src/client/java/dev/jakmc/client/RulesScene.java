@@ -36,7 +36,7 @@ import java.util.*;
  * under Jak, and the same Jak survives a teleport and a dimension change.
  */
 public final class RulesScene {
- private static boolean running,counting;
+ private static boolean running,counting,finishing;
  private static int tick,vanillaSteps,jakSteps;
  private static long session;
  private static UUID player,cat,bike,sunk;
@@ -60,7 +60,7 @@ public final class RulesScene {
 
  public static void start(Minecraft c){
   if(running||c.player==null||c.getSingleplayerServer()==null)throw new IllegalStateException("Open isolated dev world");
-  tick=vanillaSteps=jakSteps=0;counting=false;session=0;base=null;cat=bike=sunk=null;
+  tick=vanillaSteps=jakSteps=0;counting=finishing=false;session=0;base=null;cat=bike=sunk=null;
   RESULT.entrySet().clear();IDS.clear();INVENTORY.clear();
   player=c.player.getUUID();
   output=c.gameDirectory.toPath().resolve("jakmc/evidence/rules");
@@ -120,7 +120,7 @@ public final class RulesScene {
  }
 
  private static void tick(Minecraft c){
-  if(!running)return;
+  if(!running||finishing)return;
   if(c.player==null||c.getSingleplayerServer()==null){finish(c,"lost world");return;}
   int t=++tick;
   if(base==null){if(t>200)finish(c,"setup never ran");return;}
@@ -172,7 +172,10 @@ public final class RulesScene {
   if(t>=175)view=null;
   if(t==78)capture(c,"rules-items.png");
   if(t==140)capture(c,"rules-walk.png");
-  if(t>=255)finish(c,"complete");
+  if(t>=255){
+   finishing=true;
+   c.getSingleplayerServer().execute(()->c.execute(()->finish(c,"complete")));
+  }
  }
  private static void look(Vec3 at,Vec3 target){
   Vec3 d=target.subtract(at);
@@ -193,12 +196,16 @@ public final class RulesScene {
   RESULT.addProperty("passed",passed);
   RESULT.addProperty("visual_review","required");
   try{Files.writeString(output.resolve("result.json"),RESULT.toString());}catch(Exception e){throw new RuntimeException(e);}
-  if(c.getSingleplayerServer()!=null)c.getSingleplayerServer().execute(()->{
-   var p=server(c);if(p==null)return;
-   for(var level:c.getSingleplayerServer().getAllLevels())for(UUID id:IDS){var e=level.getEntity(id);if(e!=null)e.discard();}
-   for(int i=0;i<INVENTORY.size();i++)p.getInventory().setItem(i,INVENTORY.get(i));
-   JakPlayers.controlForProbe(p,false);
+  var server=c.getSingleplayerServer();
+  if(server==null){c.stop();return;}
+  server.execute(()->{
+   var p=server.getPlayerList().getPlayer(player);
+   if(p!=null){
+    for(var level:server.getAllLevels())for(UUID id:IDS){var e=level.getEntity(id);if(e!=null)e.discard();}
+    for(int i=0;i<INVENTORY.size();i++)p.getInventory().setItem(i,INVENTORY.get(i));
+    JakPlayers.controlForProbe(p,false);
+   }
+   c.execute(c::stop);
   });
-  c.stop();
  }
 }

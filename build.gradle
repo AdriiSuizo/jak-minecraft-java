@@ -100,6 +100,57 @@ tasks.register('distributionJar', Jar) {
  exclude { privateFiles.get().contains(it.path) }
 }
 
+// Replay Mod is optional and supplied locally. Only this variant links its API.
+def replayJar = providers.gradleProperty('jakmcReplayJar')
+def replayClasspath = files(replayJar.map { file(it) })
+def movieClasses = layout.buildDirectory.dir('classes/java/movie')
+def movieMetadata = layout.buildDirectory.file('generated/movie/fabric.mod.json')
+def baseJar = tasks.named('jar', Jar)
+
+tasks.register('compileMovieJava', JavaCompile) {
+ dependsOn tasks.named('compileClientJava')
+ source fileTree('src/movie/java')
+ classpath = sourceSets.client.compileClasspath + sourceSets.main.output + sourceSets.client.output + replayClasspath
+ destinationDirectory = movieClasses
+ options.compilerArgs += ['-proc:none']
+ doFirst {
+  if (replayClasspath.files.size() != 1 || !replayClasspath.singleFile.isFile())
+   throw new GradleException('Pass -PjakmcReplayJar with the path to the Replay Mod JAR for Minecraft 26.3.')
+ }
+}
+
+tasks.register('generateMovieMetadata') {
+ dependsOn tasks.named('processResources')
+ def input = tasks.named('processResources').map { it.destinationDir.toPath().resolve('fabric.mod.json').toFile() }
+ inputs.file(input)
+ inputs.files(replayClasspath)
+ outputs.file(movieMetadata)
+ doLast {
+  def json = new groovy.json.JsonSlurper()
+  def metadata = json.parse(input.get())
+  def replay
+  new java.util.zip.ZipFile(replayClasspath.singleFile).withCloseable { archive ->
+   archive.getInputStream(archive.getEntry('fabric.mod.json')).withCloseable { stream -> replay = json.parse(stream) }
+  }
+  if (replay.id != 'replaymod') throw new GradleException('jakmcReplayJar must point to a Replay Mod JAR.')
+  metadata.entrypoints.client += 'dev.jakmc.client.MovieReplaySupport'
+  metadata.mixins += [config: 'jakmc.movie.mixins.json', environment: 'client']
+  metadata.depends.replaymod = '=' + replay.version
+  def output = movieMetadata.get().asFile
+  output.parentFile.mkdirs()
+  output.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata)), 'UTF-8')
+ }
+}
+
+tasks.register('movieJar', Jar) {
+ dependsOn baseJar, tasks.named('compileMovieJava'), tasks.named('generateMovieMetadata')
+ archiveClassifier = 'movie'
+ from({ zipTree(baseJar.get().archiveFile.get().asFile) }) { exclude 'fabric.mod.json' }
+ from movieClasses
+ from 'src/movie/resources'
+ from movieMetadata
+}
+
 
 def devWorld = providers.gradleProperty("jakmcDevWorld").orElse("New World (1)")
 loom.runs.client {

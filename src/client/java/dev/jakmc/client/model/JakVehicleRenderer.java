@@ -62,7 +62,7 @@ public final class JakVehicleRenderer extends EntityRenderer<JakVehicle,JakVehic
     @Override public State createRenderState(){return new State();}
     @Override public void extractRenderState(JakVehicle car,State state,float partial){
         super.extractRenderState(car,state,partial);
-        if(dev.jakmc.client.JakPoses.inReplay())car.sampleReplayPresentation(partial);
+        if(dev.jakmc.client.JakPoses.inReplay())dev.jakmc.client.MovieVehicles.sample(car,partial);
         else if(car.getFirstPassenger()!=net.minecraft.client.Minecraft.getInstance().player)car.samplePresentation(System.nanoTime());
         var position=car.presentationPosition();
         state.x=position.x;state.y=position.y;state.z=position.z;

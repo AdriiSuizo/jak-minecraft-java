@@ -210,7 +210,8 @@ public final class JakRenderer {
         if(flight!=null){
             var hull=Minecraft.getInstance().level.getEntity(flight.get("entity").getAsInt());
             if(!portrait&&hull instanceof dev.jakmc.entity.JakHellcat cat&&flight.get("boarding").getAsFloat()<0){
-                var attitude=JakPoses.flightRotation();
+                var shown=dev.jakmc.client.MovieMotion.flight(cat.getId());
+                var attitude=shown==null?JakPoses.flightRotation():shown.attitude();
                 var bank=new org.joml.Quaternionf().rotateY((float)Math.toRadians(pose.yaw())).mul(
                     attitude==null?cat.attitude():attitude);
                 stack.mulPose(new org.joml.Matrix4f().rotation(bank));

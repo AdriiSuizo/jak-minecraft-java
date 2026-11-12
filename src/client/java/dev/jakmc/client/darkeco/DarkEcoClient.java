@@ -17,8 +17,12 @@ public final class DarkEcoClient {
     private DarkEcoClient(){}
     private static final Identifier WATER=JakData.id("block/dark_eco_still"),SHINE=JakData.id("block/dark_eco_flow");
     public static void initialize(){
+        boolean vanilla=dev.jakmc.client.TerrainCompatibility.vanillaTerrain();
+        // The vanilla shader uses the black still texture as an alpha mask and
+        // the magenta tint as a marker. Use the visible reflection as a sprite
+        // where that shader is unavailable.
         FluidRenderingRegistry.register(DarkEco.SOURCE,DarkEco.FLOWING,new FluidModel.Unbaked(
-            new Material(WATER),new Material(SHINE),null,BlockTintSources.constant(0xff00ff)));
+            new Material(vanilla?WATER:SHINE),new Material(SHINE),null,BlockTintSources.constant(vanilla?0xff00ff:0xd6c4f2)));
     }
     private static void sprite(ByteBuffer buffer,int at,TextureAtlasSprite sprite){
         buffer.putFloat(at,sprite.getX()).putFloat(at+4,sprite.getY());
@@ -30,10 +34,12 @@ public final class DarkEcoClient {
         var atlas=Minecraft.getInstance().getAtlasManager().getAtlasOrThrow(AtlasIds.BLOCKS);
         sprite(buffer,at,atlas.getSprite(WATER));
         sprite(buffer,at+16,atlas.getSprite(SHINE));
-        double seconds=System.nanoTime()/1e9%4096;
+        boolean replay=dev.jakmc.client.JakPoses.inReplay();
+        double seconds=(replay?dev.jakmc.client.MovieMotion.seconds():System.nanoTime()/1e9)%4096;
         // dark-eco-pool water-vol-idle: individual-normal-scale 0.5 + cos^2(5 t)/2 of the pool's normal-scale 4, t at 300 a second.
         // stand-in: twice that here, the swirls of the map coming across a pool a few blocks wide and not a silo's 80 m.
         double swell=Math.cos(5*seconds*300/65536*2*Math.PI);swell*=swell;
         buffer.putFloat(at+32,(float)seconds).putFloat(at+36,(float)(8*(.5+swell/2)));
+        buffer.putFloat(at+40,replay?1:0);
     }
 }

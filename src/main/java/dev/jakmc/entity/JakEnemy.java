@@ -46,8 +46,9 @@ public final class JakEnemy extends Monster {
  private final Kermit kermit;
  private State state=State.IDLE;
  private int stateTicks,pathWait,landTicks,windup,airTicks,stillTicks;
- /** Ticks off the ground and at a stop before they show: a quarter and two fifths of a second. */
- private static final int AIR_SHOWN=5,STILL_SHOWN=8;
+ /** Briefly keep locomotion through a pause at a waypoint or on uneven ground. */
+ private static final int AIR_SHOWN=5,STILL_SHOWN=5;
+ private Vec3 lastLocomotionPosition;
  private int reactionEnds,crabPhase=-1;
  private int nextCrabAttack;
  private boolean leftBoneSwing;
@@ -126,7 +127,12 @@ public final class JakEnemy extends Monster {
   if(next!=State.CHASE&&next!=State.WALK){getNavigation().stop();getMoveControl().setWantedPosition(getX(),getY(),getZ(),0);}
  }
  @Override protected void customServerAiStep(ServerLevel level){
-  super.customServerAiStep(level);if(guard!=null){guard.tick(level);sounds();return;}if(home==null)home=position();stateTicks++;if(pathWait>0)pathWait--;if(landTicks>0)landTicks--;
+  super.customServerAiStep(level);
+  Vec3 current=position();
+  stillTicks=lastLocomotionPosition!=null&&current.subtract(lastLocomotionPosition).horizontalDistanceSqr()<.0001
+      ?Math.min(stillTicks+1,STILL_SHOWN):0;
+  lastLocomotionPosition=current;
+  if(guard!=null){guard.tick(level);sounds();return;}if(home==null)home=current;stateTicks++;if(pathWait>0)pathWait--;if(landTicks>0)landTicks--;
   if(!hopper&&onGround()&&!wasGround&&isAlive()&&airTicks>=AIR_SHOWN)landTicks=Math.max(1,(int)(20*kind.duration(kind.jump[2])));wasGround=onGround();
   airTicks=onGround()?0:airTicks+1;
   LivingEntity target=getTarget();
@@ -334,17 +340,15 @@ public final class JakEnemy extends Monster {
   if(crab&&state==State.IDLE){animateCrabIdle();return;}
   if(boneLurker&&state==State.ATTACK)c=boneSwing();
   if(hopper&&windup>0)return;
-  // nav-enemy changes clip with its state, not with each tick of its footing: a step down or a pause of the path
-  // (Adrii 07/11: erratic) leaves the clip on until it lasts.
-  stillTicks=getDeltaMovement().horizontalDistanceSqr()<.0001?stillTicks+1:0;
   if(state==State.CHASE||state==State.WALK){
    if(airTicks>=AIR_SHOWN&&!isInWater()&&!kind.jump[1].isEmpty())c=kind.jump[1];
    else if(landTicks>0&&!kind.jump[2].isEmpty()){c=kind.jump[2];loops=false;}
    // In water they just float (FloatGoal): their own idle/move clip, no swim loop (Adrii 06/11).
-   else if(stillTicks>=STILL_SHOWN){c=kind.clips[0];if(crab){animate(c,false,0);return;}}
+   else if(!locomotionVisible()){c=kind.clips[0];if(crab){animate(c,false,0);return;}}
   }
   animate(c,loops,1);
  }
+ boolean locomotionVisible(){return stillTicks<STILL_SHOWN;}
  private void sounds(){
   String clip=animation();var art=kind.animations.get(clip);if(art==null)return;
   float seconds=animationSeconds(0),duration=art.duration();if(animationLoops()&&duration>0)seconds%=duration;

@@ -94,7 +94,15 @@ public final class GltfModel {
         RenderType type(){if(type==null)type=dev.jakmc.client.JakEffectTypes.envmap(environment,strength);return type;}
         RenderType merged(){if(merged==null)merged=dev.jakmc.client.JakEffectTypes.envmapTriangles(environment,strength);return merged;}
     }
-    private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,Identifier texture,String material,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals,EnvPass envpass){}
+    private record Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,
+        Identifier texture,String material,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals,EnvPass envpass,
+        int[] restColors){
+        Surface(float[] positions,float[] normals,float[] uv,float[] colors,float[] weights,int[] joints,int[] indices,
+            Identifier texture,String material,boolean translucent,boolean skullGem,float[][] morphPositions,float[][] morphNormals,EnvPass envpass){
+            this(positions,normals,uv,colors,weights,joints,indices,texture,material,translucent,skullGem,morphPositions,morphNormals,envpass,
+                baseColors(colors));
+        }
+    }
     private record Channel(int node,String path,float[] times,float[] values,int components,boolean step){}
     private record Clip(List<Channel> channels,float duration,int frames){
         Clip(List<Channel> channels,float duration){this(channels,duration,channels.stream().mapToInt(c->c.times.length).max().orElse(1));}
@@ -155,7 +163,6 @@ public final class GltfModel {
             if(compensateScale&&file.getFileName().toString().startsWith("predator-")&&material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND")&&material.has("name")&&Set.of("common-white","common-white-envmap").contains(material.get("name").getAsString()))continue;
             var pbr=material.getAsJsonObject("pbrMetallicRoughness");
             float[] factor=pbr.has("baseColorFactor")?array(pbr.getAsJsonArray("baseColorFactor")):new float[]{1,1,1,1};
-            color=color.clone();for(int i=0;i<color.length;i++)color[i]*=factor[i%4];
             int texture=pbr.getAsJsonObject("baseColorTexture").get("index").getAsInt();
             String mode=material.has("alphaMode")?material.get("alphaMode").getAsString():"OPAQUE";
             // Rust reference AlphaRule::Opaque: an OPAQUE material is drawn whole. Its alpha is no cover, and on envmapped
@@ -208,13 +215,25 @@ public final class GltfModel {
             for(int t=0;t<targetCount;t++){var target=p.getAsJsonArray("targets").get(t).getAsJsonObject();if(target.has("POSITION"))morphPositions[t]=accessor(target.get("POSITION").getAsInt());if(target.has("NORMAL"))morphNormals[t]=accessor(target.get("NORMAL").getAsInt());}
             // OpenGOAL exports share accessors across different models in an art group.
             // Only this primitive's indexed vertices belong to this skeleton.
-            var remap=new LinkedHashMap<Integer,Integer>();for(int index:indices)remap.computeIfAbsent(index,_ -> remap.size());
-            int[] used=remap.keySet().stream().mapToInt(Integer::intValue).toArray();
-            int[] compactIndices=Arrays.stream(indices).map(remap::get).toArray();
+            int[] remap=new int[count];
+            int[] vertices=new int[Math.min(count,indices.length)];
+            int[] compactIndices=new int[indices.length];
+            int vertexCount=0;
+            for(int i=0;i<indices.length;i++){
+                int index=indices[i];
+                if(remap[index]==0){
+                    vertices[vertexCount++]=index;
+                    remap[index]=vertexCount;
+                }
+                compactIndices[i]=remap[index]-1;
+            }
+            int[] used=Arrays.copyOf(vertices,vertexCount);
+            float[] compactColor=select(color,4,used);
+            for(int i=0;i<compactColor.length;i++)compactColor[i]*=factor[i%4];
             for(int m=0;m<targetCount;m++){if(morphPositions[m]!=null)morphPositions[m]=select(morphPositions[m],3,used);if(morphNormals[m]!=null)morphNormals[m]=select(morphNormals[m],3,used);}
-            int[] compactBones=bone==null?null:toInts(select(toFloats(bone),4,used));
+            int[] compactBones=bone==null?null:select(bone,4,used);
             if(compactBones!=null)for(int vertex=0;vertex<used.length;vertex++)for(int k=0;k<4;k++)if(weight[used[vertex]*4+k]>0&&(compactBones[vertex*4+k]<0||compactBones[vertex*4+k]>=joints.length))throw new IOException("Indexed vertex uses missing skin joint in "+file);
-            surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),select(color,4,used),weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("name")?material.get("name").getAsString():"",material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals,envpass));
+            surfaces.add(new Surface(select(positions,3,used),select(normals,3,used),select(uv,2,used),compactColor,weight==null?null:select(weight,4,used),compactBones,compactIndices,id,material.has("name")?material.get("name").getAsString():"",material.has("alphaMode")&&material.get("alphaMode").getAsString().equals("BLEND"),material.has("name")&&material.get("name").getAsString().startsWith("skull-gem-dest"),morphPositions,morphNormals,envpass));
         }
         if(forwardEyes){
             eyes=ForwardEyes.build(artTextures,key,surfaces.stream().map(
@@ -664,7 +683,7 @@ public final class GltfModel {
                 for(int i=0;i<mp.length;i++)if(surface.morphPositions[i]!=null)mp[i]=select(surface.morphPositions[i],3,used);
                 for(int i=0;i<mn.length;i++)if(surface.morphNormals[i]!=null)mn[i]=select(surface.morphNormals[i],3,used);
                 result.add(new Surface(select(surface.positions,3,used),select(surface.normals,3,used),select(surface.uv,2,used),
-                    select(surface.colors,4,used),select(surface.weights,4,used),toInts(select(toFloats(surface.joints),4,used)),
+                    select(surface.colors,4,used),select(surface.weights,4,used),select(surface.joints,4,used),
                     indices.stream().mapToInt(Integer::intValue).toArray(),surface.texture,surface.material,surface.translucent,surface.skullGem,mp,mn,surface.envpass));
             }
             armSurfaces=List.copyOf(result);
@@ -829,7 +848,15 @@ public final class GltfModel {
                 float[] cameraVertices=cameraVertices(pose,skinned,v,normal);
                 if(rim==null&&effect==null&&!surface.skullGem){
                     int[] colours=vertexColours(surface,alpha,tint,hurt);
-                    if(mergedEnv)for(int i=0,n=surface.colors.length/4;i<n;i++)colours[i]=colours[i]&0xffffff|shineAlpha;
+                    if(cornersOf==TRIANGLE_CORNERS){
+                        int colorMask=mergedEnv?0x00ffffff:0xffffffff;
+                        for(int i:surface.indices){
+                            int at=i*6,tex=i*2;
+                            buffer.addVertex(cameraVertices[at],cameraVertices[at+1],cameraVertices[at+2],(colours[i]&colorMask)|shineAlpha,
+                                surface.uv[tex],surface.uv[tex+1],overlay,light,cameraVertices[at+3],cameraVertices[at+4],cameraVertices[at+5]);
+                        }
+                        return;
+                    }
                     for(int triangle=0;triangle<surface.indices.length;triangle+=3)for(int corner:cornersOf){
                         int i=surface.indices[triangle+corner],at=i*6;
                         buffer.addVertex(cameraVertices[at],cameraVertices[at+1],cameraVertices[at+2],colours[i],surface.uv[i*2],surface.uv[i*2+1],
@@ -887,8 +914,20 @@ public final class GltfModel {
         }
     }
     private static final ThreadLocal<int[]> VERTEX_COLOURS=ThreadLocal.withInitial(()->new int[0]);
+    private static int[] baseColors(float[] rgba){
+        int[] colors=new int[rgba.length/4];
+        for(int i=0;i<colors.length;i++){
+            int at=i*4;
+            colors[i]=Math.clamp(Math.round(rgba[at+3]*255),0,255)<<24
+                |Math.clamp((int)(rgba[at]*255),0,255)<<16
+                |Math.clamp((int)(rgba[at+1]*255),0,255)<<8
+                |Math.clamp((int)(rgba[at+2]*255),0,255);
+        }
+        return colors;
+    }
     /** The plain path's colour per vertex (its alpha, the submit's tint, the hurt flash), once per surface drawn. */
     private static int[] vertexColours(Surface surface,float alpha,int tint,JakHurtVisuals.Frame hurt){
+        if(alpha==1&&tint==0xffffff&&hurt==JakHurtVisuals.REST)return surface.restColors;
         int count=surface.colors.length/4;
         var buffer=VERTEX_COLOURS.get();
         if(buffer.length<count){buffer=new int[count];VERTEX_COLOURS.set(buffer);}
@@ -974,7 +1013,11 @@ public final class GltfModel {
     private static float[] array(JsonArray a){float[] r=new float[a.size()];for(int i=0;i<r.length;i++)r[i]=a.get(i).getAsFloat();return r;}
     private static int[] ints(JsonArray a){int[] r=new int[a.size()];for(int i=0;i<r.length;i++)r[i]=a.get(i).getAsInt();return r;}
     private static int[] toInts(float[] a){int[] r=new int[a.length];for(int i=0;i<r.length;i++)r[i]=(int)a[i];return r;}
-    private static float[] toFloats(int[] a){float[] r=new float[a.length];for(int i=0;i<r.length;i++)r[i]=a[i];return r;}
     private static float[] select(float[] source,int components,int[] vertices){float[] out=new float[vertices.length*components];for(int i=0;i<vertices.length;i++)System.arraycopy(source,vertices[i]*components,out,i*components,components);return out;}
+    private static int[] select(int[] source,int components,int[] vertices){
+        int[] out=new int[vertices.length*components];
+        for(int i=0;i<vertices.length;i++)System.arraycopy(source,vertices[i]*components,out,i*components,components);
+        return out;
+    }
     private static float[] filled(int count,float value){float[] a=new float[count];Arrays.fill(a,value);return a;}
 }

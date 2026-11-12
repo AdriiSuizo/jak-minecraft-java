@@ -69,9 +69,18 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
     private static class Orientation {
         final Quaternionf from,to;
         long since;
+        int replayTick=Integer.MIN_VALUE;
         Orientation(Quaternionf q,long time){from=new Quaternionf(q);to=new Quaternionf(q);since=time;}
         Quaternionf sample(long now,Quaternionf target){
             return from.slerp(to,Math.clamp((now-since)/50_000_000f,0,1),target);
+        }
+        void replay(Quaternionf target,org.joml.Quaternionfc attitude,int tick,float partial){
+            if(replayTick!=tick){
+                replayTick=tick;
+                from.set(to);
+            }
+            to.set(attitude);
+            from.slerp(to,partial,target);
         }
     }
 
@@ -82,13 +91,15 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
         long now=System.nanoTime();
         var orient=orientations.computeIfAbsent(craft,e->new Orientation(new Quaternionf(e.attitude()),now));
         boolean replay=JakPoses.inReplay();
-        if(!orient.to.equals(craft.attitude())){
-            orient.from.set(replay?orient.to:orient.sample(now,state.attitude));
-            orient.to.set(craft.attitude());
-            orient.since=now;
+        if(replay)orient.replay(state.attitude,craft.attitude(),craft.tickCount,partial);
+        else{
+            if(!orient.to.equals(craft.attitude())){
+                orient.from.set(orient.sample(now,state.attitude));
+                orient.to.set(craft.attitude());
+                orient.since=now;
+            }
+            orient.sample(now,state.attitude);
         }
-        if(replay)orient.from.slerp(orient.to,partial,state.attitude);
-        else orient.sample(now,state.attitude);
         var pose=JakPoses.rendered(craft.pilotId());
         if(pose!=null&&client.player!=null&&craft.pilotId()==client.player.getId()
             &&pose.raw().get("hellcat") instanceof com.google.gson.JsonObject channel
@@ -100,6 +111,12 @@ public final class HellcatRenderer extends EntityRenderer<JakHellcat,HellcatRend
                 var rotation=JakPoses.flightRotation();
                 if(rotation!=null)state.attitude.set(rotation);
             }
+        }
+        var movie=dev.jakmc.client.MovieMotion.flight(craft.getId());
+        if(movie!=null){
+            var at=movie.at();
+            state.x=at.x;state.y=at.y;state.z=at.z;
+            state.attitude.set(movie.attitude());
         }
         state.flame=craft.thrust();
         state.lamps=craft.lamps();

@@ -91,7 +91,8 @@ public final class JakCitizenRenderer {
    var r=rider();boolean four=!car.model.bike();
    // On the craft's own presented frames (its native steps, smoothed), not the villager's 20 Hz ride:
    // the same seat, attitude and steering the zoomer is drawn with this frame.
-   car.samplePresentation(System.nanoTime());
+   if(dev.jakmc.client.JakPoses.inReplay())dev.jakmc.client.MovieVehicles.sample(car,partial);
+   else car.samplePresentation(System.nanoTime());
    var seat=car.presentationRider();state.x=seat.x;state.y=seat.y;state.z=seat.z;
    var before=car.presentationBefore();var after=car.presentationAfter();float blend=car.presentationFraction();
    String clip=four?"citizen-norm-rider-car-stance":"citizen-norm-rider-bike-stance";

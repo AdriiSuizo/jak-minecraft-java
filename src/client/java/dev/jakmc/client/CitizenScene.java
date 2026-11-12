@@ -103,7 +103,15 @@ public final class CitizenScene {
  for(int i=0;i<3;i++){var egg=new ItemStack(JakCitizens.EGGS.get(i));var v=EntityTypes.VILLAGER.spawn(p.level(),egg,p,base.offset((i-1)*3,0,3),EntitySpawnReason.SPAWN_ITEM_USE,false,false);v.setNoAi(true);v.setYRot(180);v.setYBodyRot(180);v.setYHeadRot(180);IDS.add(v.getUUID());RESULT.addProperty("egg_variant_"+i,((CitizenState)v).citizenVariant()==i&&v.getType()==EntityTypes.VILLAGER);}
  var baby=EntityTypes.VILLAGER.create(p.level(),EntitySpawnReason.COMMAND);((CitizenState)baby).citizenVariant(2);baby.setAge(-24000);baby.setNoAi(true);baby.setPos(center.add(5,0,0));p.level().addFreshEntity(baby);IDS.add(baby.getUUID());
  var v=(Villager)p.level().getEntity(IDS.get(0));var offers=new MerchantOffers();offers.add(new MerchantOffer(new ItemCost(Items.EMERALD,2),new ItemStack(Items.BREAD,3),12,2,0));v.setOffers(offers);
- var saved=TagValueOutput.createWithContext(ProblemReporter.DISCARDING,v.registryAccess());v.saveWithoutId(saved);var copy=EntityTypes.VILLAGER.create(p.level(),EntitySpawnReason.LOAD);copy.load(TagValueInput.create(ProblemReporter.DISCARDING,copy.registryAccess(),saved.buildResult()));RESULT.addProperty("native_save_roundtrip",copy.getType()==EntityTypes.VILLAGER&&((CitizenState)copy).citizenVariant()==0&&copy.getOffers().size()==1&&copy.getOffers().getFirst().getResult().is(Items.BREAD));
+ var saved=TagValueOutput.createWithContext(ProblemReporter.DISCARDING,v.registryAccess());v.saveWithoutId(saved);
+ var copy=EntityTypes.VILLAGER.create(p.level(),EntitySpawnReason.LOAD);
+ copy.load(TagValueInput.create(ProblemReporter.DISCARDING,copy.registryAccess(),saved.buildResult()));
+ var restored=copy.getOffers();
+ // Vanilla's offer is restored alongside the seven Jak offers added by CitizenTradesMixin.
+ RESULT.addProperty("native_save_roundtrip",copy.getType()==EntityTypes.VILLAGER&&((CitizenState)copy).citizenVariant()==0
+     &&restored.size()==8&&restored.stream().filter(offer->offer.getResult().is(Items.BREAD)
+         &&offer.getResult().getCount()==3&&offer.getCostA().getCount()==2&&offer.getMaxUses()==12).count()==1
+     &&copy.getOffers().size()==8);
  });}
  private static void tick(Minecraft c){if(!running)return;if(playerSleep){tickPlayerSleep(c);return;}if(c.player==null||c.getSingleplayerServer()==null){finish(c,"lost world");return;}int t=++tick;if(center==null)return;c.gui.hud.getChat().clearMessages(false);
  if(t<85)look(center.add(0,2.1,-7),center.add(0,.9,0));else if(t<155)look(center.add(0,5,-5),center.add(0,.3,0));else look(center.add(-1.5,2,-4),center.add(-3,.7,0));

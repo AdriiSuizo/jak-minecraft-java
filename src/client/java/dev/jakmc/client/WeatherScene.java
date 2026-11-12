@@ -40,12 +40,12 @@ final class WeatherScene {
             boolean raining=data.isRaining(),thundering=data.isThundering();
             int rainTime=data.getRainTime(),thunderTime=data.getThunderTime(),clearTime=data.getClearWeatherTime();
             int x=-576,z=192;
-            int y=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z);
-            if(y<=level.getSeaLevel())y=level.getChunk(x>>4,z>>4).getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x&15,z&15)+1;
+            level.getChunk(x>>4,z>>4);
+            int y=level.getHeight(Heightmap.Types.MOTION_BLOCKING,x,z);
             p.setAttached(JakData.ENABLED,false);
             p.setGameMode(GameType.CREATIVE);
             p.getAbilities().flying=true;p.onUpdateAbilities();
-            p.teleportTo(x+.5,y+8,z+.5);
+            p.teleportTo(x+.5,y+24,z+.5);
             p.setYRot(135);p.setXRot(12);
             server.setWeatherParameters(2000,0,false,false);
             restore=()->{

@@ -58,7 +58,12 @@ vec4 jak_dark_eco(sampler2D atlas, vec3 world, vec3 eye, float light) {
     vec3 shine = jak_dark_eco_sheet(atlas, JakEcoShine, vec2(r.x / m + 0.5, r.z / m + 0.5)).rgb;
     // stand-in: the map squared, for what the PS2's mood and vertex colours leave of it: black but for its swirls.
     shine *= shine * 1.2;
-    return vec4(shine * 2.0 * texel.a * clamp(light + 0.35, 0.35, 1.0), 0.94);
+    vec3 colour = shine * 2.0 * texel.a * clamp(light + 0.35, 0.35, 1.0);
+    if (JakEcoClock.z > 0.5) {
+        float ripple = clamp(0.45 + 2.2 * jak_dark_eco_wave(world.xz), 0.12, 0.9);
+        colour = colour * 1.45 + vec3(0.105, 0.055, 0.25) * ripple;
+    }
+    return vec4(colour, 0.94);
 }
 
 #endif

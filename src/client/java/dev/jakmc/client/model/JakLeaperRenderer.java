@@ -109,7 +109,8 @@ public final class JakLeaperRenderer extends EntityRenderer<JakLeaper,JakLeaperR
                 var client=Minecraft.getInstance();
                 var rider=client.level.getEntity(entity.riderId());
                 if(rider!=null){
-                    var position=rider==client.player?JakPoses.presented():rider.getPosition(partial);
+                    var movie=dev.jakmc.client.MovieMotion.pose(rider.getId());
+                    var position=movie!=null?movie.position():rider==client.player?JakPoses.presented():rider.getPosition(partial);
                     if(position!=null){state.x=position.x;state.y=position.y;state.z=position.z;}
                     state.yaw=player.yawAt(elapsed);
                 }
@@ -117,7 +118,7 @@ public final class JakLeaperRenderer extends EntityRenderer<JakLeaper,JakLeaperR
         }else{
             boolean dead=entity.isDeadOrDying();
             int rear=entity instanceof JakFlutFlut bird?bird.rearTime():0;
-            String suffix=dead?"deatha":state.hurt||rear>0?"hit-back":entity.isInWater()||!entity.onGround()?"jump-loop":
+            String suffix=dead?"deatha":state.hurt||rear>0?"hit-back":entity.isInWater()||!grounded(entity)?"jump-loop":
                 entity.walkAnimation.speed()>0.07f?"walk":"idle";
             String clip=PREFIX+"flut-"+suffix;
             float duration=model.duration(clip);
@@ -127,6 +128,15 @@ public final class JakLeaperRenderer extends EntityRenderer<JakLeaper,JakLeaperR
             state.pose=model.poseAtTime(clip,age);
         }
         if(state.useBare)state.pose=bare.retargetBird(model,modelRest,state.pose,bareRest);
+    }
+
+    private static boolean grounded(JakLeaper entity){
+        if(entity.onGround())return true;
+        if(!JakPoses.inReplay())return false;
+        var feet=entity.position().add(0,.10,0);
+        var floor=entity.level().clip(new net.minecraft.world.level.ClipContext(feet,feet.add(0,-.34,0),
+            net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,entity));
+        return floor.getType()==net.minecraft.world.phys.HitResult.Type.BLOCK;
     }
 
     @Override public void submit(State state,PoseStack stack,SubmitNodeCollector collector,CameraRenderState camera){

@@ -198,11 +198,11 @@ abstract class JakControllerCameraMixin {
     private void jakmc$convergeAim(float partial,CallbackInfo ci){
         if(!jakmc$active()||jakmc$flightPivot!=null||(!jakmc$overhead()&&jakmc$aim<=.001f))return;
         var player=Minecraft.getInstance().player;
-        var hit=player.raycastHitResult(partial,player);
-        // Retain vanilla item picking and align the view to that same interaction ray.
-        Vec3 target=hit.getType()==HitResult.Type.MISS
-            ?player.getEyePosition(partial).add(player.getViewVector(partial).scale(jakmc$aim>.001f?24:9))
-            :hit.getLocation();
+        var feet=JakPoses.presented();
+        if(feet==null)return;
+        // Keep the camera framing independent of the block or entity under the reticle.
+        double focus=net.minecraft.util.Mth.lerp(jakmc$aim,9,24);
+        Vec3 target=feet.add(0,player.getEyeHeight(),0).add(player.getViewVector(partial).scale(focus));
         Vec3 look=target.subtract(position());
         float yaw=(float)Math.toDegrees(Math.atan2(-look.x,look.z));
         float pitch=(float)-Math.toDegrees(Math.atan2(look.y,look.horizontalDistance()));

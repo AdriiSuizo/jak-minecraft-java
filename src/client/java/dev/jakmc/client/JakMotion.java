@@ -17,25 +17,23 @@ final class JakMotion {
     private final ArrayDeque<Snapshot> samples=new ArrayDeque<>();
     private long received,lastFrame;
     private double clock;
-    private double tickNanos=50_000_000;
 
     void accept(long tick,Frame frame,long now,boolean reset){
-        if(reset||samples.isEmpty()||tick<=samples.getLast().tick){
+        if(reset||samples.isEmpty()||tick<samples.getLast().tick){
             samples.clear();
             clock=tick-2;
             lastFrame=now;
-            tickNanos=50_000_000;
-        }else{
-            var latest=samples.getLast();
-            double interval=(now-received)/(double)(tick-latest.tick);
-            tickNanos+=(Math.clamp(interval,1_000_000,250_000_000)-tickNanos)*.1;
+        }else if(tick==samples.getLast().tick){
+            samples.removeLast();
+            samples.addLast(new Snapshot(tick,frame));
+            return;
         }
         samples.addLast(new Snapshot(tick,frame));
         while(samples.size()>8)samples.removeFirst();
         received=now;
     }
 
-    Frame sample(long now){
+    Frame sample(long now,double tickNanos){
         if(samples.isEmpty())return null;
         var latest=samples.getLast();
         double dt=Math.max(0,(now-lastFrame)/tickNanos);

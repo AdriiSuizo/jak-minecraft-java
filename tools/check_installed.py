@@ -77,14 +77,13 @@ def main():
           '--accessToken','0','--version','26.3.jakmod','--gameDir',str(instance),
           '--assetsDir',str(personal/'assets'),'--assetIndex',base['assetIndex']['id'],
           '--width','1280','--height','720','--quickPlaySingleplayer',name]
-    argfile=instance/'jakmc/production-check.args'
-    argfile.write_text('\n'.join(json.dumps(a,ensure_ascii=False) for a in args[1:]),encoding='utf-8')
     evidence=ROOT/'.local/evidence/installer-production';evidence.mkdir(parents=True,exist_ok=True)
     ready=instance/'jakmc/bridge/ready.json'
     previous=ready.read_bytes() if ready.exists() else None
     capture_after=time.time_ns()
     with (evidence/'game.log').open('w',encoding='utf-8') as log:
-        process=subprocess.Popen([str(java),'@'+str(argfile)],cwd=instance,stdout=log,stderr=subprocess.STDOUT,
+        # CreateProcessW preserves non-ASCII paths in the classpath and game directory.
+        process=subprocess.Popen(args,cwd=instance,stdout=log,stderr=subprocess.STDOUT,
                                  creationflags=subprocess.CREATE_NO_WINDOW)
         try:
             deadline=time.monotonic()+100;warmup=None
@@ -127,6 +126,5 @@ def main():
             # Retain the private save with its evidence, outside the world list.
             if world.exists():shutil.move(str(world),str(evidence/name))
             permit.unlink(missing_ok=True)
-            argfile.unlink(missing_ok=True)
 
 if __name__=='__main__':main()

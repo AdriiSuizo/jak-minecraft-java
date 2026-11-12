@@ -53,9 +53,9 @@ public final class JakEffects {
  private static String[] names;
  private static final ByteBuffer VIEW=NativeJak.buffer(92),SPRITES=NativeJak.buffer(8192*44),BOLTS=NativeJak.buffer(32768*44);
  public static long gemCollectBursts,spydroidBursts;
- public static int drawnVertices,drawnLightningVertices,drawnDarkVertices,drawnBarrelVertices,drawnProjectorVertices,drawnBurstVertices,drawnVentVertices,drawnSandVertices;
+ public static int drawnVertices,drawnLightningVertices,drawnDarkVertices,drawnBarrelVertices,drawnProjectorVertices,drawnBurstVertices,drawnVentVertices,drawnSandVertices,drawnLauncherVertices;
  private static final class Owner implements AutoCloseable {
-  final long handle;final Vec3 origin;long received=System.nanoTime(),lastDraw,session=Long.MIN_VALUE;
+  final long handle;final Vec3 origin;long received=MovieMotion.effectTime(),lastDraw,session=Long.MIN_VALUE;
   Vec3 boardSocket,gunSocket,laserSocket,laserEnd;
   int collector=-1;long pickupAt=Long.MIN_VALUE;boolean pickupStart;
   Owner(Vec3 origin,long handle){this.origin=origin;this.handle=handle;}
@@ -94,7 +94,10 @@ public final class JakEffects {
   net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
    dev.jakmc.network.JakPackets.DarkEcoBurst.TYPE,(packet,context)->{
     var level=context.client().level;
-    if(level!=null&&level.dimension().identifier().equals(packet.dimension()))burst(packet.small()?DARK_ECO_FIZZLE:DARK_ECO_BURST,packet.at());
+    if(level!=null&&level.dimension().identifier().equals(packet.dimension())){
+     var visible=JakPoses.inReplay()?packet.at().add(0,.27,0):packet.at();
+     burst(packet.small()?DARK_ECO_FIZZLE:DARK_ECO_BURST,visible);
+    }
    });
   dev.jakmc.content.darkeco.DarkEco.nasty=at->burst(DARK_ECO_NASTY,at);
   // dark_eco.rs died_in_it: group-dark-eco-death where the player died in it.
@@ -124,7 +127,7 @@ public final class JakEffects {
   if(owner!=null&&owner.origin.distanceToSqr(at)>64*64){owner.close();PULSES.remove(frog);owner=null;}
   if(owner==null){long handle=NativeJak.fxCreateDecor(KERMIT_PULSE);if(handle==0)return;owner=new Owner(at,handle);PULSES.put(frog,owner);kermitPulses++;}
   Vec3 d=at.subtract(owner.origin);NativeJak.fxDecorAt(owner.handle,(float)d.x,(float)d.y,(float)d.z);
-  owner.received=System.nanoTime();PULSE_AT.put(frog,at);
+  owner.received=MovieMotion.effectTime();PULSE_AT.put(frog,at);
  }
  public static void boardSocket(int entity,Vec3 position){
   var owner=OWNERS.get(entity);
@@ -139,17 +142,20 @@ public final class JakEffects {
  static boolean hasOwner(int entity){return OWNERS.containsKey(entity);}
  static int heldCount(){return HELD.size();}
  private static void release(long now){
+  boolean replay=MovieMotion.active()&&JakPoses.inReplay();
   for(var head=HELD.peek();head!=null;head=HELD.peek()){
    double shown=JakPoses.renderedTick(head.entity);
-   if(head.tick>shown+1&&now-head.at<200_000_000L)return;
+   if(replay&&Double.isFinite(shown)&&shown-head.tick>6){HELD.poll();continue;}
+   if(head.tick>shown+(replay?.05:1)&&now-head.at<200_000_000L)return;
    HELD.poll();apply(head.entity,head.origin,head.packet);
   }
  }
  public static void receive(int entity,Vec3 origin,JsonObject packet){
   if(!packet.has("effects"))return;
   var client=Minecraft.getInstance();
-  if(client.player!=null&&client.player.getId()==entity&&packet.has("serverTick")){
-   HELD.add(new Held(entity,origin,packet,packet.get("serverTick").getAsLong(),System.nanoTime()));
+  boolean replay=MovieMotion.active()&&JakPoses.inReplay();
+  if(packet.has("serverTick")&&(replay||client.player!=null&&client.player.getId()==entity)){
+   HELD.add(new Held(entity,origin,packet,packet.get("serverTick").getAsLong(),MovieMotion.effectTime()));
    return;
   }
   apply(entity,origin,packet);
@@ -160,7 +166,7 @@ public final class JakEffects {
   if(fx!=null&&(fx.origin.distanceToSqr(origin)>4096*4096||fx.session!=session)){fx.close();OWNERS.remove(entity);fx=null;}
   if(fx==null){fx=new Owner(origin,NativeJak.fxCreate());fx.session=session;OWNERS.put(entity,fx);}
   Vec3 delta=origin.subtract(fx.origin);NativeJak.fxPush(fx.handle,packet.get("effects").toString(),(float)delta.x,(float)delta.y,(float)delta.z);
-  fx.received=System.nanoTime();
+  fx.received=MovieMotion.effectTime();
  }
  public static void local(int entity,Vec3 origin,JsonArray commands){JsonObject packet=new JsonObject();packet.add("effects",commands);receive(entity,origin,packet);}
  /**
@@ -178,7 +184,7 @@ public final class JakEffects {
    relative[i*19+k]=(float)(k==0||k==16?value-fx.origin.x:k==1||k==17?value-fx.origin.y:k==2||k==18?value-fx.origin.z:value);
   }
   int sounds=NativeJak.fxVehicle(fx.handle,model,relative,count);
-  fx.received=System.nanoTime();
+  fx.received=MovieMotion.effectTime();
   return sounds;
  }
  public static void clear(){HELD.clear();GLOW.clear();for(var fx:PULSES.values())fx.close();PULSES.clear();PULSE_AT.clear();closeSandstorm();weatherWorld=null;for(var fx:OWNERS.values())fx.close();OWNERS.clear();for(var fx:DECORATIONS.values())fx.close();DECORATIONS.clear();for(var fx:BURSTS)fx.close();BURSTS.clear();JakPoses.clear();dev.jakmc.client.model.EcoItemRenderer.clear();}
@@ -299,10 +305,8 @@ public final class JakEffects {
     else if(entry.getValue() instanceof JakProps.Projector){kind=PROJECTOR;range=36;}
     // generic-obs.gc launcher-active: awake within its active distance while Jak carries blue eco.
     else if(entry.getValue() instanceof dev.jakmc.content.JakEcoLauncher.Pad){
-     var pose=JakPoses.rendered(client.player.getId());
      double reach=dev.jakmc.content.JakEcoLauncher.ACTIVE_METRES*dev.jakmc.player.JakPlayers.METRE;
-     boolean blue=pose!=null&&pose.raw().has("blueEco")&&pose.raw().get("blueEco").getAsBoolean();
-     if(!blue||client.player.position().distanceToSqr(Vec3.atCenterOf(pos))>reach*reach)continue;
+     if(!launcherActive(client,Vec3.atCenterOf(pos),reach))continue;
      kind=LAUNCHER;range=48;
      JakSounds.launcher(pos,focus);
     }
@@ -333,16 +337,31 @@ public final class JakEffects {
    return true;
   });
  }
+ private static boolean launcherActive(Minecraft client,Vec3 at,double reach){
+  if(JakPoses.inReplay()){
+   if(MovieMotion.active())return MovieMotion.blueEcoNear(at,reach);
+   for(var actor:client.level.players()){
+    var pose=JakPoses.rendered(actor.getId());
+    if(pose!=null&&pose.raw().has("blueEco")&&pose.raw().get("blueEco").getAsBoolean()
+        &&pose.position().distanceToSqr(at)<=reach*reach)return true;
+   }
+   return false;
+  }
+  var pose=JakPoses.rendered(client.player.getId());
+  return pose!=null&&pose.raw().has("blueEco")&&pose.raw().get("blueEco").getAsBoolean()
+      &&client.player.position().distanceToSqr(at)<=reach*reach;
+ }
+
  private static void submit(LevelRenderContext context){
   for(Batch glow:GLOW.values())glow.used=0;
   drawnVertices=0;drawnLightningVertices=0;drawnDarkVertices=0;drawnBarrelVertices=0;drawnProjectorVertices=0;drawnBurstVertices=0;drawnVentVertices=0;
-  drawnSandVertices=0;
+  drawnSandVertices=0;drawnLauncherVertices=0;
   var client=Minecraft.getInstance();
   if(client.level!=weatherWorld){closeSandstorm();weatherWorld=client.level;}
   float dust=JakAtmosphere.dust();
   if(client.level==null||OWNERS.isEmpty()&&HELD.isEmpty()&&DECORATIONS.isEmpty()&&BURSTS.isEmpty()&&PULSES.isEmpty()&&sandstorm==null&&dust<=.01f)return;
   manifest();
-  var camera=context.levelState().cameraRenderState;long now=System.nanoTime();drawnVertices=0;
+  var camera=context.levelState().cameraRenderState;long now=MovieMotion.effectTime();drawnVertices=0;
   Vector3f forward=camera.orientation.transform(new Vector3f(0,0,-1)),up=camera.orientation.transform(new Vector3f(0,1,0));
   if(dust>.01f){
    lastDust=now;
@@ -383,6 +402,7 @@ public final class JakEffects {
    drawOwner(context,client,fx,forward,up,now);
    if(kind==BARREL)drawnBarrelVertices+=drawnVertices-before;
    else if(kind==PROJECTOR)drawnProjectorVertices+=drawnVertices-before;
+   else if(kind==LAUNCHER)drawnLauncherVertices+=drawnVertices-before;
    else drawnVentVertices+=drawnVertices-before;
   }
   // A pulse not placed this last tenth of a second has gone (its frog let go, or is out of view).

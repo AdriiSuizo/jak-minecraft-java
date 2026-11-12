@@ -5,13 +5,15 @@ ffmpeg and WinRAR. End users only need Minecraft and their OpenGOAL games.
 """
 from pathlib import Path
 import hashlib, importlib.metadata, json, os, re, shutil, subprocess, sys, urllib.request, uuid, zipfile
+from pack_showcase import bundle_for_installer
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'dist'; STAGE=ROOT/'.local/installer-bundle'
 
 def run(args):subprocess.run([str(x) for x in args],cwd=ROOT,check=True)
 def copy(src,dst):dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,dst)
-def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+def sha(path):
+    with path.open('rb') as file:return hashlib.file_digest(file,'sha256').hexdigest()
 
 def personal_leaks(payload):
     """Nothing shipped may carry this machine's user name: a compiler writes build paths into what it makes."""
@@ -37,6 +39,8 @@ def model_tokens(folders=('src/main','src/client','native/jak-core/src','native/
 
 def main():
     if sys.platform!='win32':raise SystemExit('The packaged native core currently targets Windows x86-64')
+    world=OUT/'JakShowcase-world.zip'
+    if not world.is_file():raise SystemExit('Generate dist/JakShowcase-world.zip with tools/pack_showcase.py first')
     props=dict(line.split('=',1) for line in (ROOT/'gradle.properties').read_text().splitlines() if '=' in line)
     # The binaries must not name this machine's folders: panics keep source paths, the linker the debug file's.
     os.environ['CARGO_ENCODED_RUSTFLAGS']=f'--remap-path-prefix={Path.home()}=~\x1f-Clink-arg=/PDBALTPATH:%_PDB%'
@@ -47,6 +51,7 @@ def main():
     payload=STAGE/'payload';payload.mkdir(parents=True,exist_ok=True)
     copy(ROOT/f'build/libs/jak-minecraft-java-{props["version"]}-installer-code.jar',payload/'jakmc-code.jar')
     copy(ROOT/'tools/content-exporter/target/release/jak-content-exporter.exe',payload/'jak-content-exporter.exe')
+    bundle_for_installer(world,payload/'showcase-world.zip')
     (payload/'model-tokens.txt').write_text('\n'.join(sorted(model_tokens())),encoding='utf-8')
     (payload/'conversion-tokens.txt').write_text('\n'.join(sorted(model_tokens(('tools/content-source',),()))),encoding='utf-8')
     # These are redistributable codec utilities, never game files. Retain their
@@ -68,14 +73,16 @@ def main():
     api=f'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/{props["fabric_api_version"]}/fabric-api-{props["fabric_api_version"]}.jar.sha512'
     manifest['fabric_api_sha512']=urllib.request.urlopen(api,timeout=45).read().decode().strip()
     manifest['performance_mods']=json.loads((ROOT/'installer/performance-mods.json').read_text(encoding='utf-8'))
+    manifest['support']=json.loads((ROOT/'installer/support.json').read_text(encoding='utf-8'))
     manifest['files']={p.relative_to(payload).as_posix():sha(p) for p in sorted(payload.rglob('*')) if p.is_file() and p.name!='manifest.json'}
-    (payload/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
     # Keep a runnable source bundle for headless verification of exactly the
     # payload that PyInstaller packages.
     converters=['import_content','import_dark_eco','nombres_es','import_facades','import_facade_parts','import_flut_eyes','import_hellcat_deck','import_audio','extract_skate_tower_support']
     for name in converters:copy(ROOT/'tools'/f'{name}.py',STAGE/'converters'/f'{name}.py')
     catalog='content-source/terrain/src/spargus_city_blocks.rs'
     copy(ROOT/'tools'/catalog,STAGE/'converters'/catalog)
+    manifest['converters']={name:sha(ROOT/'tools'/name) for name in [*(f'{m}.py' for m in converters),catalog]}
+    (payload/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
     args=[sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--windowed',
         '--name','JakMod-Installer','--distpath',OUT,'--workpath',ROOT/'.local/pyinstaller',
         '--specpath',ROOT/'.local','--paths',ROOT/'tools','--add-data',f'{payload};payload',
@@ -111,7 +118,11 @@ def main():
     os.replace(temporary,archive)
     receipt=dict(archive=archive.name,sha256=sha(archive),bytes=archive.stat().st_size,
         manifest=manifest,source_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip())
-    (OUT/'package-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n',encoding='utf-8')
+    receipt_path=OUT/'package-receipt.json'
+    receipt_path.write_text(json.dumps(receipt,indent=2)+'\n',encoding='utf-8')
+    archive.with_suffix('.rar.sha256').write_text(f'{receipt["sha256"]}  {archive.name}\n',encoding='ascii')
+    released=[archive,receipt_path,OUT/'JakShowcase-world.zip']
+    (OUT/'SHA256SUMS.txt').write_text(''.join(f'{sha(path)} *{path.name}\n' for path in released if path.is_file()),encoding='ascii')
     print(json.dumps({k:v for k,v in receipt.items() if k!='manifest'},indent=2))
 
 if __name__=='__main__':main()

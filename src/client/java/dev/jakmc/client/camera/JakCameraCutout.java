@@ -73,6 +73,7 @@ public final class JakCameraCutout {
 
     /** render_anim/src/jak.rs update: `cutout.enabled = voxel && zoom >= FIRST_PERSON` (Jak's own third-person camera). */
     public static boolean wanted(Entity entity){
+        if(!dev.jakmc.client.TerrainCompatibility.vanillaTerrain())return false;
         var client=Minecraft.getInstance();
         if(entity==null||entity!=client.player)return false;
         // Rust jak.rs update: only Jak's own follow camera; a fixed fixture view is not it.

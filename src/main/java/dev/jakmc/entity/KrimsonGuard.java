@@ -84,7 +84,7 @@ public final class KrimsonGuard {
                     clip((kneeling?KNEELING:STANDING)[0],false);
                 }else{
                     if(ticks%8==1)body.getNavigation().moveTo(foe,1);
-                    clip(body.getNavigation().isDone()?"idle":"run",true);
+                    clip(body.locomotionVisible()&&!body.getNavigation().isDone()?"run":"idle",true);
                 }
             }
             case ATTACK -> {
@@ -126,7 +126,7 @@ public final class KrimsonGuard {
                 state(JakEnemy.State.WALK);
             pathRetry=20;
         }
-        clip(body.getNavigation().isDone()?"idle":"walk",true);
+        clip(body.locomotionVisible()&&!body.getNavigation().isDone()?"walk":"idle",true);
     }
 
     private void alert(ServerLevel level,LivingEntity foe){

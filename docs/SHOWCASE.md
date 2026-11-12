@@ -3,9 +3,10 @@
 Un mundo normal (no ultraplano) con Spargus y Villarefugio uno al lado del otro. Entre las dos ciudades hay un camino con una jincana de estaciones para enseñar el mod poco a poco.
 
 ## Cómo abrirlo
-1. Descarga `JakShowcase-world.zip` de la última versión en [Releases](https://github.com/AdriiSuizo/jak-minecraft-java/releases).
-2. Extrae el ZIP en `%APPDATA%\.minecraft\instances\jakmod\saves`.
-3. Abre la instalación **26.3.jakmod** y entra en **Jak Showcase**.
+1. Abre la instalación **26.3.jakmod**.
+2. En **Un jugador**, elige **Jak Showcase (JakMod)**. El instalador ya copia el mapa.
+
+Si quieres una copia adicional, descarga `JakShowcase-world.zip` de [Releases](https://github.com/AdriiSuizo/jak-minecraft-java/releases) y extrae su carpeta en `%APPDATA%\.minecraft\instances\jakmod\saves` con un nombre libre.
 
 Empiezas en la salida, mirando hacia la primera estación. El mundo está en modo supervivencia, con los comandos activados, siempre de día, sin lluvia y sin monstruos naturales. Si mueres no pierdes lo que llevas.
 

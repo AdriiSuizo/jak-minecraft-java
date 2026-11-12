@@ -35,7 +35,7 @@ def project_client_running():
 
 
 def run():
-    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['integration','first_person','natural_cities','economy','equipment','scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','kermit','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','zoomers','rules','lands','punch','wrecks','lote','lote2','lote3','lote4','lote5','lote6','trees','bench','showcase','lote7','lote8','lote9'],default='scale');parser.add_argument('--world-from');parser.add_argument('--origin',nargs=3,type=float);parser.add_argument('--fresh-world',action='store_true');parser.add_argument('--gun',type=int,choices=range(12));args=parser.parse_args();scene=args.scene
+    parser=argparse.ArgumentParser();parser.add_argument('--scene',choices=['integration','first_person','natural_cities','economy','equipment','scale','effects','enemies','systems','combat','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','kermit','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','zoomers','rules','lands','punch','wrecks','lote','lote2','lote3','lote4','lote5','lote6','trees','bench','showcase','lote7','lote8','lote9','replay_probe'],default='scale');parser.add_argument('--world-from');parser.add_argument('--origin',nargs=3,type=float);parser.add_argument('--fresh-world',action='store_true');parser.add_argument('--gun',type=int,choices=range(12));args=parser.parse_args();scene=args.scene
     if args.gun is not None and scene!='first_person':parser.error('--gun is supported by the first_person scene')
     stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     evidence=ROOT/'.local/evidence'/(scene+'-'+stamp);evidence.mkdir(parents=True)
@@ -59,17 +59,12 @@ def run():
             cwd=ROOT,env=env,stdout=build_log,stderr=subprocess.STDOUT,check=True,timeout=600,
             creationflags=subprocess.CREATE_NO_WINDOW)
     if project_client_running():raise RuntimeError('A manual project client opened during compilation; leave it untouched')
-    # Adrii 06/11: every test makes a new world and deletes all the earlier ones (an old world that no
-    # longer loads left the game waiting forever). Only the world's settings are kept, outside run/saves.
+    # Each test opens its own named world and archives it with that run's evidence.
     template=ROOT/'.local/test-world-template'
     for metadata in ('level.dat','data/minecraft/world_gen_settings.dat'):
         if not (template/metadata).exists() and (dev_save/metadata).exists():
             (template/metadata).parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(dev_save/metadata,template/metadata)
     saves=ROOT/'run/saves';saves.mkdir(parents=True,exist_ok=True)
-    for old in saves.iterdir():
-        if old.is_dir():shutil.rmtree(old,ignore_errors=True)
-    for old in (ROOT/'.local/evidence').glob('*/world'):
-        if old.is_dir():shutil.rmtree(old,ignore_errors=True)
     world='Jak test '+stamp
     fresh=saves/world
     if args.world_from:
@@ -100,7 +95,7 @@ def run():
                         call(scene+'_scene',**({'origin':args.origin} if args.origin is not None else {}),**({'mode':args.gun} if args.gun is not None else {}));sent=True;break
             time.sleep(.25)
         if not sent:raise RuntimeError('Game exited before the requested scene started')
-        process.wait(timeout=1500 if scene=='showcase' else 240 if scene in ('lands','lote6','lote8','lote9') else 200 if scene=='punch' else 180 if scene=='natural_cities' else 120 if scene in ('first_person','enemies','weapons','input','gems','citizens','cities','sites','new_sites') else 150 if scene=='weather' else 150 if scene in ('lote2','bench') else 200 if scene in ('lote3','lote4','trees') else 240 if scene=='lote5' else 90 if scene in ('powers','hellcat_crossing','kermit','lote') else 60 if scene=='systems' else 40)
+        process.wait(timeout=1500 if scene=='showcase' else 240 if scene in ('lands','lote6','lote8','lote9','replay_probe') else 200 if scene=='punch' else 180 if scene=='natural_cities' else 120 if scene in ('first_person','enemies','weapons','input','gems','citizens','cities','sites','new_sites') else 150 if scene=='weather' else 150 if scene in ('lote2','bench') else 200 if scene in ('lote3','lote4','trees') else 240 if scene=='lote5' else 90 if scene in ('powers','hellcat_crossing','kermit','lote') else 60 if scene=='systems' else 40)
         if process.returncode!=0:raise RuntimeError(f'Native game exited {process.returncode}')
         shutil.copyfile(result,evidence/'result.json')
         if scene in ('integration','first_person','equipment','economy','weapons','rings','input','input_actions','menus','gems','gems_visual','collision_perf','citizens','player_sleep','yakow','spydroid','kermit','powers','dark_motion','leaper','flut','hellcat','helldog','hellcat_crossing','materials','vents','weather','altar','track','ladder','surface','cars','cities','sites','new_sites','natural_cities','zoomers','rules','lands','punch','wrecks') and json.loads(result.read_text(encoding='utf-8')).get('reason')!='complete':raise RuntimeError(f'{scene} scene did not complete; see result.json')

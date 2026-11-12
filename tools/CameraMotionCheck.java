@@ -5,9 +5,12 @@ import org.joml.Quaternionf;
 
 /** Replays packet jitter at 150 Hz, including speeds beyond the former four-block cutoff. */
 public final class CameraMotionCheck {
+    private static final long TICK=50_000_000L;
+
     public static void main(String[] args){
         for(double speed:new double[]{6,80,160})verify(speed);
         verifyStop();
+        verifyBatchedDelivery();
     }
 
     private static void verify(double speed){
@@ -21,7 +24,7 @@ public final class CameraMotionCheck {
                 motion.accept(nextTick,new JakMotion.Frame(at,Vec3.ZERO,new Quaternionf()),arrival(nextTick),nextTick==0);
                 nextTick++;
             }
-            var shown=motion.sample(now);
+            var shown=motion.sample(now,TICK);
             if(shown==null)continue;
             if(frame>150&&Double.isFinite(previous)){
                 double rate=(shown.position().z-previous)*150;
@@ -37,7 +40,7 @@ public final class CameraMotionCheck {
         long time=42_000_000_000L;
         var destination=new Vec3(0,0,previous+1);
         motion.accept(900,new JakMotion.Frame(destination,Vec3.ZERO,new Quaternionf()),time,true);
-        if(motion.sample(time).position().distanceToSqr(destination)>1e-12)
+        if(motion.sample(time,TICK).position().distanceToSqr(destination)>1e-12)
             throw new AssertionError("Teleport interpolated across sessions");
         System.out.println("Camera "+speed+" blocks/s, "+frames+" frames, speed "+minSpeed+".."+maxSpeed+", zero stalls, teleport snapped");
     }
@@ -57,7 +60,7 @@ public final class CameraMotionCheck {
                 motion.accept(nextTick,new JakMotion.Frame(at,Vec3.ZERO,new Quaternionf()),arrival(nextTick),nextTick==0);
                 nextTick++;
             }
-            var shown=motion.sample(now);
+            var shown=motion.sample(now,TICK);
             if(shown==null)continue;
             double position=shown.position().z;
             if(position<previous-1e-9||position>480+1e-9)
@@ -66,5 +69,29 @@ public final class CameraMotionCheck {
         }
         if(Math.abs(previous-480)>1e-9)throw new AssertionError("Camera did not settle at the collision");
         System.out.println("Abrupt collision stop at 160 blocks/s, no overshoot or backwards correction");
+    }
+
+    private static void verifyBatchedDelivery(){
+        var motion=new JakMotion();
+        int tick=0;
+        double previous=0;
+        for(int frame=0;frame<1500;frame++){
+            long now=Math.round(frame*1e9/150);
+            while((tick/3*3+2)*TICK<=now){
+                long received=(tick/3*3+2)*TICK;
+                var snapshot=new JakMotion.Frame(new Vec3(tick,0,0),Vec3.ZERO,null);
+                motion.accept(tick,snapshot,received,tick==0);
+                motion.accept(tick,snapshot,received+1,false);
+                tick++;
+            }
+            var shown=motion.sample(now,TICK);
+            if(shown==null)continue;
+            double x=shown.position().x;
+            if(frame>150&&(x<previous-1e-9||x-previous>.147))
+                throw new AssertionError("Batched or repeated packets jumped the camera: "+previous+" -> "+x);
+            previous=x;
+        }
+        if(previous<190)throw new AssertionError("Camera fell behind batched packets");
+        System.out.println("Batched packets and duplicate ticks, bounded frame movement");
     }
 }
