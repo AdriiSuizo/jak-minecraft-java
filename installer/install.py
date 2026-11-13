@@ -13,6 +13,9 @@ PAYLOAD = BASE / 'payload'
 CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 SHOWCASE = 'Jak Showcase (JakMod)'
 SHOWCASE_ARCHIVE = 'showcase-world.zip'
+# Invalidate conversions made before extracted installs exposed the original
+# SBK/VAG banks. A code-only update must not reuse their incomplete sounds.json.
+ASSET_PIPELINE_VERSION = 2
 
 def words(es, en, lang): return es if lang == 'es' else en
 def digest(path, kind='sha256'):
@@ -147,7 +150,7 @@ def conversion_stamp(manifest):
     """Use the same converter identity in the source bundle and the frozen EXE."""
     parts = sorted((k,v) for k,v in manifest['files'].items() if k not in {'jakmc-code.jar',SHOWCASE_ARCHIVE})
     parts += sorted(manifest.get('converters',{}).items())
-    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([ASSET_PIPELINE_VERSION,parts]).encode()).hexdigest()
 
 def junction(target, source):
     # A local directory junction requires no elevation and does not change the
@@ -180,6 +183,8 @@ def prepare_owned(active, workspace, notify, lang):
             and any((cached/'levels').rglob('*-background.glb'))):
             # Resume an interrupted installation after successful extraction.
             # The canonical directory belongs exclusively to this instance.
+            if (source/'data/iso_data').is_dir():
+                junction(target/'data/iso_data',source/'data/iso_data')
             continue
         # The OpenGOAL Launcher keeps it by version, next to active: versions/official/v0.3.8/extractor.exe.
         versions = sorted((active.parent/'versions').glob('*/*/extractor.exe'), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -216,6 +221,10 @@ def prepare_owned(active, workspace, notify, lang):
         # Game by game: what the conversion names as well stays, so the three never lie on the disk whole together.
         slim_models(export_root(canonical, game), game, ('model-tokens.txt','conversion-tokens.txt'))
         slim_audio(export_root(canonical, game))
+        # import_audio also reads bank-only cues and streamed effects from the
+        # extracted game files. Link them after extraction so only the audio
+        # reader uses this reference; do not copy or modify the source files.
+        junction(data/'iso_data',source/'data/iso_data')
     return canonical
 
 REQUIRED_RESOURCES = (

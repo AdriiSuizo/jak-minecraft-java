@@ -752,6 +752,14 @@ mod tests{
 }
 
 #[cfg(test)]
+fn configure_test_root(root:&std::path::Path)->Result<jint,String>{
+ // The ledge and water fixtures share the native process globals. Rust runs
+ // their tests concurrently; initialise those globals once across both modules.
+ static READY:OnceLock<Result<jint,String>>=OnceLock::new();
+ READY.get_or_init(||configure_root(root)).clone()
+}
+
+#[cfg(test)]
 mod ledge_with_real_animations {
  use super::*;
  use jak_core::collide::{Tri,Pat,PatMode,CollideWorld};
@@ -763,7 +771,7 @@ mod ledge_with_real_animations {
  #[test]
  fn running_jump_at_two_block_wall(){
   let Ok(root)=std::env::var("JAKMC_ASSETS") else {eprintln!("JAKMC_ASSETS unset");return;};
-  configure_root(std::path::Path::new(&root)).unwrap();
+  configure_test_root(std::path::Path::new(&root)).unwrap();
   let b=BLOCK;let mut tris=Vec::new();
   let mut cube=|x:f32,y:f32,z:f32|{
    let (x0,y0,z0,x1,y1,z1)=(x*b,y*b,z*b,(x+1.)*b,(y+1.)*b,(z+1.)*b);
@@ -815,8 +823,7 @@ mod water_with_real_data {
  }
  fn jak_in_water(depth:f32)->Option<Jak>{
   let root=assets()?;
-  static READY:OnceLock<Result<(),String>>=OnceLock::new();
-  READY.get_or_init(||configure_root(&root).map(|_|())).clone().unwrap();
+  configure_test_root(&root).unwrap();
   let mut jak=Jak::new(Vec3::new(0.,0.,0.),0.);
   jak.anims=ANIMS.get().unwrap().clone();
   jak.set_particles(effects::LIBRARY.get().unwrap().clone());

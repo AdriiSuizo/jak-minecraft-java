@@ -351,7 +351,8 @@ impl Car {
             self.position += motion;
             return;
         };
-        if ground.can_step_on_contact() && self.support_grace > 0.
+        let can_step = ground.can_step_on_contact();
+        if can_step && self.support_grace > 0.
             && normal.y.abs() < 0.45
             && self.velocity.y < 3.
             && self.hop_age == 0.
@@ -365,7 +366,10 @@ impl Car {
         self.position += motion * fraction.max(0.);
         let blocked = self.velocity.dot(normal);
         if blocked < 0. {
-            let change = ground.exchange_impulse(self.velocity, normal, self.position)
+            // A failed step probe replaces the host's remembered contact. The
+            // original terrain hit is static; only a non-step-able entity hit
+            // (which skipped those probes) may exchange momentum here.
+            let change = (!can_step).then(|| ground.exchange_impulse(self.velocity, normal, self.position)).flatten()
                 .map_or(-blocked, |(change, _)| change);
             self.velocity += normal * change;
             if change > 2. {
@@ -435,4 +439,79 @@ fn climb(
         }
     }
     Some(position + Vec3::Y * hi + horizontal)
+}
+
+#[cfg(test)]
+pub(crate) mod collision_tests {
+    use super::*;
+
+    /// A wall immediately ahead, with a separate vehicle just above the roof.
+    /// Like the JNI terrain adapter, each sweep replaces the remembered contact.
+    pub(crate) struct ClimbContacts {
+        pub direct_vehicle: bool,
+        last_vehicle: bool,
+        pub exchanged: usize,
+        pub headroom_probes: usize,
+    }
+    impl ClimbContacts {
+        pub fn new(direct_vehicle: bool) -> Self {
+            Self { direct_vehicle, last_vehicle: false, exchanged: 0, headroom_probes: 0 }
+        }
+    }
+    impl Ground for ClimbContacts {
+        fn can_step_on_contact(&self) -> bool { !self.last_vehicle }
+        fn below(&mut self, _: Vec3, _: f32) -> Option<f32> { None }
+        fn sweep(&mut self, _: Vec3, _: Vec3, _: Vec3) -> Option<(f32, Vec3)> {
+            unreachable!("the host supplies complete hull sweeps")
+        }
+        fn sweep_hull(&mut self, at: Vec3, step: Vec3, half: Vec3, _: Vec3) -> Option<(f32, Vec3)> {
+            self.last_vehicle = false;
+            if step.y > 0.2 {
+                // The overhead vehicle blocks every candidate step's headroom.
+                self.headroom_probes += 1;
+                self.last_vehicle = true;
+                return Some((0.2 / step.y, Vec3::NEG_Y));
+            }
+            let gap = (half.x + 0.05) - (at.x + half.x);
+            if step.x > 0. && gap >= -1e-6 && step.x >= gap {
+                self.last_vehicle = self.direct_vehicle;
+                return Some((gap.max(0.) / step.x, Vec3::NEG_X));
+            }
+            None
+        }
+        fn exchange_impulse(&mut self, _: Vec3, _: Vec3, _: Vec3) -> Option<(f32, Vec3)> {
+            if !self.last_vehicle { return None; }
+            self.exchanged += 1;
+            Some((6., Vec3::ZERO))
+        }
+    }
+
+    fn car() -> Car {
+        // move_hull does not consult suspension or engine specifications.
+        let specs = crate::particles::wcars::read("(define *v-toad-constants* (new 'static 'v-toad-constants))");
+        let mut car = Car::new(Model::Toad, Vec3::ZERO, 0., &specs["toad"]);
+        car.support_grace = 0.18;
+        car.velocity = Vec3::X * 12.;
+        car
+    }
+
+    #[test]
+    fn a_failed_car_climb_does_not_push_the_vehicle_above_the_wall() {
+        let mut car = car();
+        let mut ground = ClimbContacts::new(false);
+        car.move_hull(&mut ground, Vec3::Z, &mut Vec::new());
+        assert!(ground.headroom_probes > 0);
+        assert_eq!(ground.exchanged, 0, "a rejected step is not a collision with the overhead vehicle");
+        assert!(car.velocity.x <= 0., "the wall must still stop forward movement");
+    }
+
+    #[test]
+    fn a_car_still_exchanges_impulse_with_the_vehicle_it_actually_hits() {
+        let mut car = car();
+        let mut ground = ClimbContacts::new(true);
+        car.move_hull(&mut ground, Vec3::Z, &mut Vec::new());
+        assert_eq!(ground.headroom_probes, 0);
+        assert_eq!(ground.exchanged, 1);
+        assert_eq!(car.velocity.x, 6.);
+    }
 }

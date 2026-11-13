@@ -1,12 +1,66 @@
 """Installer boundary checks; uses a temporary launcher with synthetic accounts."""
 import importlib.util, json, tempfile, unittest, urllib.error, zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 spec=importlib.util.spec_from_file_location('jak_installer',Path(__file__).with_name('install.py'))
 installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
 
 class InstallerChecks(unittest.TestCase):
+    def test_existing_complete_exports_still_use_the_source_game_without_extraction(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);active=root/'OpenGOAL/active';workspace=root/'work';workspace.mkdir()
+            for game,names in installer.REQUIRED.items():
+                for name in names:installer.atomic(installer.export_root(active,game)/name,b'original export')
+                (installer.export_root(active,game)/'audio/sfx').mkdir(parents=True)
+                (active/game/'data/goal_src'/game).mkdir(parents=True)
+                installer.atomic(active/game/'data/iso_data'/game/'SBK/fixture.SBK',b'original audio')
+            with patch.object(installer,'run') as run:
+                owned=installer.prepare_owned(active,workspace,lambda _:None,'en')
+            run.assert_not_called()
+            for game in installer.REQUIRED:
+                self.assertTrue((owned/game).is_junction())
+                self.assertEqual((owned/game).resolve(),(active/game).resolve())
+                self.assertEqual((owned/game/'data/iso_data'/game/'SBK/fixture.SBK').read_bytes(),b'original audio')
+
+    def test_fresh_and_resumed_extraction_keep_original_audio_banks_accessible(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);active=root/'OpenGOAL/active';workspace=root/'work';workspace.mkdir()
+            payload=root/'payload';payload.mkdir()
+            for name in ('model-tokens.txt','conversion-tokens.txt'):(payload/name).write_text('')
+            for game in installer.REQUIRED:
+                source=active/game/'data'
+                for name in ('SBK/fixture.SBK','VAG/VAGDIR.AYB'):
+                    installer.atomic(source/'iso_data'/game/name,b'original audio')
+                (source/'decompiler/config').mkdir(parents=True)
+                (source/'goal_src'/game).mkdir(parents=True)
+                installer.atomic(active/game/'extractor.exe',b'fixture')
+            def extract(args,log,env=None):
+                game=args[args.index('--game')+1]
+                export=Path(args[args.index('--proj-path')+1])/'decompiler_out'/game
+                for name in installer.REQUIRED[game]:installer.atomic(export/name,b'fixture')
+                installer.atomic(export/'audio/sfx/COMMON/fixture.wav',b'fixture')
+                installer.atomic(export/'levels/fixture/fixture-background.glb',b'fixture')
+            with patch.object(installer,'PAYLOAD',payload),patch.object(installer,'run',side_effect=extract) as run,\
+                    patch.object(installer.shutil,'disk_usage',return_value=SimpleNamespace(free=10**12)):
+                owned=installer.prepare_owned(active,workspace,lambda _:None,'es')
+                self.assertEqual(run.call_count,3)
+                for game in installer.REQUIRED:
+                    link=owned/game/'data/iso_data'
+                    self.assertTrue(link.is_junction())
+                    self.assertEqual(link.resolve(),(active/game/'data/iso_data').resolve())
+                    self.assertEqual((link/game/'SBK/fixture.SBK').read_bytes(),b'original audio')
+                # Resume an older, interrupted extraction that had no ISO-data link.
+                (owned/'jak2/data/iso_data').rmdir()
+                self.assertEqual(installer.prepare_owned(active,workspace,lambda _:None,'es'),owned)
+                self.assertEqual(run.call_count,3,'resuming must not repeat extraction')
+                self.assertTrue((owned/'jak2/data/iso_data').is_junction())
+                for game in installer.REQUIRED:
+                    installer.slim_converted(installer.export_root(owned,game))
+                    self.assertEqual((active/game/'data/iso_data'/game/'SBK/fixture.SBK').read_bytes(),b'original audio')
+                    self.assertEqual((owned/game/'data/iso_data'/game/'VAG/VAGDIR.AYB').read_bytes(),b'original audio')
+
     def test_slimming_keeps_named_models_and_never_enters_a_junction(self):
         with tempfile.TemporaryDirectory() as temp:
             payload=Path(temp)/'payload';payload.mkdir();(payload/'model-tokens.txt').write_text('sidekick\ncitizen-\nwhole-lod0\n')
@@ -106,6 +160,12 @@ class InstallerChecks(unittest.TestCase):
         self.assertEqual(installer.conversion_stamp(manifest),stamp)
         manifest['files'][installer.SHOWCASE_ARCHIVE]='new world'
         self.assertEqual(installer.conversion_stamp(manifest),stamp)
+
+    def test_installer_pipeline_fixes_invalidate_previous_conversions(self):
+        manifest={'files':{'jak-content-exporter.exe':'exporter','jakmc-code.jar':'mod'}}
+        stamp=installer.conversion_stamp(manifest)
+        with patch.object(installer,'ASSET_PIPELINE_VERSION',installer.ASSET_PIPELINE_VERSION+1):
+            self.assertNotEqual(installer.conversion_stamp(manifest),stamp)
 
     def test_legacy_showcase_is_used_without_adding_a_second_map(self):
         with tempfile.TemporaryDirectory() as temp:

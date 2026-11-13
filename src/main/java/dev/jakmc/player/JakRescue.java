@@ -4,6 +4,8 @@ import dev.jakmc.JakData;
 import dev.jakmc.JakMod;
 import java.util.*;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.core.BlockPos;
@@ -42,9 +44,21 @@ public final class JakRescue {
     }
 
     /** render_anim/src/minecraft_world.rs FallWatch, with the player's last ground and was_alive. */
-    private static final class Watch { Double before; boolean under; int buried; Vec3 lastGround; boolean wasAlive; }
+    private static final class Watch {
+        final ServerPlayer owner;
+        final ServerLevel level;
+        Double before; boolean under; int buried; Vec3 lastGround; boolean wasAlive;
+        Watch(ServerPlayer player){owner=player;level=player.level();}
+    }
     private static final Map<UUID,Watch> WATCH=new HashMap<>();
     private JakRescue(){}
+
+    private static Watch watch(ServerPlayer player){
+        // Coordinates belong to this level instance, not just a dimension name:
+        // another single-player world can use the same UUID and dimension key.
+        return WATCH.compute(player.getUUID(),(id,old)->
+            old==null||old.owner!=player||old.level!=player.level()?new Watch(player):old);
+    }
 
     public static void initialize(){
         PayloadTypeRegistry.serverboundPlay().register(Request.TYPE,Request.CODEC);
@@ -57,6 +71,8 @@ public final class JakRescue {
             for(ServerPlayer p:server.getPlayerList().getPlayers()){present.add(p.getUUID());watchFall(p);}
             WATCH.keySet().retainAll(present);
         });
+        ServerPlayConnectionEvents.DISCONNECT.register((handler,server)->WATCH.remove(handler.getPlayer().getUUID()));
+        ServerLifecycleEvents.SERVER_STOPPED.register(server->WATCH.clear());
     }
 
     /**
@@ -82,7 +98,7 @@ public final class JakRescue {
         Vec3 back=safeNear(p.level(),home,bed[0]!=null?1:0);
         if(back==null)back=home;
         teleport(p,back);
-        var watch=WATCH.computeIfAbsent(p.getUUID(),id->new Watch());
+        var watch=watch(p);
         watch.before=null;watch.under=false;watch.buried=0;watch.lastGround=back;
         p.sendSystemMessage(Component.literal("Rescate: de vuelta como Jak, en un sitio seguro"),true);
         JakMod.LOG.info("rescue: {} back to {}",p.getScoreboardName(),back);
@@ -105,7 +121,7 @@ public final class JakRescue {
      * near where they last stood (else the spawn).
      */
     static void watchFall(ServerPlayer p){
-        var w=WATCH.computeIfAbsent(p.getUUID(),id->new Watch());
+        var w=watch(p);
         boolean alive=p.isAlive();
         // stand-in: spectators fly through blocks by design; the original has none.
         if(p.isSpectator()){w.wasAlive=alive;w.before=null;return;}

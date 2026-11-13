@@ -27,6 +27,15 @@ jobs:
           python-version: '3.12'
       - name: installer boundaries
         run: python installer/test_install.py
+      - name: packaged documentation links
+        run: python tools/test_package_docs.py
+      - name: world lifecycle regressions
+        run: |
+          python tools/test_rescue_lifecycle.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/test_dark_eco_lifecycle.py
+      - name: native regressions
+        run: cargo test --locked --manifest-path native/Cargo.toml
       - name: build
         run: ./gradlew.bat distributionJar
       - name: portable converter

@@ -5,6 +5,7 @@ import dev.jakmc.content.JakItems;
 import java.util.*;
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.core.*;
 import net.minecraft.core.registries.*;
 import net.minecraft.resources.ResourceKey;
@@ -39,9 +40,10 @@ public final class DarkEco {
     /** Client side: a pool's flash there (dark-eco-pool.gc group-dark-eco-pool-nasty). */
     public static java.util.function.Consumer<net.minecraft.world.phys.Vec3> nasty;
     /** dark_eco.rs Pool.died: when each player last died in it (game ticks). */
-    private static final Map<UUID,Long> DIED=new HashMap<>();
+    private static final Map<ServerLevel,Map<UUID,Long>> DIED=new WeakHashMap<>();
     public static void initialize(){
         ServerTickEvents.END_LEVEL_TICK.register(DarkEco::playersIn);
+        ServerLifecycleEvents.SERVER_STOPPED.register(server->DIED.clear());
         CreativeModeTabEvents.modifyOutputEvent(ResourceKey.create(Registries.CREATIVE_MODE_TAB,JakData.id("equipment"))).register(out->out.insertAfter(JakItems.DARK_ECO,BUCKET));
     }
     static DamageSource source(Level level){return new DamageSource(level.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(DAMAGE));}
@@ -67,9 +69,12 @@ public final class DarkEco {
     }
     /** dark_eco.rs died_in_it: Jak 1's death in dark eco, once a death (3 s), the death-darkeco sound at feet + 0.5. */
     private static void diedInIt(ServerLevel level,ServerPlayer p,double x,double y,double z){
-        long now=level.getGameTime();Long last=DIED.get(p.getUUID());
+        // A new world or dimension has its own clock; a previous world's death
+        // must not silence this one's sound and particles for hours.
+        var deaths=DIED.computeIfAbsent(level,key->new HashMap<>());
+        long now=level.getGameTime();Long last=deaths.get(p.getUUID());
         if(last!=null&&now-last<=60)return;
-        DIED.put(p.getUUID(),now);
+        deaths.put(p.getUUID(),now);
         level.playSound(null,x,y,z,DEATH_SOUND,SoundSource.PLAYERS,1,1);
         burst(level,over(level,new net.minecraft.world.phys.Vec3(x,y,z)),false);
         // The group-dark-eco-death burst there, for everyone who sees it.

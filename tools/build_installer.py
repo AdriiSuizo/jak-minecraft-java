@@ -5,6 +5,7 @@ ffmpeg and WinRAR. End users only need Minecraft and their OpenGOAL games.
 """
 from pathlib import Path
 import hashlib, importlib.metadata, json, os, re, shutil, subprocess, sys, urllib.request, uuid, zipfile
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from pack_showcase import bundle_for_installer
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -12,6 +13,26 @@ OUT=ROOT/'dist'; STAGE=ROOT/'.local/installer-bundle'
 
 def run(args):subprocess.run([str(x) for x in args],cwd=ROOT,check=True)
 def copy(src,dst):dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,dst)
+
+def copy_document(src,dst):
+    """Relocated package guides link back to their existing repository pages."""
+    def link(match):
+        lead,target,tail=match.groups()
+        angled=target.startswith('<')
+        url=urlsplit(target[1:-1] if angled else target)
+        if url.scheme or url.netloc or not url.path or url.path.startswith('/'):
+            return match.group(0)
+        source=(src.parent/unquote(url.path)).resolve()
+        try:relative=source.relative_to(ROOT.resolve()).as_posix()
+        except ValueError:return match.group(0)
+        if not source.is_file():return match.group(0)
+        host,prefix=('raw.githubusercontent.com','/AdriiSuizo/jak-minecraft-java/main/') if lead.startswith('!') else ('github.com','/AdriiSuizo/jak-minecraft-java/blob/main/')
+        dest=urlunsplit(('https',host,prefix+quote(relative,safe='/'),url.query,url.fragment))
+        return lead+('<'+dest+'>' if angled else dest)+tail
+    pattern=r'''(!?\[[^\]\n]*\]\(\s*)(<[^>\n]+>|[^\s)]+)((?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'))?[ \t]*\))'''
+    text=re.sub(pattern,link,src.read_text(encoding='utf-8'))
+    dst.parent.mkdir(parents=True,exist_ok=True)
+    dst.write_text(text,encoding='utf-8')
 def sha(path):
     with path.open('rb') as file:return hashlib.file_digest(file,'sha256').hexdigest()
 
@@ -94,7 +115,7 @@ def main():
     run(args)
     package=OUT/'JakMod-Installer'
     for name in ('README-ES.md','README-EN.md','THIRD-PARTY.md'):
-        copy(ROOT/'installer'/name,package/name)
+        copy_document(ROOT/'installer'/name,package/name)
     notices=package/'licenses'
     for name in ('pyinstaller','Pillow','numpy'):
         distribution=importlib.metadata.distribution(name)
@@ -107,7 +128,7 @@ def main():
     copy(ROOT/'LICENSE',package/'LICENSE')
     for name in ('opengoal','jak-enhanced-trilogy'):
         for notice in ('LICENSE','revision.txt'):copy(ROOT/'third_party'/name/notice,notices/name/notice)
-    copy(ROOT/'CONTROLES.md',package/'CONTROLES.md')
+    copy_document(ROOT/'CONTROLES.md',package/'CONTROLES.md')
     personal_leaks(payload)
     rar=Path(os.environ.get('ProgramFiles','C:/Program Files'))/'WinRAR/Rar.exe'
     if not rar.is_file():raise SystemExit('WinRAR is required to create a real RAR archive')

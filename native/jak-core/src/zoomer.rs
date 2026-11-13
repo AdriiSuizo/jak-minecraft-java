@@ -406,7 +406,8 @@ impl Zoomer {
             crate::wheeled::hull_hit(g, pos, motion, half, heading)
         };
         if let Some((fraction, normal)) = hit(terrain, self.position, step) {
-            let climb = (terrain.can_step_on_contact() && self.grounded && normal.y.abs() < 0.3)
+            let can_step = terrain.can_step_on_contact();
+            let climb = (can_step && self.grounded && normal.y.abs() < 0.3)
                 .then(|| {
                     [0.6, 1.2, 1.8, 2.4, 3.0]
                         .into_iter()
@@ -438,7 +439,9 @@ impl Zoomer {
                 }
                 let normal_speed = self.velocity.dot(normal);
                 if normal_speed < 0.0 {
-                    let (change, offset) = terrain.exchange_impulse(self.velocity, normal, self.position)
+                    // Step probes may leave the overhead vehicle as the host's
+                    // last contact even though this committed hit was a wall.
+                    let (change, offset) = (!can_step).then(|| terrain.exchange_impulse(self.velocity, normal, self.position)).flatten()
                         .unwrap_or_else(|| {
                             let right = Vec3::Y.cross(heading);
                             let side = |projection: f32| if projection.abs() < 0.05 { 0. } else { projection.signum() };
@@ -516,6 +519,30 @@ mod tests {
         assert!(zoomer.position.x > 0.2);
         assert!(zoomer.bank.abs() > 0.02 && zoomer.yaw.abs() > 0.02);
         assert!(events.iter().any(|e| matches!(e, Event::Impact(speed) if *speed == 8.)));
+    }
+
+    #[test]
+    fn a_failed_zoomer_climb_does_not_push_the_vehicle_above_the_wall() {
+        let mut zoomer = Zoomer::new(Model::BikeA, 0.);
+        zoomer.grounded = true;
+        zoomer.velocity = Vec3::X * 12.;
+        let mut ground = crate::wheeled::collision_tests::ClimbContacts::new(false);
+        zoomer.move_hull(&mut ground, Vec3::Z, &mut Vec::new());
+        assert!(ground.headroom_probes > 0);
+        assert_eq!(ground.exchanged, 0, "a rejected step is not a collision with the overhead vehicle");
+        assert!(zoomer.velocity.x <= 0., "the wall must still stop forward movement");
+    }
+
+    #[test]
+    fn a_zoomer_still_exchanges_impulse_with_the_vehicle_it_actually_hits() {
+        let mut zoomer = Zoomer::new(Model::BikeA, 0.);
+        zoomer.grounded = true;
+        zoomer.velocity = Vec3::X * 12.;
+        let mut ground = crate::wheeled::collision_tests::ClimbContacts::new(true);
+        zoomer.move_hull(&mut ground, Vec3::Z, &mut Vec::new());
+        assert_eq!(ground.headroom_probes, 0);
+        assert_eq!(ground.exchanged, 1);
+        assert_eq!(zoomer.velocity.x, 6.);
     }
 
     #[test]
