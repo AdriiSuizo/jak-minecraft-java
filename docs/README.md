@@ -1,6 +1,6 @@
 ![Jak Worlds](media/jak-worlds-header.gif)
 
-[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) · [Controles](../CONTROLES.md)
+[Inicio](../README.md) · [Descargar](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.19) · [Controles](../CONTROLES.md)
 
 # Guías de Jak Worlds
 
@@ -11,6 +11,7 @@
 | Probar las mecánicas | [Recorrido de Jak Showcase](SHOWCASE.md) |
 | Entender eco, munición y recetas | [Inventario y economía](INVENTORY-ECONOMY.md) |
 | Consultar fallos conocidos | [Ajustes pendientes](FIXES-PENDIENTES.md) |
+| Ver qué se ha corregido y comprobado | [Auditoría del 13 de noviembre](AUDITORIA-2026-11-13.md) |
 
 ## Para desarrollar o colaborar
 

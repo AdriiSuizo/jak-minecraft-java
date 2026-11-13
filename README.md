@@ -4,9 +4,9 @@
 
 Explora Minecraft como Jak, con Daxter al hombro. Salta por los tejados de Villa Refugio, recorre Spargus, saca la turbotabla o llena tu propio garaje de zoomers. **Jak Worlds** reúne movimientos, poderes, armas, vehículos y lugares de la trilogía en **Minecraft Java 26.3**.
 
-## [⬇ Descargar Jak Worlds para Windows — v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/download/v0.1.0-dev.18/JakMod-26.3-0.1.0-dev.rar)
+## [⬇ Descargar Jak Worlds para Windows — v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/download/v0.1.0-dev.19/JakMod-26.3-0.1.0-dev.rar)
 
-**El enlace descarga directamente el instalador en RAR. Extráelo entero antes de abrirlo.** No necesitas descargar el código fuente para jugar. [Notas de la versión y mapa por separado](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18).
+**El enlace descarga directamente el instalador en RAR. Extráelo entero antes de abrirlo.** No necesitas descargar el código fuente para jugar. [Notas de la versión y mapa por separado](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.19).
 
 [Guía de instalación](installer/README-ES.md) · [Controles](CONTROLES.md) · [Recorrido del mapa de prueba](docs/SHOWCASE.md) · [Canal de AdriiSuizo](https://www.youtube.com/@AdriiSuizo)
 
@@ -23,7 +23,7 @@ Si aún no tienes los tres juegos instalados, sigue el [tutorial de OpenGOAL de 
 
 ## Instálalo en cinco pasos
 
-1. **Descarga el RAR** de la [versión v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18) y **extráelo entero** en una carpeta. No ejecutes el instalador desde dentro del RAR.
+1. **Descarga el RAR** de la [versión v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.19) y **extráelo entero** en una carpeta. No ejecutes el instalador desde dentro del RAR.
 2. **Cierra Minecraft y su launcher** y abre `JakMod-Installer.exe`.
 3. Elige **Español** y comprueba las dos carpetas: la instalación de **OpenGOAL** y la de **Minecraft**. Usa **Examinar…** si alguna ruta no es la tuya.
 4. Pulsa **Instalar o actualizar JakMod** y espera a que termine. La primera vez puede tardar varios minutos mientras convierte los recursos de tus juegos.
@@ -76,7 +76,7 @@ Proyecto de **AdriiSuizo**, desarrollado con asistencia de **Claude y Codex**, s
 
 Play Minecraft as Jak, with Daxter on his shoulder: original movement, Dark/Light powers, the twelve Morph Guns, JET-Board, vehicles, enemies and cities from the trilogy.
 
-**[Download the Windows installer — v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.18)**. Under **Assets**, choose the installer RAR rather than the source-code archives.
+**[Download the Windows installer — v0.1.0-dev.18](https://github.com/AdriiSuizo/jak-minecraft-java/releases/tag/v0.1.0-dev.19)**. Under **Assets**, choose the installer RAR rather than the source-code archives.
 
 You need **64-bit Windows 10/11**, **Minecraft Java 26.3** from the official launcher, and **all three Jak games installed in OpenGOAL from your own copies**. Launch Minecraft once before installation. Internet is required; an initial extraction may need about 35 GB free, with about 11 GB retained afterwards.
 
