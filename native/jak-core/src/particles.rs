@@ -2624,13 +2624,21 @@ mod tests {
 }
 
 #[cfg(test)]
+fn original_test_sources(game: &str) -> std::path::PathBuf {
+    let root = std::path::PathBuf::from(std::env::var_os("JAKMC_ASSETS")
+        .expect("set JAKMC_ASSETS to the owned jak3/data/decompiler_out/jak3 export, then run cargo test -- --include-ignored"));
+    let active = root.ancestors().nth(4).expect("JAKMC_ASSETS must point to jak3/data/decompiler_out/jak3");
+    active.join(game).join("data/goal_src").join(game)
+}
+
+#[cfg(test)]
 mod faithful_tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires original OpenGOAL exports via JAKMC_ASSETS"]
     fn original_board_zap_follows_the_board_joint_while_its_ring_expands() {
-        let home = std::path::PathBuf::from(std::env::var_os("USERPROFILE").unwrap());
-        let path = home.join(r"Documents\Jak OpenGOAL\active\jak3\data\goal_src\jak3\engine\target\board\board-part.gc");
+        let path = original_test_sources("jak3").join("engine/target/board/board-part.gc");
         let mut library = Library::default();
         library.read(&std::fs::read_to_string(path).expect("original board particles"));
         let mut particles = Particles::new(Arc::new(library));
@@ -2659,9 +2667,9 @@ mod faithful_tests {
     }
 
     #[test]
+    #[ignore = "requires original OpenGOAL exports via JAKMC_ASSETS"]
     fn original_water_and_board_attack_rings_expand_in_xz_without_a_vertical_wall() {
-        let home=std::path::PathBuf::from(std::env::var_os("USERPROFILE").unwrap());
-        let root=home.join(r"Documents\Jak OpenGOAL\active\jak3\data\goal_src\jak3");
+        let root=original_test_sources("jak3");
         let mut library=Library::default();
         for file in ["engine/common-obs/water-part.gc","engine/target/board/board-part.gc"]{
             library.read(&std::fs::read_to_string(root.join(file)).expect("original particle source"));
@@ -2702,10 +2710,10 @@ mod faithful_tests {
     }
 
     #[test]
+    #[ignore = "requires original OpenGOAL exports via JAKMC_ASSETS"]
     fn drops_use_their_own_games_callback_ids_and_actual_water_level(){
-        let home=std::path::PathBuf::from(std::env::var_os("USERPROFILE").unwrap()).join(r"Documents\Jak OpenGOAL\active");
         for(game,drop,ring,secondary)in [("jak2",517,501,536),("jak3",777,780,781)]{
-            let root=home.join(game).join("data/goal_src").join(game);
+            let root=original_test_sources(game);
             let mut library=Library::default();
             if game=="jak2"{library.read_jak2(&std::fs::read_to_string(root.join("engine/common_objs/water.gc")).unwrap());}
             else{for file in ["engine/common-obs/water-part.gc","engine/common-obs/water.gc"]{library.read(&std::fs::read_to_string(root.join(file)).unwrap());}}
@@ -3020,14 +3028,16 @@ mod faithful_tests {
 #[cfg(test)] mod remaining_native_fx_regressions {
     use super::*;
     fn original()->Arc<Library> {
-        let root=std::path::PathBuf::from(std::env::var_os("USERPROFILE").unwrap()).join("Documents/Jak OpenGOAL/active/jak3/data/goal_src/jak3");
+        let root=original_test_sources("jak3");
         let mut library=Library::default();
         for file in ["engine/target/board/board-part.gc","levels/desert/wvehicle/wvehicle-part.gc"] {
             library.read(&std::fs::read_to_string(root.join(file)).expect("original OpenGOAL particle source"));
         }
         Arc::new(library)
     }
-    #[test] fn original_board_charge_remains_on_the_rendered_joint_after_release_at_144_hz() {
+    #[test]
+    #[ignore = "requires original OpenGOAL exports via JAKMC_ASSETS"]
+    fn original_board_charge_remains_on_the_rendered_joint_after_release_at_144_hz() {
         let mut p=Particles::new(original());let tag=0xb0a2_c000;
         p.keep(tag,"group-target-board-duck-charge",Vec3::Y*METER,Mat3::IDENTITY);
         for _ in 0..10 {p.step(1./60.);}
@@ -3044,7 +3054,9 @@ mod faithful_tests {
         }
         assert!(!jak.particles.as_ref().unwrap().live.iter().any(|p|p.part==669),"released charge expires on its native timer");
     }
-    #[test] fn native_rocks_have_random_texture_frames_warm_brightness_and_world_velocity() {
+    #[test]
+    #[ignore = "requires original OpenGOAL exports via JAKMC_ASSETS"]
+    fn native_rocks_have_random_texture_frames_warm_brightness_and_world_velocity() {
         let mut p=Particles::new(original());let vel=Vec3::new(42.,78.,-21.);p.set_particle_velocity(vel);
         for _ in 0..100 {p.launch(954,Vec3::ZERO,Mat3::from_rotation_y(1.3));}
         assert!(p.live.len()>=100);
@@ -3088,8 +3100,10 @@ mod faithful_tests {
         let before=after.clone();p.step(1./60.);let after=&p.live[0];
         assert!(after.pos.distance(before.pos+(before.vel+before.accel)*5.)<0.002);
     }
-    #[test] fn original_scorpion_casings_bounce_twice_emit_original_impacts_and_expire() {
-        let root=std::path::PathBuf::from(std::env::var_os("USERPROFILE").unwrap()).join("Documents/Jak OpenGOAL/active/jak3/data/goal_src/jak3/levels/desert/wvehicle/wvehicle-part.gc");
+    #[test]
+    #[ignore = "requires original OpenGOAL exports via JAKMC_ASSETS"]
+    fn original_scorpion_casings_bounce_twice_emit_original_impacts_and_expire() {
+        let root=original_test_sources("jak3").join("levels/desert/wvehicle/wvehicle-part.gc");
         let mut l=Library::default();l.read(&std::fs::read_to_string(root).expect("original scorpion particles"));
         let mut p=Particles::new(Arc::new(l));let floor=10.*METER;p.set_target_ground(floor);
         for _ in 0..20 {p.launch(967,Vec3::Y*floor,Mat3::IDENTITY);}

@@ -45,3 +45,15 @@ Controller. Left stick moves and right stick looks. PlayStation X / Xbox A jumps
 
 En supervivencia, el eco y la munición se consumen del inventario real, incluidas shulkers y bolsas. Las recetas, la durabilidad y los comercios se explican en [Inventario y economía](INVENTORY-ECONOMY.md). Para localizar las ciudades de generación normal: `/jak locate haven` y `/jak locate spargus`.
 
+
+## Native regression suites
+
+`cargo test --locked --manifest-path native/Cargo.toml` runs the portable suite used by CI. Six tests that read original OpenGOAL definitions are explicitly ignored there; other asset-dependent JNI checks require the local export too. A green CI run does not certify those private-resource checks.
+
+For the complete local suite, point `JAKMC_ASSETS` at your own `active/jak3/data/decompiler_out/jak3` directory (with the sibling Jak 1/II exports and `goal_src` folders present), then run:
+
+```powershell
+cargo test --locked --manifest-path native/Cargo.toml -- --include-ignored
+```
+
+Do not upload those original game resources to CI. Installer and world-lifecycle regression checks also run on every push; their temporary fixtures never modify player worlds.
